@@ -1,0 +1,61 @@
+name: Refresh NDX Dark-Residual Dashboard
+
+on:
+  # Manual "Run workflow" button on the Actions tab
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: "Force re-download of cached FINRA/Yahoo data (slower, fully fresh)"
+        type: boolean
+        default: false
+  # Optional: also refresh automatically every weekday evening after FINRA posts the day's file.
+  # Delete this block if you only want the manual button.
+  schedule:
+    - cron: "30 21 * * 1-5"   # 21:30 UTC = 4:30pm ET, Mon-Fri
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-dashboard
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Persist FINRA/Yahoo cache between runs so each refresh only fetches new days,
+      # matching the script's incremental caching design.
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: .ndx_dark_cache
+          key: ndx-dark-cache-${{ github.run_id }}
+          restore-keys: |
+            ndx-dark-cache-
+
+      - name: Build dashboard
+        run: >
+          python ndx_dark_residual.py
+          --out docs/index.html
+          --cache-dir .ndx_dark_cache
+          ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
+
+      - name: Commit and push updated dashboard
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html
+          git diff --staged --quiet && echo "No changes to commit" || git commit -m "Refresh dashboard $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
