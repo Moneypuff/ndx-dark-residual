@@ -81,7 +81,7 @@ DEFAULT_CACHE_DIR = str(Path.home() / ".ndx_dark_cache")
 
 # Nasdaq-100 constituents in index-weight order (descending) with approximate index
 # weights (%). Source: https://www.slickcharts.com/nasdaq100 (which mirrors the QQQ /
-# Nasdaq-100 weighting), retrieved 05. Weights drift daily and membership
+# Nasdaq-100 weighting), retrieved 2026-07-05. Weights drift daily and membership
 # changes at the quarterly rebalance -- refresh from the same source as needed.
 NDX100_WEIGHTS = [
     ("NVDA", 12.29), ("AAPL", 11.80), ("MSFT", 7.55), ("AMZN", 6.80), ("GOOGL", 5.90),
@@ -109,12 +109,6 @@ NDX100_WEIGHTS = [
 NDX100 = [t for t, _ in NDX100_WEIGHTS]
 NDX100_WEIGHT = dict(NDX100_WEIGHTS)  # ticker -> index weight (%)
 BENCH = "QQQ"
-
-# Names tracked alongside the NDX-100 constituents but not part of the index itself (no
-# index weight, so they carry no badge and fall back to divergence-order sorting in the
-# small-multiples grid). Primarily here to populate the "D vs forward return" tab's
-# per-name dropdown for names of interest outside the Nasdaq-100.
-EXTRA_TRACKED = ["KAI"]  # Kadant Inc.
 
 # GICS sector per name, shown in the small-multiple cell footer (between the two dates).
 # Labels match the SECTOR_ETFS display names so the NDX-100 (static) and S&P 500
@@ -393,26 +387,10 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
     doc_s = load_finra_document(cache_dir, "short", ns)
     have = (set(doc_t.index) if not doc_t.empty else set()) & \
            (set(doc_s.index) if not doc_s.empty else set())
-    # A brand-new symbol added to `wanted` after this cache's date range was already fully
-    # populated would otherwise never get backfilled: every date already has a row (from the
-    # other symbols), so the date-completeness check below finds nothing "missing" and the new
-    # symbol's column silently never gets fetched -- it just vanishes from the output panel.
-    # Each day's file covers every wanted symbol at once, so backfilling means re-requesting
-    # every day currently on file (re-parsing already-known symbols too, but that's a harmless
-    # overwrite with the same values) rather than only the new one.
-    known_cols = ((set(doc_t.columns) if not doc_t.empty else set()) |
-                  (set(doc_s.columns) if not doc_s.empty else set()))
-    new_syms = [s for s in wanted if s not in known_cols]
-    if new_syms and have:
-        print(f"FINRA cache: {len(new_syms)} new symbol(s) not yet backfilled "
-              f"({', '.join(new_syms)}) -- re-fetching all {len(dates)} day(s) to pick them up",
-              file=sys.stderr)
-        missing = list(dates)
-    else:
-        missing = [d for d in dates if d not in have]
-        print(f"FINRA cache: {len(dates)-len(missing)} of {len(dates)} day(s) already in documents"
-              + (f" [{finra_doc_path(cache_dir, ns=ns)}]" if cache_dir else " (caching disabled)")
-              + f"; fetching {len(missing)} new day(s)...", file=sys.stderr)
+    missing = [d for d in dates if d not in have]
+    print(f"FINRA cache: {len(dates)-len(missing)} of {len(dates)} day(s) already in documents"
+          + (f" [{finra_doc_path(cache_dir, ns=ns)}]" if cache_dir else " (caching disabled)")
+          + f"; fetching {len(missing)} new day(s)...", file=sys.stderr)
 
     if missing:
         session = make_session(workers) if requests else None
@@ -1001,12 +979,12 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
 
     # Per-name sector labels for the S&P 500 grid: start from the static GICS map (covers the
     # NDX-100 overlap) and supplement from the broad SPDR sector-fund holdings when a live
-    # sector build is present. Only the nine broad funds are used (specialty/thematic funds
-    # like SOXX/XBI/SMH/ARKK are skipped) so each name resolves to its broad GICS sector.
+    # sector build is present. Only the eight broad funds are used (specialty funds like
+    # SOXX/XBI are skipped) so each name resolves to its broad GICS sector.
     spx_sector_map = dict(TICKER_SECTOR)
     if sector_data and sector_data.get("members"):
         # `members` is a list of (etf, sector_name, [tickers]) tuples.
-        broad = {"XLK", "XLF", "XLV", "XLI", "XLY", "XLP", "XLE", "XLU", "XLB"}
+        broad = {"XLK", "XLF", "XLV", "XLI", "XLY", "XLP", "XLE", "XLU"}
         for etf, sec_name, syms in sector_data["members"]:
             if etf not in broad:
                 continue
@@ -1148,9 +1126,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   footer{position:fixed;bottom:0;left:0;right:0;background:#0d1117e8;border-top:1px solid var(--grid);
          padding:6px 22px;color:var(--mut);font-size:11px;display:flex;justify-content:space-between}
   a{color:var(--accent);text-decoration:none}
-  .tabs{display:flex;gap:6px;margin-bottom:12px}
+  .tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+        scrollbar-width:none;-ms-overflow-style:none}
+  .tabs::-webkit-scrollbar{display:none}
   .tabs button{background:transparent;color:var(--mut);border:0;border-bottom:2px solid transparent;
-               padding:4px 2px;margin-right:16px;font-size:13px;font-weight:650;cursor:pointer}
+               padding:4px 2px;margin-right:16px;font-size:13px;font-weight:650;cursor:pointer;
+               white-space:nowrap;flex:0 0 auto}
+  .tabs button:last-child{margin-right:22px}
   .tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
   select{background:var(--panel2);border:1px solid var(--grid);color:var(--ink);
          border-radius:8px;padding:6px 10px;font-size:12px}
@@ -3741,26 +3723,15 @@ SOXX_PORTFOLIO_ID = "239705"  # iShares Semiconductor ETF
 # SSGA SPDR Select Sector daily-holdings .xlsx (State Street); {tkr} is the lowercase ETF symbol
 SSGA_HOLDINGS_TMPL = ("https://www.ssga.com/us/en/intermediary/library-content/products/"
                       "fund-data/etfs/us/holdings-daily-us-en-{tkr}.xlsx")
-# VanEck equity-ETF daily-holdings .xlsx; {tkr} is the lowercase ETF symbol
-VANECK_HOLDINGS_TMPL = "https://www.vaneck.com/us/en/etf/equity/{tkr}/holdings/download/xlsx/"
-# ARK Invest active-ETF daily-holdings .csv, keyed by ticker (URL encodes the full fund name,
-# so unlike SSGA/VanEck there is no ticker-only template -- add an entry here for each new fund)
-ARK_HOLDINGS_URLS = {
-    "ARKK": "https://assets.ark-funds.com/fund-documents/funds-etf-csv/"
-            "ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv",
-}
 # Sector universe for the reconstructed sector-DIX tab: (ETF, display name, holdings source).
-# The nine SPDR Select Sector funds come from SSGA; SOXX (semiconductors) is iShares; SMH
-# (semiconductors, cap-weighted -- a useful contrast to SOXX's modified-equal-weight) is VanEck;
-# ARKK (thematic, not a GICS sector) is ARK Invest.
+# The eight SPDR Select Sector funds come from SSGA; SOXX (semiconductors) is iShares.
 SECTOR_ETFS = [
     ("XLK", "Technology", "ssga"), ("XLF", "Financials", "ssga"),
     ("XLV", "Health Care", "ssga"), ("XLI", "Industrials", "ssga"),
     ("XLY", "Cons. Discretionary", "ssga"), ("XLP", "Cons. Staples", "ssga"),
     ("XLE", "Energy", "ssga"), ("XLU", "Utilities", "ssga"),
-    ("XLB", "Materials", "ssga"), ("SOXX", "Semiconductors", "ishares"),
-    ("XBI", "Biotech", "ssga"), ("SMH", "Semiconductors (SMH)", "vaneck"),
-    ("ARKK", "ARK Innovation", "ark"),
+    ("SOXX", "Semiconductors", "ishares"), ("XBI", "Biotech", "ssga"),
+    ("XLB", "Materials", "ssga"), ("XLC", "Comm. Services", "ssga"),
 ]
 
 
@@ -3830,17 +3801,9 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
     synced_today = (cached.get("_synced") == str(end_n.date())) and not refresh
     nodata = set(cached.get("_nodata", [])) if synced_today else set()
 
-    # NOTE: `_synced` is one flag shared by the whole cache file, but the file is written by
-    # a sequence of calls for DIFFERENT (only partially overlapping) symbol universes within
-    # one script run (NDX-100, then S&P 500, Russell, sector...). A small universe reaching
-    # today's close legitimately stamps `_synced` = today -- that says nothing about whether
-    # some OTHER, not-yet-checked symbol from a later call's larger universe is actually
-    # current; it may still be sitting on yesterday's close in `c.columns`. So `sym in
-    # c.columns` can never be trusted as "current" on its own (present != fresh) -- every
-    # symbol's own last date must be compared against `end_n` regardless of the blanket flag.
     def _fetch_start(sym):
         c = base["close"]
-        if sym in nodata:
+        if synced_today and (sym in c.columns or sym in nodata):
             return None
         if refresh or sym not in c.columns:
             return pd.Timestamp(start)
@@ -3855,7 +3818,7 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
         win = [d for d in panels["close"].index if pd.Timestamp(start) <= d <= end_n]
         return {f: panels[f].reindex(index=win, columns=symbols) for f in fields}
 
-    if synced_today and all(_fetch_start(s) is None for s in symbols):
+    if synced_today and all((s in base["close"].columns or s in nodata) for s in symbols):
         print(f"Yahoo prices: reusing today's cache (all {len(symbols)} {label}s current); "
               f"pass --refresh to re-poll.", file=sys.stderr)
         return _window(base)
@@ -3872,12 +3835,7 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
 
         def _one(item):
             sym, st = item
-            # Yahoo's period2 is an exclusive/same-instant cutoff: passing midnight-of-today
-            # (as `end` is, post-normalize()) excludes today's own close bar no matter what
-            # time of day this runs. Push the network request's upper bound to midnight of
-            # the NEXT day so today's bar is included; `end_n` (cache bookkeeping/windowing
-            # below) deliberately stays anchored to today.
-            df = fetch_yahoo_one(sym, st, end_n + pd.Timedelta(days=1), session=session)
+            df = fetch_yahoo_one(sym, st, end, session=session)
             with lock:
                 counter["n"] += 1
                 if counter["n"] % 200 == 0 or counter["n"] == len(todo):
@@ -3904,16 +3862,6 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
     # (the "partial cache" artifact). When too many names lag, leave `_synced` unset so the
     # next run re-polls instead of trusting the incomplete panel. A small tail (halted/late
     # names, ~5%) is tolerated so ordinary gaps don't force perpetual re-polling.
-    #
-    # Second guard, orthogonal to the first: "everyone agrees" is not the same as "today's
-    # bar actually landed." A run before the close (or before Yahoo has posted it) has every
-    # symbol uniformly capped at YESTERDAY's close -- `behind` comes out empty because nobody
-    # is behind anybody else, so the tolerance check above alone would stamp `_synced` = today
-    # off a panel that only reaches yesterday. Every later run that same day then short-circuits
-    # on `synced_today` and never tries again, permanently missing that day's own close. So
-    # `synced` additionally requires the achieved `latest` to actually reach `end_n` itself --
-    # unless `end_n` is a weekend, when no session will ever post for that date and waiting for
-    # one would just spin forever.
     sub = out["close"].reindex(columns=symbols)
     latest = sub.dropna(how="all").index.max() if not sub.empty else None
     if latest is not None:
@@ -3923,16 +3871,11 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
     else:
         behind = list(symbols)
     tol = max(3, int(0.05 * len(symbols)))
-    today_is_session = end_n.weekday() < 5  # Mon-Fri; a rough proxy, exchange holidays aside
-    reached_today = latest is not None and latest >= end_n
-    complete = len(behind) <= tol and (reached_today or not today_is_session)
-    synced = str(end_n.date()) if complete else ""
+    synced = str(end_n.date()) if len(behind) <= tol else ""
     if not synced:
-        why = ("today's close hasn't posted yet" if today_is_session and not reached_today
-               else "too many names lag")
         print(f"Yahoo prices: {len(behind)}/{len(symbols)} {label}s behind "
-              f"{latest.date() if latest is not None else 'n/a'} ({why}) -- NOT marking cache "
-              f"synced (next run will re-poll; lower --workers if this persists).", file=sys.stderr)
+              f"{latest.date() if latest is not None else 'n/a'} -- NOT marking cache synced "
+              f"(next run will re-poll; lower --workers if this persists).", file=sys.stderr)
 
     if cache is not None and not out["close"].empty:
         try:
@@ -3992,8 +3935,12 @@ def _ssga_tickers_from_xlsx(raw):
         df0 = pd.read_excel(io.BytesIO(raw), header=None, engine="openpyxl")
     except Exception:  # noqa: BLE001  (missing openpyxl, corrupt book, HTML gate, ...)
         return []
-    hdr = next((i for i in range(len(df0))
-                if df0.iloc[i].astype(str).str.strip().str.lower().eq("ticker").any()), None)
+    hdr = None
+    for i in range(len(df0)):
+        row_vals = [str(v).strip().lower() for v in df0.iloc[i].tolist()]
+        if "ticker" in row_vals:
+            hdr = i
+            break
     if hdr is None:
         return []
     try:
@@ -4004,9 +3951,12 @@ def _ssga_tickers_from_xlsx(raw):
     tcol = next((c for c in df.columns if c.lower() == "ticker"), None)
     if tcol is None:
         return []
+    col = df[tcol]
+    if isinstance(col, pd.DataFrame):  # duplicate "Ticker" columns -- take the first
+        col = col.iloc[:, 0]
     out, seen = [], set()
-    for t in df[tcol].astype(str):
-        u = t.strip().upper()
+    for t in col.tolist():
+        u = str(t).strip().upper()
         if _TICKER_RE.match(u) and u not in seen:
             seen.add(u); out.append(u)
     return out
@@ -4034,103 +3984,6 @@ def fetch_ssga_holdings(etf, label=None, session=None, retries=3, pause=0.5):
                 print(f"SSGA {label} holdings: {len(tickers)} constituents", file=sys.stderr)
                 return tickers
             last_err = "no holdings table found (openpyxl missing?)"
-        except Exception as e:  # noqa: BLE001
-            last_err = str(e)
-        time.sleep(pause * (attempt + 1))
-    print(f"  ! {label} holdings fetch failed ({last_err}).", file=sys.stderr)
-    return []
-
-
-def _vaneck_tickers_from_xlsx(raw):
-    """Constituent tickers from a VanEck ETF holdings .xlsx: a title row, a blank row, then a
-    'Number, Ticker, Holding Name, Identifier (FIGI), Shares, Asset Class, Market Value (US$),
-    Notional Value, % of Net Assets' table. Only 'Stock' rows are kept (skips cash/short-term
-    positions). Returns [] if unreadable (e.g. no openpyxl)."""
-    try:
-        df0 = pd.read_excel(io.BytesIO(raw), header=None, engine="openpyxl")
-    except Exception:  # noqa: BLE001
-        return []
-    hdr = next((i for i in range(len(df0))
-                if df0.iloc[i].astype(str).str.strip().str.lower().eq("ticker").any()), None)
-    if hdr is None:
-        return []
-    try:
-        df = pd.read_excel(io.BytesIO(raw), header=hdr, engine="openpyxl")
-    except Exception:  # noqa: BLE001
-        return []
-    df.columns = [str(c).strip() for c in df.columns]
-    tcol = next((c for c in df.columns if c.lower() == "ticker"), None)
-    acol = next((c for c in df.columns if c.lower() == "asset class"), None)
-    if tcol is None:
-        return []
-    out, seen = [], set()
-    for _, row in df.iterrows():
-        t = str(row[tcol]).strip().upper()
-        ac = str(row[acol]).strip().lower() if acol else "stock"
-        if _TICKER_RE.match(t) and ac == "stock" and t not in seen:
-            seen.add(t); out.append(t)
-    return out
-
-
-def fetch_vaneck_holdings(etf, label=None, session=None, retries=3, pause=0.5):
-    """Constituent tickers for a VanEck equity ETF via its daily holdings .xlsx download.
-    Returns [] on HTTP error, a non-xlsx body (bot/consent gate), or an unparseable book."""
-    if requests is None:
-        raise RuntimeError("The 'requests' package is required for live fetching.")
-    label = label or etf
-    get = (session or requests).get
-    url = VANECK_HOLDINGS_TMPL.format(tkr=etf.lower())
-    last_err = None
-    for attempt in range(retries):
-        try:
-            r = get(url, timeout=60, headers={"User-Agent": _YF_UA})
-            if r.status_code != 200:
-                last_err = f"HTTP {r.status_code}"; time.sleep(pause * (attempt + 1)); continue
-            if r.content[:2] != b"PK":                      # .xlsx is a zip; anything else is a gate
-                last_err = "endpoint served non-xlsx (bot/consent gate)"; break
-            tickers = _vaneck_tickers_from_xlsx(r.content)
-            if tickers:
-                print(f"VanEck {label} holdings: {len(tickers)} constituents", file=sys.stderr)
-                return tickers
-            last_err = "no holdings table found (openpyxl missing?)"
-        except Exception as e:  # noqa: BLE001
-            last_err = str(e)
-        time.sleep(pause * (attempt + 1))
-    print(f"  ! {label} holdings fetch failed ({last_err}).", file=sys.stderr)
-    return []
-
-
-def fetch_ark_holdings(etf, label=None, session=None, retries=3, pause=0.5):
-    """Constituent tickers for an ARK Invest active ETF via its daily holdings .csv (looked up
-    in ARK_HOLDINGS_URLS by ticker). Returns [] if the ticker has no known URL, on HTTP error,
-    or on an unparseable/non-CSV body (bot gate)."""
-    if requests is None:
-        raise RuntimeError("The 'requests' package is required for live fetching.")
-    label = label or etf
-    url = ARK_HOLDINGS_URLS.get(etf.upper())
-    if not url:
-        print(f"  ! no known ARK holdings URL for {etf}", file=sys.stderr)
-        return []
-    get = (session or requests).get
-    last_err = None
-    for attempt in range(retries):
-        try:
-            r = get(url, timeout=30, headers={"User-Agent": _YF_UA})
-            if r.status_code != 200:
-                last_err = f"HTTP {r.status_code}"; time.sleep(pause * (attempt + 1)); continue
-            df = pd.read_csv(io.StringIO(r.text))
-            df.columns = [str(c).strip().lower() for c in df.columns]
-            if "ticker" not in df.columns:
-                last_err = "no 'ticker' column found (bot/consent gate?)"; break
-            out, seen = [], set()
-            for t in df["ticker"].dropna().astype(str):
-                u = t.strip().upper()
-                if _TICKER_RE.match(u) and u not in seen:
-                    seen.add(u); out.append(u)
-            if out:
-                print(f"ARK {label} holdings: {len(out)} constituents", file=sys.stderr)
-                return out
-            last_err = "no holdings rows parsed"
         except Exception as e:  # noqa: BLE001
             last_err = str(e)
         time.sleep(pause * (attempt + 1))
@@ -4320,7 +4173,7 @@ def main():
     plot_start = pd.Timestamp(args.plot_start) if args.plot_start else None
     end = pd.Timestamp.today().normalize()
     start = pd.Timestamp(args.dark_start) if args.dark_start else pd.Timestamp("2018-08-01")
-    ndx_syms = [BENCH] + [t for t in NDX100 if t != BENCH] + EXTRA_TRACKED
+    ndx_syms = [BENCH] + [t for t in NDX100 if t != BENCH]
 
     if args.demo:
         print("DEMO mode: synthetic data (no network)...", file=sys.stderr)
@@ -4367,10 +4220,11 @@ def main():
             spx_weight_order = sorted(spx_weight_map, key=spx_weight_map.get, reverse=True)
             if sp_syms:
                 SP = build_universe_panels(sp_syms, start, end, workers=args.workers,
-                                           cache_dir=cache_dir, ns="sp500", label="S&P 500")
+                                           cache_dir=cache_dir, ns="sp500", refresh=args.refresh,
+                                           label="S&P 500")
                 spx_dix = compute_dollar_dix(SP["short"], SP["total"], SP["close"])
                 spy = load_yahoo_panels(["SPY"], start, end, workers=2, cache_dir=cache_dir,
-                                        label="SPY")
+                                        refresh=args.refresh, label="SPY")
                 n_sp = int((SP["short"].notna() & SP["total"].notna()).any().sum())
                 spx_payload = build_reconstructed_index_payload(
                     spx_dix, spy["adjclose"].get("SPY"), out_key="dix",
@@ -4391,9 +4245,11 @@ def main():
         iwm_payload = None
         if iwm_syms:
             RU = build_universe_panels(iwm_syms, start, end, workers=args.workers,
-                                       cache_dir=cache_dir, ns="russell", label="Russell")
+                                       cache_dir=cache_dir, ns="russell", refresh=args.refresh,
+                                       label="Russell")
             iwm_dix = compute_dollar_dix(RU["short"], RU["total"], RU["close"], exclude=("IWM",))
-            iwmp = load_yahoo_panels(["IWM"], start, end, workers=2, cache_dir=cache_dir, label="IWM")
+            iwmp = load_yahoo_panels(["IWM"], start, end, workers=2, cache_dir=cache_dir,
+                                     refresh=args.refresh, label="IWM")
             n_ru = int((RU["short"].notna() & RU["total"].notna()).any().sum())
             iwm_payload = build_reconstructed_index_payload(
                 iwm_dix, iwmp["adjclose"].get("IWM"), out_key="d",
@@ -4404,25 +4260,45 @@ def main():
 
         # ---- Breadth panel: RSP (equal-weight) + IWM (small-cap) vs QQQ (mega-cap) ----
         breadth_px = load_yahoo_panels(["RSP", "IWM", "SPY", "QQQ"], start, end, workers=4,
-                                       cache_dir=cache_dir, label="breadth ETF")["adjclose"]
+                                       cache_dir=cache_dir, refresh=args.refresh,
+                                       label="breadth ETF")["adjclose"]
 
         # ---- Sector DIX: reconstructed dollar-DIX per SPDR / iShares sector ETF ----
         sector_data = None
         print("Building sector DIX (SPDR + iShares sector constituents)...", file=sys.stderr)
+        hcache_path = (Path(cache_dir) / "holdings_cache.json") if cache_dir else None
+        hcache = {}
+        if hcache_path is not None and hcache_path.exists():
+            try:
+                hcache = json.loads(hcache_path.read_text())
+            except Exception:  # noqa: BLE001
+                hcache = {}
+        today_str = str(end.date())
         sec_members = []
-        for etf, sec_name, source in SECTOR_ETFS:
-            if source == "ssga":
-                syms = fetch_ssga_holdings(etf, label=etf)
-            elif source == "ishares":
-                syms = fetch_ishares_holdings(SOXX_PORTFOLIO_ID, label=etf)
-            elif source == "vaneck":
-                syms = fetch_vaneck_holdings(etf, label=etf)
-            elif source == "ark":
-                syms = fetch_ark_holdings(etf, label=etf)
+        for i, (etf, sec_name, source) in enumerate(SECTOR_ETFS):
+            key = f"sector:{etf}"
+            cached_entry = hcache.get(key)
+            if cached_entry and cached_entry.get("date") == today_str and not args.refresh:
+                syms = cached_entry["tickers"]
             else:
-                syms = []
+                if i > 0:
+                    time.sleep(1.5)  # stagger requests -- SSGA bot-gates fast back-to-back hits
+                syms = (fetch_ssga_holdings(etf, label=etf) if source == "ssga"
+                        else fetch_ishares_holdings(SOXX_PORTFOLIO_ID, label=etf))
+                if syms:
+                    hcache[key] = {"date": today_str, "tickers": syms}
+                elif cached_entry:
+                    print(f"  ! {etf} fetch failed; reusing holdings cached "
+                          f"{cached_entry['date']}", file=sys.stderr)
+                    syms = cached_entry["tickers"]
             if syms:
                 sec_members.append((etf, sec_name, syms))
+        if hcache_path is not None:
+            try:
+                hcache_path.parent.mkdir(parents=True, exist_ok=True)
+                hcache_path.write_text(json.dumps(hcache))
+            except Exception as e:  # noqa: BLE001
+                print(f"  ! could not write holdings cache ({e})", file=sys.stderr)
         if sec_members:
             sec_union = sorted({s for _, _, syms in sec_members for s in syms})
             SEC = build_universe_panels(sec_union, start, end, workers=args.workers,
