@@ -385,9 +385,22 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
 
     doc_t = load_finra_document(cache_dir, "offexch", ns)
     doc_s = load_finra_document(cache_dir, "short", ns)
+    have_cols = (set(doc_t.columns) if not doc_t.empty else set()) & \
+                (set(doc_s.columns) if not doc_s.empty else set())
+    new_syms = [s for s in wanted if s not in have_cols]
     have = (set(doc_t.index) if not doc_t.empty else set()) & \
            (set(doc_s.index) if not doc_s.empty else set())
-    missing = [d for d in dates if d not in have]
+    if new_syms:
+        # The cached document is missing one or more requested columns entirely (e.g. the
+        # symbol universe grew since this ns was last built) -- a date already present in
+        # `have` still needs re-fetching to backfill those columns, since FINRA's daily file
+        # covers every symbol and a per-date refetch fills in whatever the cache lacks.
+        missing = list(dates)
+        print(f"FINRA cache: {len(new_syms)} new symbol(s) not yet in cached document "
+              f"(e.g. {', '.join(new_syms[:5])}{'...' if len(new_syms) > 5 else ''}) -- "
+              f"refetching all {len(dates)} day(s) to backfill.", file=sys.stderr)
+    else:
+        missing = [d for d in dates if d not in have]
     print(f"FINRA cache: {len(dates)-len(missing)} of {len(dates)} day(s) already in documents"
           + (f" [{finra_doc_path(cache_dir, ns=ns)}]" if cache_dir else " (caching disabled)")
           + f"; fetching {len(missing)} new day(s)...", file=sys.stderr)
