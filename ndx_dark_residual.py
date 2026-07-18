@@ -81,30 +81,33 @@ DEFAULT_CACHE_DIR = str(Path.home() / ".ndx_dark_cache")
 
 # Nasdaq-100 constituents in index-weight order (descending) with approximate index
 # weights (%). Source: https://www.slickcharts.com/nasdaq100 (which mirrors the QQQ /
-# Nasdaq-100 weighting), retrieved 2026-07-05. Weights drift daily and membership
+# Nasdaq-100 weighting), retrieved 2026-07-18. Weights drift daily and membership
 # changes at the quarterly rebalance -- refresh from the same source as needed.
+# 2026-07-18 refresh added two new members vs the 2026-07-05 snapshot: SPCX (Space
+# Exploration Technologies / SpaceX, ~4% -- a top-10 name) and HONA (Honeywell
+# Aerospace, the Honeywell breakup spinco, trading alongside the remaining HON).
 NDX100_WEIGHTS = [
-    ("NVDA", 12.29), ("AAPL", 11.80), ("MSFT", 7.55), ("AMZN", 6.80), ("GOOGL", 5.90),
-    ("GOOG", 5.47), ("AVGO", 4.47), ("META", 3.85), ("TSLA", 3.85), ("MU", 2.87),
-    ("WMT", 2.32), ("AMD", 2.20), ("ASML", 1.78), ("INTC", 1.58), ("AMAT", 1.25),
-    ("CSCO", 1.16), ("LRCX", 1.14), ("COST", 1.10), ("ARM", 0.88), ("NFLX", 0.85),
-    ("PLTR", 0.81), ("KLAC", 0.80), ("PANW", 0.74), ("TXN", 0.69), ("SNDK", 0.67),
-    ("LIN", 0.66), ("MRVL", 0.56), ("AMGN", 0.53), ("PEP", 0.51), ("TMUS", 0.50),
-    ("WDC", 0.48), ("QCOM", 0.48), ("STX", 0.48), ("ADI", 0.48), ("APP", 0.46),
-    ("GILD", 0.42), ("SHOP", 0.40), ("ISRG", 0.39), ("BKNG", 0.37), ("VRTX", 0.35),
-    ("SBUX", 0.31), ("PDD", 0.31), ("FTNT", 0.30), ("CDNS", 0.27), ("MAR", 0.26),
-    ("ADP", 0.25), ("MNST", 0.25), ("DDOG", 0.24), ("CSX", 0.24), ("MELI", 0.23),
-    ("ABNB", 0.23), ("ADBE", 0.23), ("CEG", 0.22), ("CMCSA", 0.22), ("SNPS", 0.22),
-    ("DASH", 0.22), ("MDLZ", 0.20), ("AEP", 0.20), ("INTU", 0.20), ("ORLY", 0.19),
-    ("HON", 0.19), ("CTAS", 0.19), ("ALAB", 0.18), ("NXPI", 0.18), ("REGN", 0.18),
-    ("ROST", 0.18), ("WBD", 0.17), ("MPWR", 0.16), ("PCAR", 0.16), ("RKLB", 0.16),
-    ("TER", 0.15), ("LITE", 0.15), ("FAST", 0.15), ("NBIS", 0.14), ("BKR", 0.14),
-    ("EA", 0.13), ("XEL", 0.13), ("CRWD", 0.13), ("EXC", 0.13), ("FER", 0.13),
-    ("FANG", 0.13), ("AXON", 0.13), ("TTWO", 0.12), ("CCEP", 0.12), ("MCHP", 0.12),
-    ("KDP", 0.12), ("ODFL", 0.12), ("CRWV", 0.12), ("IDXX", 0.11), ("ADSK", 0.11),
-    ("ALNY", 0.11), ("PYPL", 0.10), ("TRI", 0.10), ("PAYX", 0.10), ("ROP", 0.10),
-    ("MSTR", 0.09), ("WDAY", 0.09), ("KHC", 0.08), ("GEHC", 0.08), ("CPRT", 0.07),
-    ("DXCM", 0.07),
+    ("NVDA", 12.24), ("AAPL", 12.21), ("MSFT", 7.29), ("AMZN", 6.63), ("GOOGL", 5.44),
+    ("GOOG", 5.09), ("AVGO", 4.40), ("META", 4.09), ("SPCX", 4.07), ("TSLA", 3.56),
+    ("MU", 2.39), ("WMT", 2.27), ("AMD", 2.01), ("ASML", 1.67), ("INTC", 1.19),
+    ("CSCO", 1.10), ("AMAT", 1.05), ("COST", 1.04), ("LRCX", 0.98), ("PLTR", 0.79),
+    ("PANW", 0.73), ("NFLX", 0.72), ("ARM", 0.71), ("KLAC", 0.69), ("TXN", 0.64),
+    ("LIN", 0.59), ("TMUS", 0.52), ("CRWD", 0.52), ("SNDK", 0.50), ("AMGN", 0.49),
+    ("PEP", 0.47), ("ADI", 0.46), ("QCOM", 0.45), ("STX", 0.44), ("MRVL", 0.42),
+    ("GILD", 0.42), ("WDC", 0.41), ("SHOP", 0.40), ("APP", 0.36), ("BKNG", 0.35),
+    ("VRTX", 0.31), ("ISRG", 0.30), ("SBUX", 0.30), ("PDD", 0.30), ("FTNT", 0.29),
+    ("ADP", 0.25), ("MAR", 0.24), ("MNST", 0.24), ("ADBE", 0.23), ("CSX", 0.23),
+    ("DDOG", 0.23), ("MELI", 0.23), ("CDNS", 0.23), ("CEG", 0.22), ("ABNB", 0.22),
+    ("CMCSA", 0.21), ("CTAS", 0.20), ("DASH", 0.20), ("INTU", 0.20), ("MDLZ", 0.20),
+    ("ROST", 0.19), ("SNPS", 0.18), ("AEP", 0.18), ("ORLY", 0.18), ("HON", 0.18),
+    ("REGN", 0.18), ("WBD", 0.17), ("NXPI", 0.17), ("HONA", 0.17), ("PCAR", 0.17),
+    ("MPWR", 0.16), ("LITE", 0.14), ("BKR", 0.14), ("FANG", 0.14), ("EA", 0.13),
+    ("FAST", 0.13), ("ALAB", 0.13), ("TER", 0.13), ("PYPL", 0.12), ("XEL", 0.12),
+    ("ODFL", 0.12), ("EXC", 0.12), ("CCEP", 0.12), ("ADSK", 0.11), ("FER", 0.11),
+    ("NBIS", 0.11), ("IDXX", 0.11), ("MCHP", 0.11), ("TTWO", 0.11), ("RKLB", 0.11),
+    ("KDP", 0.10), ("TRI", 0.10), ("AXON", 0.10), ("PAYX", 0.10), ("CRWV", 0.10),
+    ("ROP", 0.09), ("WDAY", 0.09), ("ALNY", 0.09), ("MSTR", 0.09), ("KHC", 0.08),
+    ("DXCM", 0.07), ("GEHC", 0.07), ("CPRT", 0.06),
 ]
 NDX100 = [t for t, _ in NDX100_WEIGHTS]
 NDX100_WEIGHT = dict(NDX100_WEIGHTS)  # ticker -> index weight (%)
@@ -145,6 +148,7 @@ TICKER_SECTOR = {
     "TRI": "Industrials", "PAYX": "Industrials", "ROP": "Technology", "MSTR": "Technology",
     "WDAY": "Technology", "KHC": "Cons. Staples", "GEHC": "Health Care",
     "CPRT": "Industrials", "DXCM": "Health Care",
+    "SPCX": "Industrials", "HONA": "Industrials",
 }
 
 
