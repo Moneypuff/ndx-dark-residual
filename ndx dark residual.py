@@ -3975,23 +3975,42 @@ def _ssga_tickers_from_xlsx(raw):
     return out
 
 
-def fetch_ssga_holdings(etf, label=None, session=None, retries=3, pause=0.5):
+def fetch_ssga_holdings(etf, label=None, session=None, retries=5, pause=1.5):
     """Constituent tickers for a State Street SPDR Select Sector ETF via SSGA's daily
     holdings .xlsx. Returns [] on HTTP error, a non-xlsx body (bot/consent gate), or an
-    unparseable book."""
+    unparseable book.
+
+    SSGA rate-limits / bot-gates rapid back-to-back requests: the first hit of a run
+    tends to succeed, then follow-ups get served an HTML consent page in place of the
+    workbook. So callers should pass a shared session (to carry any consent cookie
+    forward across sectors), requests send browser-like headers, and -- crucially -- a
+    consent gate is retried with exponential backoff rather than abandoning the sector
+    for the whole build. Giving up on the first gate is what left the Sector DIX tab
+    with only the one sector fetched before the gate kicked in."""
     if requests is None:
         raise RuntimeError("The 'requests' package is required for live fetching.")
     label = label or etf
     get = (session or requests).get
     url = SSGA_HOLDINGS_TMPL.format(tkr=etf.lower())
+    headers = {
+        "User-Agent": _YF_UA,
+        "Accept": ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,"
+                   "application/vnd.ms-excel,application/octet-stream,*/*"),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.ssga.com/us/en/intermediary/etfs",
+    }
     last_err = None
     for attempt in range(retries):
         try:
-            r = get(url, timeout=60, headers={"User-Agent": _YF_UA})
+            r = get(url, timeout=60, headers=headers)
             if r.status_code != 200:
-                last_err = f"HTTP {r.status_code}"; time.sleep(pause * (attempt + 1)); continue
+                last_err = f"HTTP {r.status_code}"
+                time.sleep(min(20.0, pause * (2 ** attempt))); continue
             if r.content[:2] != b"PK":                      # .xlsx is a zip; anything else is a gate
-                last_err = "endpoint served non-xlsx (bot/consent gate)"; break
+                # The consent/bot gate is rate-based and clears on its own; back off
+                # (exponentially) and retry rather than dropping the sector for the run.
+                last_err = "endpoint served non-xlsx (bot/consent gate)"
+                time.sleep(min(20.0, pause * (2 ** attempt))); continue
             tickers = _ssga_tickers_from_xlsx(r.content)
             if tickers:
                 print(f"SSGA {label} holdings: {len(tickers)} constituents", file=sys.stderr)
@@ -3999,7 +4018,7 @@ def fetch_ssga_holdings(etf, label=None, session=None, retries=3, pause=0.5):
             last_err = "no holdings table found (openpyxl missing?)"
         except Exception as e:  # noqa: BLE001
             last_err = str(e)
-        time.sleep(pause * (attempt + 1))
+        time.sleep(min(20.0, pause * (2 ** attempt)))
     print(f"  ! {label} holdings fetch failed ({last_err}).", file=sys.stderr)
     return []
 
@@ -4288,6 +4307,9 @@ def main():
                 hcache = {}
         today_str = str(end.date())
         sec_members = []
+        # One session across all sectors so any SSGA consent cookie earned on an early
+        # fetch carries forward and helps later sectors clear the bot gate.
+        sec_session = requests.Session() if requests is not None else None
         for i, (etf, sec_name, source) in enumerate(SECTOR_ETFS):
             key = f"sector:{etf}"
             cached_entry = hcache.get(key)
@@ -4295,8 +4317,9 @@ def main():
                 syms = cached_entry["tickers"]
             else:
                 if i > 0:
-                    time.sleep(1.5)  # stagger requests -- SSGA bot-gates fast back-to-back hits
-                syms = (fetch_ssga_holdings(etf, label=etf) if source == "ssga"
+                    time.sleep(3.0)  # stagger requests -- SSGA bot-gates fast back-to-back hits
+                syms = (fetch_ssga_holdings(etf, label=etf, session=sec_session)
+                        if source == "ssga"
                         else fetch_ishares_holdings(SOXX_PORTFOLIO_ID, label=etf))
                 if syms:
                     hcache[key] = {"date": today_str, "tickers": syms}
