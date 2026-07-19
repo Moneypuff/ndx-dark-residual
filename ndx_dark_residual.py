@@ -218,6 +218,15 @@ TICKER_ALIASES = {
     "COHR": [("IIVI", FINRA_MIN_DATE, pd.Timestamp("2022-09-08"))],
 }
 
+# Bump whenever TICKER_ALIASES or TICKER_VALID_FROM change. The FINRA cache stamps the
+# version it was built under (per namespace); when a cache predates the current version,
+# fetch_finra_dark_volume_panel drops the affected target columns so the backfill rebuilds
+# them under the new maps. This is what propagates a transition fix to ANY existing cache --
+# crucially the CI runner's persistent cache, which otherwise keeps serving stale columns
+# forever (the aliases only rebuild a column when its days are actually (re)fetched, and an
+# already-cached column is never refetched). Deterministic: fires exactly once per bump.
+TICKER_TRANSITION_VERSION = 1
+
 
 # --------------------------------------------------------------------------
 # Data acquisition
@@ -437,6 +446,36 @@ def save_finra_document(df, cache_dir, kind="offexch", ns=""):
         print(f"  ! could not write cache document {p.name} ({e})", file=sys.stderr)
 
 
+def _txn_version_path(cache_dir, ns=""):
+    name = "finra_txnver.json"
+    if ns:
+        name = name.replace(".json", f"_{ns}.json")
+    return Path(cache_dir) / name
+
+
+def _read_txn_version(cache_dir, ns=""):
+    """Transition-config version this namespace's cache was last built under (0 = legacy)."""
+    if not cache_dir:
+        return TICKER_TRANSITION_VERSION      # caching off -> nothing to migrate
+    p = _txn_version_path(cache_dir, ns)
+    if not p.exists():
+        return 0
+    try:
+        return int(json.loads(p.read_text()).get("version", 0))
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _write_txn_version(cache_dir, ns=""):
+    if not cache_dir:
+        return
+    try:
+        _txn_version_path(cache_dir, ns).write_text(
+            json.dumps({"version": TICKER_TRANSITION_VERSION}))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=""):
     """(ShortVolume panel, TotalVolume panel) for `symbols` over `dates`.
 
@@ -456,6 +495,20 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
 
     doc_t = load_finra_document(cache_dir, "offexch", ns)
     doc_s = load_finra_document(cache_dir, "short", ns)
+    # Transition-config migration: if this cache was built under an older
+    # TICKER_TRANSITION_VERSION, drop the aliased/masked target columns so the backfill
+    # below refetches and rebuilds them under the current maps (the alias override only runs
+    # while fetching, so an already-cached stale column would otherwise never be corrected).
+    if cache_dir and _read_txn_version(cache_dir, ns) < TICKER_TRANSITION_VERSION:
+        stale = (set(TICKER_ALIASES) | set(TICKER_VALID_FROM)) & set(wanted)
+        drop_t = [c for c in stale if c in doc_t.columns]
+        drop_s = [c for c in stale if c in doc_s.columns]
+        if drop_t or drop_s:
+            doc_t = doc_t.drop(columns=drop_t)
+            doc_s = doc_s.drop(columns=drop_s)
+            print(f"FINRA cache [{ns or 'ndx'}]: transition config v{TICKER_TRANSITION_VERSION}"
+                  f" -> dropping {len(set(drop_t) | set(drop_s))} target column(s) to rebuild: "
+                  f"{', '.join(sorted(set(drop_t) | set(drop_s)))}", file=sys.stderr)
     have_cols = (set(doc_t.columns) if not doc_t.empty else set()) & \
                 (set(doc_s.columns) if not doc_s.empty else set())
     new_syms = [s for s in wanted if s not in have_cols]
@@ -525,6 +578,11 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
                 if kind == "short": doc_s = doc2
                 else: doc_t = doc2
             print(f"FINRA cache: documents now cover {len(doc_t)} day(s)", file=sys.stderr)
+
+    # Stamp the transition-config version this cache now reflects, so the migration drop
+    # above fires exactly once per version bump rather than on every run.
+    if cache_dir:
+        _write_txn_version(cache_dir, ns)
 
     def _slice(doc):
         if doc.empty:
