@@ -152,6 +152,22 @@ TICKER_SECTOR = {
 }
 
 
+# Recycled tickers: a symbol whose FINRA volume history covers a PRIOR, unrelated
+# security before the current company started trading under it. FINRA's daily files are
+# keyed purely by ticker string, so a naive fetch splices the defunct predecessor's
+# off-exchange volume onto the new name and contaminates the aggregate. Map ticker ->
+# first valid trading day for the CURRENT security; everything before it is dropped to
+# NaN at read time (see fetch_finra_dark_volume_panel._slice). Read-time masking is
+# deliberate -- it is non-destructive and survives a full --refresh, unlike purging the
+# cache in place (which a later refetch would silently undo).
+TICKER_VALID_FROM = {
+    # SPCX now = SpaceX (Space Exploration Technologies Cl A), first traded 2026-06-12.
+    # The pre-cutover SPCX FINRA column is the defunct Tuttle Capital SPAC & New-Issue
+    # ETF (2020-12-16 -> 2026-04-06), an unrelated fund -- must not blend into NDX DIX.
+    "SPCX": pd.Timestamp("2026-06-12"),
+}
+
+
 # --------------------------------------------------------------------------
 # Data acquisition
 # --------------------------------------------------------------------------
@@ -446,7 +462,14 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
         if doc.empty:
             return pd.DataFrame()
         cols = [s for s in wanted if s in doc.columns]
-        return doc.reindex(pd.DatetimeIndex(dates))[cols]
+        out = doc.reindex(pd.DatetimeIndex(dates))[cols]
+        # Drop recycled-ticker history that predates the current security (see
+        # TICKER_VALID_FROM). Applied to both short and total panels so the dark
+        # ratio and dollar weighting only ever see the current company's flow.
+        for sym, valid_from in TICKER_VALID_FROM.items():
+            if sym in out.columns:
+                out.loc[out.index < valid_from, sym] = np.nan
+        return out
     return _slice(doc_s), _slice(doc_t)
 
 
