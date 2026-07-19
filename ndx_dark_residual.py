@@ -1904,19 +1904,34 @@ function render(){
     return;
   }
   const S = GS();
-  const ord = sortMode === 'weight' ? S.order_weight :
+  // Iterate the mode's own sort order, then append any constituent it omits (drawn from
+  // the full weight-ordered membership) so a name is never dropped from the grid purely
+  // because the CURRENT view has no series for it -- e.g. a newly-listed name with too
+  // little history for the rolling regression (SPCX, HONA). Those fall back to their
+  // simple-difference residual below so they stay visible and findable via search.
+  const primary = sortMode === 'weight' ? S.order_weight :
     (mode === 'raw' ? S.order_raw : mode === 'diff' ? S.order_diff : S.order);
+  const seen = new Set(primary);
+  const ord = primary.concat((S.order_weight||[]).filter(t => !seen.has(t)));
   const [ylo,yhi] = shared ? extent(mode) : [null,null];
   const d = S.data[mode];
   const gdates = S.dates;
   const html = [];
   for(const tkr of ord){
-    if(!(tkr in d)) continue;
     if(filter && !tkr.includes(filter)) continue;
-    const vals = d[tkr];
+    // Series for this view. If the name has none here (short history -> no regression
+    // residual) fall back to the simple-difference residual so the cell still renders.
+    // `raw` already covers every name, so a fallback is only ever needed in a residual view;
+    // the benchmark has no residual by construction and is skipped when it has no series.
+    let vals = d[tkr], vmode = mode, fellBack = false;
+    if(vals === undefined){
+      if(mode !== 'raw' && S.data.diff && (tkr in S.data.diff)){
+        vals = S.data.diff[tkr]; vmode = 'diff'; fellBack = true;
+      } else continue;
+    }
     let lo=ylo, hi=yhi;
-    if(!shared){
-      if(mode==='raw'){
+    if(!shared || fellBack){   // fallback cells always scale to themselves (mixed scales otherwise)
+      if(vmode==='raw'){
         let mn=Infinity, mx=-Infinity;
         for(const v of vals){ if(v!=null){ mn=Math.min(mn,v); mx=Math.max(mx,v); } }
         if(mn===Infinity){ mn=0; mx=1; }
@@ -1928,20 +1943,22 @@ function render(){
       }
     }
     const last = [...vals].reverse().find(v=>v!=null);
-    const cls = mode==='raw' ? '' : (last>=0?'p':'n');
-    const hot = mode!=='raw' && Math.abs(last) >= 0.12 ? ' hot':'';
+    const cls = vmode==='raw' ? '' : (last>=0?'p':'n');
+    const hot = vmode!=='raw' && Math.abs(last) >= 0.12 ? ' hot':'';
     const isBench = tkr === S.bench;
     const dispTkr = isBench ? (S.bench_label || S.bench) : tkr;
     const wt = S.weights[tkr];
     const wtBadge = wt!=null ? `<span class="wt">${wt.toFixed(2)}%</span>` : '';
     const sec = (S.sector_map && S.sector_map[tkr]) || '';
+    const fbBadge = fellBack ? ` <span class="wt" style="opacity:.6" title="too little history for the rolling regression -- showing the simple D − benchmark difference">Δ</span>` : '';
+    const fbTitle = fellBack ? ' · simple difference (insufficient history for the regression residual)' : '';
     html.push(
-      `<div class="cell${hot}" data-tkr="${tkr}" title="${dispTkr}${wt!=null?' · index weight '+wt.toFixed(2)+'%':''} · click for detail">
+      `<div class="cell${hot}" data-tkr="${tkr}" title="${dispTkr}${wt!=null?' · index weight '+wt.toFixed(2)+'%':''}${fbTitle} · click for detail">
         <div class="chead">
-          <span class="tkr">${dispTkr}${isBench?' <span style="color:var(--mut);font-weight:500">(bench)</span>':wtBadge}</span>
-          <span class="val ${cls}">${last==null?'--':fmt(last, mode)}</span>
+          <span class="tkr">${dispTkr}${isBench?' <span style="color:var(--mut);font-weight:500">(bench)</span>':wtBadge}${fbBadge}</span>
+          <span class="val ${cls}">${last==null?'--':fmt(last, vmode)}</span>
         </div>
-        ${spark(vals, lo, hi, mode)}
+        ${spark(vals, lo, hi, vmode)}
         <div class="meta"><span>${gdates[0]}</span><span class="sec" title="${sec}">${sec}</span><span>${gdates[gdates.length-1]}</span></div>
       </div>`);
   }
