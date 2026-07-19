@@ -174,23 +174,48 @@ TICKER_VALID_FROM = {
 
 
 # Ticker aliases for FINRA off-exchange volume. FINRA's daily files are keyed purely by
-# the ticker string that was LIVE that day, so a security that later renamed its ticker
-# has its earlier volume filed under the OLD string. Map current-ticker -> list of
-# (old_ticker, start, end): on trading days in [start, end) where the current ticker is
-# absent from FINRA's daily file, read the old ticker's row as the current name's value.
-# This lets a full (re)fetch reconstruct renamed-ticker history natively -- so it SURVIVES
-# --refresh, unlike a manual cache splice, which any refetch silently overwrites with NaN.
-# Use this for SAME-security renames; pair with TICKER_VALID_FROM when the old string was
-# also (earlier) an UNRELATED company (e.g. ECHO) so that predecessor is masked out.
+# the ticker string that was LIVE that day, so a security that later renamed its ticker has
+# its earlier volume filed under the OLD string. Map current-ticker -> list of
+# (old_ticker, start, end) spans. SEMANTICS (see fetch_finra_dark_volume_panel._row): on a
+# trading day in [start, end) the current name's value is taken from the OLD ticker if that
+# old ticker is present in FINRA's daily file; if none of the day's applicable old tickers
+# is present, the day is DROPPED (never fall back to the current string in-span). This is a
+# prefer-predecessor OVERRIDE, not a fill-if-absent -- necessary because many current
+# tickers were RECYCLED: an unrelated company traded under the same string before the
+# rename, and that predecessor often traded SIMULTANEOUSLY with the real security under its
+# old ticker (e.g. FB and an unrelated META both traded pre-2022-06). Overriding to the old
+# ticker recovers the real history and discards the impostor. Outside every span the native
+# current ticker is used. Because it acts during (re)fetch, a full --refresh RECONSTRUCTS
+# the correct series -- unlike a manual cache splice, which any refetch silently NaNs out.
+# Ranges were traced empirically from monthly FINRA samples (scratchpad/predecessor_trace).
 TICKER_ALIASES = {
-    # EchoStar traded as SATS until it renamed to ECHO on 2026-06-24. The ECHO ticker was
-    # dormant (Echo Global went private) 2021-11-24 -> 2026-06-24, so read SATS in between.
+    # EchoStar traded as SATS until it renamed to ECHO on 2026-06-24. ECHO was dormant
+    # (Echo Global went private) 2021-11-24 -> 2026-06-24, so read SATS in between. (The
+    # still-earlier Echo Global era is masked by TICKER_VALID_FROM["ECHO"].)
     "ECHO": [("SATS", pd.Timestamp("2021-11-24"), pd.Timestamp("2026-06-24"))],
     # Fiserv round-tripped: FISV -> FI (~2023-06-06) -> back to FISV (2025-11-11). Fill the
     # FI era from the FI string; native FISV covers both ends.
     "FISV": [("FI", pd.Timestamp("2023-06-07"), pd.Timestamp("2025-11-11"))],
     # Marsh & McLennan renamed MMC -> MRSH on 2026-01-14; backfill everything before it.
     "MRSH": [("MMC", FINRA_MIN_DATE, pd.Timestamp("2026-01-14"))],
+    # Facebook traded as FB until it renamed to META on 2022-06-09; an UNRELATED "META" held
+    # the ticker before that, so override to FB for the whole pre-rename era.
+    "META": [("FB", FINRA_MIN_DATE, pd.Timestamp("2022-06-09"))],
+    # Axon Enterprise traded as AAXN until ~2021-01-26 (unrelated pre-gap AXON before that).
+    "AXON": [("AAXN", FINRA_MIN_DATE, pd.Timestamp("2021-01-26"))],
+    # Willis Towers Watson traded as WLTW until 2022-01-10 (pre-gap WTW = old Weight Watchers).
+    "WTW":  [("WLTW", FINRA_MIN_DATE, pd.Timestamp("2022-01-10"))],
+    # AmerisourceBergen (ABC) renamed to Cencora (COR) on 2023-08-30 (pre-gap COR = CoreSite).
+    "COR":  [("ABC", FINRA_MIN_DATE, pd.Timestamp("2023-08-30"))],
+    # Gen Digital chain: Symantec (SYMC) -> NortonLifeLock (NLOK, ~2019-11) -> GEN (2022-11-08).
+    # Overlapping spans so the SYMC->NLOK handoff picks whichever is present near the boundary.
+    "GEN":  [("SYMC", FINRA_MIN_DATE, pd.Timestamp("2019-12-01")),
+             ("NLOK", pd.Timestamp("2019-10-01"), pd.Timestamp("2022-11-08"))],
+    # Bank of New York Mellon renamed BK -> BNY on ~2026-05-21 (pre-gap BNY = unrelated).
+    "BNY":  [("BK", FINRA_MIN_DATE, pd.Timestamp("2026-05-21"))],
+    # II-VI (IIVI) renamed to Coherent (COHR) ~2022-09-08 (pre-gap COHR = the acquired,
+    # unrelated old Coherent Inc).
+    "COHR": [("IIVI", FINRA_MIN_DATE, pd.Timestamp("2022-09-08"))],
 }
 
 
@@ -472,12 +497,14 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
         def _row(vols, take):
             row = {s: vols[s][take] for s in wanted if s in vols}
             for tgt, spans in aliased.items():
-                if tgt in row:          # native ticker present this day -> use it as-is
-                    continue
-                for old, a0, a1 in spans:
-                    if a0 <= d < a1 and old in vols:
-                        row[tgt] = vols[old][take]
-                        break
+                applicable = [old for old, a0, a1 in spans if a0 <= d < a1]
+                if not applicable:
+                    continue            # native-ticker era -> keep the current string as-is
+                chosen = next((o for o in applicable if o in vols), None)
+                if chosen is not None:
+                    row[tgt] = vols[chosen][take]   # override to the predecessor's real flow
+                else:
+                    row.pop(tgt, None)  # in-span but no predecessor today -> drop (never the impostor)
             return row
 
         rows_s, rows_t, recorded = {}, {}, []
