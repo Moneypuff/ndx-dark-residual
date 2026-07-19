@@ -460,18 +460,107 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
 # low by the split factor, dumping a whole cluster of points to near-zero on the
 # scatter's x-axis. We detect the split from that step and rescale the pre-split FINRA
 # volume back onto the adjusted basis so the ratio is continuous and correct.
+SPLIT_ALLOWED = [2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20]  # plausible split ratios
+SPLIT_JUMP_THR = float(np.log(2.2))                    # min multiplicative step to flag (catches >=3:1 robustly)
 
 
+def detect_split_factors(ratio, window=12, gap=6, thr=SPLIT_JUMP_THR):
+    """Detect stock splits in a FINRA/VOLUME ratio series. Returns {date: factor}.
+
+    A split shows up as a sustained upward multiplicative step (going forward in time)
+    in the ratio. The factor is estimated from robust medians of clean windows either
+    side of the step and snapped to the nearest plausible split ratio; ambiguous steps
+    that don't land near a ratio are ignored (so genuine dark-flow regime shifts are
+    not mistaken for splits).
+    """
+    s = ratio.dropna()
+    if len(s) < 3 * window:
+        return {}
+    L = np.log(s.clip(lower=1e-9)).values
+    idx = list(s.index)
+    n = len(L)
+    jump = np.full(n, -np.inf)
+    for i in range(window, n - window):
+        jump[i] = np.median(L[i:i + window]) - np.median(L[i - window:i])
+    out = {}
+    i = window
+    while i < n - window:
+        if jump[i] > thr:
+            j = i
+            while j + 1 < n - window and jump[j + 1] > thr:
+                j += 1
+            k = i + int(np.argmax(jump[i:j + 1]))
+            before = np.median(np.exp(L[max(0, k - 31):max(1, k - gap)]))
+            after = np.median(np.exp(L[k + gap:k + 31]))
+            f = after / before if before > 0 else 0.0
+            best = min(SPLIT_ALLOWED, key=lambda a: abs(a - f))
+            if best and abs(best - f) / best < 0.22:
+                # localize the actual effective date: the median-jump estimate lands ~a
+                # half-window early, so walk to the first day the ratio crosses the
+                # geometric midpoint of the two plateaus (robust to a lone spike via a
+                # short forward median). Everything before it is treated as pre-split.
+                mid = np.sqrt(max(before, 1e-12) * max(after, 1e-12))
+                k_eff = k
+                for t in range(max(0, k - window), min(n - 1, k + window)):
+                    # first genuinely post-split day: two consecutive days above the
+                    # plateau midpoint (so a lone pre-split spike can't trigger early).
+                    if np.exp(L[t]) >= mid and np.exp(L[t + 1]) >= mid:
+                        k_eff = t
+                        break
+                out[idx[k_eff]] = best
+            i = j + 1
+        else:
+            i += 1
+    return out
 
 
+def _cumulative_split_factor(index, splits):
+    """Series over `index`: product of the factors of splits strictly *after* each date
+    (i.e. how much to scale that day's as-traded volume up onto the adjusted basis)."""
+    fac = pd.Series(1.0, index=index)
+    for d, f in splits.items():
+        fac.loc[index < d] *= f
+    return fac
 
 
+def panel_split_factors(finra_panel, volume_panel):
+    """Detect per-symbol split factors from the FINRA-total / consolidated-volume
+    ratio. Returns {symbol: {date: factor}}; detected splits are logged to stderr.
+    Detect once (on the TOTAL panel, the more liquid series) and apply the same
+    factors to both the total and short panels so they stay on one basis."""
+    facs = {}
+    for sym in finra_panel.columns:
+        if sym not in volume_panel.columns:
+            continue
+        vol = volume_panel[sym].reindex(finra_panel.index)
+        ratio = (finra_panel[sym] / vol.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan)
+        splits = detect_split_factors(ratio)
+        if not splits:
+            continue
+        facs[sym] = splits
+        for d, f in sorted(splits.items()):
+            print(f"  split-adjusted {sym}: {f}:1 at {d.date()} "
+                  f"(rescaled pre-split off-exchange volume)", file=sys.stderr)
+    return facs
 
 
+def apply_split_factors(panel, factors):
+    """Rescale a volume panel's pre-split rows onto the adjusted basis."""
+    if panel.empty or not factors:
+        return panel
+    adj = panel.copy()
+    for sym, splits in factors.items():
+        if sym in adj.columns:
+            adj[sym] = adj[sym] * _cumulative_split_factor(adj.index, splits)
+    return adj
 
 
-
-
+def split_adjust_finra_panel(finra_panel, volume_panel):
+    """Rescale each symbol's FINRA off-exchange volume onto SqueezeMetrics' split-
+    adjusted basis, so the dark ratio is continuous across splits."""
+    if finra_panel.empty:
+        return finra_panel
+    return apply_split_factors(finra_panel, panel_split_factors(finra_panel, volume_panel))
 
 
 def compute_aggregate_dark_ratio(finra_offexchange_panel, volume_panel, exclude=(), min_names=20):
@@ -4241,7 +4330,13 @@ def main():
         r42_panel = compute_forward_return(NDX["adjclose"], 42)
         r63_panel = compute_forward_return(NDX["adjclose"], 63)
         ndx_dix = compute_dollar_dix(NDX["short"], NDX["total"], NDX["close"], exclude=(BENCH,))
-        ndx_agg = compute_aggregate_dark_ratio(NDX["total"], NDX["volume"], exclude=(BENCH,))
+        # FINRA off-exchange volume is as-traded; Yahoo's volume is split-adjusted. Rescale
+        # the pre-split FINRA total onto the adjusted basis so the aggregate dark ratio stays
+        # continuous across splits. (The dollar-DIX above needs no such fix: it pairs RAW
+        # close with as-traded volume, which is already true dollars -- adjusting there would
+        # double-count. Split adjustment belongs only where FINRA meets Yahoo's adj. volume.)
+        ndx_agg = compute_aggregate_dark_ratio(
+            split_adjust_finra_panel(NDX["total"], NDX["volume"]), NDX["volume"], exclude=(BENCH,))
 
         # ---- SPX tab + S&P 500 small-multiples: dollar-DIX (IVV constituents) ----
         spx_payload = None
