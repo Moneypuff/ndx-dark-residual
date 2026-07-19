@@ -1238,9 +1238,9 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
     # SOXX/XBI are skipped) so each name resolves to its broad GICS sector.
     spx_sector_map = dict(TICKER_SECTOR)
     if sector_data and sector_data.get("members"):
-        # `members` is a list of (etf, sector_name, [tickers]) tuples.
+        # `members` is a list of (etf, sector_name, [tickers], level, parent) tuples.
         broad = {"XLK", "XLF", "XLV", "XLI", "XLY", "XLP", "XLE", "XLU"}
-        for etf, sec_name, syms in sector_data["members"]:
+        for etf, sec_name, syms, *_ in sector_data["members"]:
             if etf not in broad:
                 continue
             for t in syms:
@@ -1728,9 +1728,15 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   </div>
 </div>
 <div class="rel-wrap" id="sectorsWrap" style="display:none">
+  <div style="margin:0 22px 8px">
+    <span class="seg" id="sectorLevelSeg">
+      <button data-lvl="sector" class="on">Sectors</button>
+      <button data-lvl="subsector">Subsectors</button>
+    </span>
+  </div>
   <div class="sub" id="sectorsSub" style="margin:0 22px 4px"></div>
   <div class="rel-card" style="margin:0 22px 14px">
-    <h2>Dark accumulation by sector &middot; reconstructed dollar-DIX, ranked by 1-year percentile</h2>
+    <h2 id="sectorRankTitle">Dark accumulation by sector &middot; reconstructed dollar-DIX, ranked by 1-year percentile</h2>
     <svg id="sectorRank" viewBox="0 0 900 300" preserveAspectRatio="none" style="width:100%;height:300px"></svg>
   </div>
   <div id="sectorGrid" class="grid" style="padding-top:0"></div>
@@ -1745,7 +1751,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     the top of that band (accumulation entering the top of its own 1-year range) and a &#9660; where
     it crossed <em>into</em> the bottom &mdash; with the most recent such crossing (&#9650;P80 /
     &#9660;P20 + date) shown in the cell footer. Constituents: SPDR Select Sector funds
-    (State Street) plus SOXX (iShares). Cross-sector correlation is moderate (~0.5) &mdash; sectors
+    (State Street) plus SOXX (iShares). Use the <b>Sectors / Subsectors</b> toggle to switch
+    between the broad GICS sectors and finer SPDR S&amp;P industry funds (e.g. Homebuilders,
+    Retail, Oil&nbsp;&amp;&nbsp;Gas&nbsp;E&amp;P, Regional Banks), which use the identical
+    construction. Cross-sector correlation is moderate (~0.5) &mdash; sectors
     share a common dark-flow component but carry distinct signals.
   </div>
 </div>
@@ -1904,19 +1913,34 @@ function render(){
     return;
   }
   const S = GS();
-  const ord = sortMode === 'weight' ? S.order_weight :
+  // Iterate the mode's own sort order, then append any constituent it omits (drawn from
+  // the full weight-ordered membership) so a name is never dropped from the grid purely
+  // because the CURRENT view has no series for it -- e.g. a newly-listed name with too
+  // little history for the rolling regression (SPCX, HONA). Those fall back to their
+  // simple-difference residual below so they stay visible and findable via search.
+  const primary = sortMode === 'weight' ? S.order_weight :
     (mode === 'raw' ? S.order_raw : mode === 'diff' ? S.order_diff : S.order);
+  const seen = new Set(primary);
+  const ord = primary.concat((S.order_weight||[]).filter(t => !seen.has(t)));
   const [ylo,yhi] = shared ? extent(mode) : [null,null];
   const d = S.data[mode];
   const gdates = S.dates;
   const html = [];
   for(const tkr of ord){
-    if(!(tkr in d)) continue;
     if(filter && !tkr.includes(filter)) continue;
-    const vals = d[tkr];
+    // Series for this view. If the name has none here (short history -> no regression
+    // residual) fall back to the simple-difference residual so the cell still renders.
+    // `raw` already covers every name, so a fallback is only ever needed in a residual view;
+    // the benchmark has no residual by construction and is skipped when it has no series.
+    let vals = d[tkr], vmode = mode, fellBack = false;
+    if(vals === undefined){
+      if(mode !== 'raw' && S.data.diff && (tkr in S.data.diff)){
+        vals = S.data.diff[tkr]; vmode = 'diff'; fellBack = true;
+      } else continue;
+    }
     let lo=ylo, hi=yhi;
-    if(!shared){
-      if(mode==='raw'){
+    if(!shared || fellBack){   // fallback cells always scale to themselves (mixed scales otherwise)
+      if(vmode==='raw'){
         let mn=Infinity, mx=-Infinity;
         for(const v of vals){ if(v!=null){ mn=Math.min(mn,v); mx=Math.max(mx,v); } }
         if(mn===Infinity){ mn=0; mx=1; }
@@ -1928,20 +1952,22 @@ function render(){
       }
     }
     const last = [...vals].reverse().find(v=>v!=null);
-    const cls = mode==='raw' ? '' : (last>=0?'p':'n');
-    const hot = mode!=='raw' && Math.abs(last) >= 0.12 ? ' hot':'';
+    const cls = vmode==='raw' ? '' : (last>=0?'p':'n');
+    const hot = vmode!=='raw' && Math.abs(last) >= 0.12 ? ' hot':'';
     const isBench = tkr === S.bench;
     const dispTkr = isBench ? (S.bench_label || S.bench) : tkr;
     const wt = S.weights[tkr];
     const wtBadge = wt!=null ? `<span class="wt">${wt.toFixed(2)}%</span>` : '';
     const sec = (S.sector_map && S.sector_map[tkr]) || '';
+    const fbBadge = fellBack ? ` <span class="wt" style="opacity:.6" title="too little history for the rolling regression -- showing the simple D − benchmark difference">Δ</span>` : '';
+    const fbTitle = fellBack ? ' · simple difference (insufficient history for the regression residual)' : '';
     html.push(
-      `<div class="cell${hot}" data-tkr="${tkr}" title="${dispTkr}${wt!=null?' · index weight '+wt.toFixed(2)+'%':''} · click for detail">
+      `<div class="cell${hot}" data-tkr="${tkr}" title="${dispTkr}${wt!=null?' · index weight '+wt.toFixed(2)+'%':''}${fbTitle} · click for detail">
         <div class="chead">
-          <span class="tkr">${dispTkr}${isBench?' <span style="color:var(--mut);font-weight:500">(bench)</span>':wtBadge}</span>
-          <span class="val ${cls}">${last==null?'--':fmt(last, mode)}</span>
+          <span class="tkr">${dispTkr}${isBench?' <span style="color:var(--mut);font-weight:500">(bench)</span>':wtBadge}${fbBadge}</span>
+          <span class="val ${cls}">${last==null?'--':fmt(last, vmode)}</span>
         </div>
-        ${spark(vals, lo, hi, mode)}
+        ${spark(vals, lo, hi, vmode)}
         <div class="meta"><span>${gdates[0]}</span><span class="sec" title="${sec}">${sec}</span><span>${gdates[gdates.length-1]}</span></div>
       </div>`);
   }
@@ -3705,19 +3731,30 @@ function renderBreadth(){
 // Tab: Sector DIX -- reconstructed dollar-DIX per sector ETF, a ranking bar (1y percentile
 // of dark accumulation) plus a small-multiple DIX sparkline per sector.
 // -------------------------------------------------------------------------
+let sectorLevel = 'sector';   // 'sector' (broad GICS) | 'subsector' (SPDR industry funds)
 function renderSectors(){
   const S = P.sectors;
   const sub = document.getElementById('sectorsSub');
   const rank = document.getElementById('sectorRank');
   const grid = document.getElementById('sectorGrid');
+  const title = document.getElementById('sectorRankTitle');
   if(!S || !S.items || !S.items.length){
     sub.textContent = 'sector DIX unavailable (live builds only)';
     rank.innerHTML = '<text x="450" y="150" font-size="12" fill="var(--mut)" text-anchor="middle">No sector data (run a live build).</text>';
     grid.innerHTML = ''; return;
   }
-  const items = [...S.items].sort((a,b)=> b.pct - a.pct);
+  const lvl = sectorLevel;
+  const noun = lvl === 'subsector' ? 'subsector' : 'sector';
+  const pool = S.items.filter(it => (it.level || 'sector') === lvl);
+  if(title) title.innerHTML = `Dark accumulation by ${noun} &middot; reconstructed dollar-DIX, ranked by 1-year percentile`;
+  if(!pool.length){
+    sub.textContent = `no ${noun} data in this build`;
+    rank.innerHTML = `<text x="450" y="150" font-size="12" fill="var(--mut)" text-anchor="middle">No ${noun} data (run a live build).</text>`;
+    grid.innerHTML = ''; return;
+  }
+  const items = [...pool].sort((a,b)=> b.pct - a.pct);
   const dates = S.dates;
-  sub.textContent = `${items.length} sectors · reconstructed dollar-DIX · ${dates.length.toLocaleString()} days · ${dates[0]} → ${dates[dates.length-1]}`;
+  sub.textContent = `${items.length} ${noun}s · reconstructed dollar-DIX · ${dates.length.toLocaleString()} days · ${dates[0]} → ${dates[dates.length-1]}`;
 
   // horizontal ranking bars: x = latest DIX percentile within its own trailing year
   const W=900,H=300,padL=150,padR=96,padT=8,padB=26,n=items.length;
@@ -3773,11 +3810,18 @@ document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeSectorModa
 document.getElementById('sectorGrid').addEventListener('click', e=>{
   const cell = e.target.closest('.cell'); if(cell && cell.dataset.etf) openSectorModal(cell.dataset.etf);
 });
+document.getElementById('sectorLevelSeg').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b || b.dataset.lvl === sectorLevel) return;
+  sectorLevel = b.dataset.lvl;
+  [...e.currentTarget.children].forEach(x => x.classList.toggle('on', x === b));
+  renderSectors();
+});
 
 function openSectorModal(etf){
   const S = P.sectors; if(!S) return;
   const it = S.items.find(x=>x.etf===etf); if(!it || !it.names || !it.names.length) return;
-  document.getElementById('secmTkr').textContent = `${it.etf} · ${it.name}`;
+  document.getElementById('secmTkr').textContent =
+    `${it.etf} · ${it.name}` + (it.parent ? ` (${it.parent})` : '');
   document.getElementById('secmVal').textContent = `DIX ${it.cur.toFixed(3)} · ${it.pct}%ile 1y`;
   document.getElementById('secmSub').innerHTML =
     `<span>who is receiving the dark flow — constituents by share of the sector's off-exchange short $ volume</span>`
@@ -3987,6 +4031,25 @@ SECTOR_ETFS = [
     ("XLE", "Energy", "ssga"), ("XLU", "Utilities", "ssga"),
     ("SOXX", "Semiconductors", "ishares"), ("XBI", "Biotech", "ssga"),
     ("XLB", "Materials", "ssga"), ("XLC", "Comm. Services", "ssga"),
+]
+
+# SPDR S&P *industry* funds -- one granularity finer than the broad Select-Sector funds
+# above, and fetched from the identical SSGA daily-holdings source, so they plug straight
+# into the same reconstructed-DIX path. Shown under a Sectors/Subsectors toggle in the
+# Sector DIX tab. `parent` is the broad SECTOR_ETFS display name each rolls up to (used only
+# for grouping/labeling). Curated to span the main sectors without duplicating the specialty
+# funds already in SECTOR_ETFS (SOXX semis, XBI biotech).
+SUBSECTOR_ETFS = [
+    ("XHB", "Homebuilders",        "ssga", "Cons. Discretionary"),
+    ("XRT", "Retail",              "ssga", "Cons. Discretionary"),
+    ("XSW", "Software & IT Svcs",  "ssga", "Technology"),
+    ("XTN", "Transportation",      "ssga", "Industrials"),
+    ("XAR", "Aerospace & Defense", "ssga", "Industrials"),
+    ("XME", "Metals & Mining",     "ssga", "Materials"),
+    ("XOP", "Oil & Gas E&P",       "ssga", "Energy"),
+    ("XES", "Oil & Gas Equip.",    "ssga", "Energy"),
+    ("XPH", "Pharmaceuticals",     "ssga", "Health Care"),
+    ("KRE", "Regional Banks",      "ssga", "Financials"),
 ]
 
 
@@ -4336,7 +4399,11 @@ def build_sector_payload(members, short, total, close, d, keep, hist_win=252, mi
     if not members:
         return None
     items = []
-    for etf, name, syms in members:
+    for etf, name, syms, *rest in members:
+        # rest = (level, parent) for the current 5-tuple members; default to a broad sector
+        # so older 3-tuple callers still work.
+        level = rest[0] if len(rest) > 0 else "sector"
+        parent = rest[1] if len(rest) > 1 else None
         cols = [c for c in syms if c in short.columns]
         if len(cols) < min_names:
             continue
@@ -4397,7 +4464,8 @@ def build_sector_payload(members, short, total, close, d, keep, hist_win=252, mi
         names.sort(key=lambda x: x["w"], reverse=True)
         items.append({"etf": etf, "name": name, "n": len(cols), "cur": round(cur, 4),
                       "pct": pct, "d20": d20, "series": series, "names": names[:top_names],
-                      "p80": p80, "p20": p20, "cross": crosses, "last_cross": last_cross})
+                      "p80": p80, "p20": p20, "cross": crosses, "last_cross": last_cross,
+                      "level": level, "parent": parent})
     if not items:
         return None
     return {"dates": [dt.strftime("%Y-%m-%d") for dt in keep], "items": items}
@@ -4555,10 +4623,17 @@ def main():
                 hcache = {}
         today_str = str(end.date())
         sec_members = []
+        # Broad Select-Sector funds plus the finer SPDR industry ("subsector") funds, tagged
+        # with their granularity level (and, for subsectors, the parent sector they roll up to)
+        # so the Sector DIX tab can switch between the two views. Both come from the same SSGA
+        # holdings source and share the reconstructed-DIX path below.
+        sector_funds = [(etf, name, src, "sector", None) for etf, name, src in SECTOR_ETFS] + \
+                       [(etf, name, src, "subsector", parent)
+                        for etf, name, src, parent in SUBSECTOR_ETFS]
         # One session across all sectors so any SSGA consent cookie earned on an early
         # fetch carries forward and helps later sectors clear the bot gate.
         sec_session = requests.Session() if requests is not None else None
-        for i, (etf, sec_name, source) in enumerate(SECTOR_ETFS):
+        for i, (etf, sec_name, source, level, parent) in enumerate(sector_funds):
             key = f"sector:{etf}"
             cached_entry = hcache.get(key)
             if cached_entry and cached_entry.get("date") == today_str and not args.refresh:
@@ -4576,7 +4651,7 @@ def main():
                           f"{cached_entry['date']}", file=sys.stderr)
                     syms = cached_entry["tickers"]
             if syms:
-                sec_members.append((etf, sec_name, syms))
+                sec_members.append((etf, sec_name, syms, level, parent))
         if hcache_path is not None:
             try:
                 hcache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -4584,7 +4659,7 @@ def main():
             except Exception as e:  # noqa: BLE001
                 print(f"  ! could not write holdings cache ({e})", file=sys.stderr)
         if sec_members:
-            sec_union = sorted({s for _, _, syms in sec_members for s in syms})
+            sec_union = sorted({s for _, _, syms, *_ in sec_members for s in syms})
             SEC = build_universe_panels(sec_union, start, end, workers=args.workers,
                                         cache_dir=cache_dir, ns="sector", refresh=args.refresh,
                                         label="sector")

@@ -1,0 +1,9 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Local FINRA/Yahoo data cache (rebuilt incrementally; persisted via CI Actions cache)
+.ndx_dark_cache/
+
+# Editor / OS cruft
+.DS_Store
