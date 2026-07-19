@@ -165,6 +165,32 @@ TICKER_VALID_FROM = {
     # The pre-cutover SPCX FINRA column is the defunct Tuttle Capital SPAC & New-Issue
     # ETF (2020-12-16 -> 2026-04-06), an unrelated fund -- must not blend into NDX DIX.
     "SPCX": pd.Timestamp("2026-06-12"),
+    # ECHO now = EchoStar (renamed its ticker from SATS on 2026-06-24). The ticker ECHO
+    # previously belonged to Echo Global Logistics until it went private 2021-11-24 -- an
+    # unrelated company. Drop that native pre-2021-11-24 ECHO history; the EchoStar era is
+    # reconstructed from the SATS alias below + native ECHO from 2026-06-24 on.
+    "ECHO": pd.Timestamp("2021-11-24"),
+}
+
+
+# Ticker aliases for FINRA off-exchange volume. FINRA's daily files are keyed purely by
+# the ticker string that was LIVE that day, so a security that later renamed its ticker
+# has its earlier volume filed under the OLD string. Map current-ticker -> list of
+# (old_ticker, start, end): on trading days in [start, end) where the current ticker is
+# absent from FINRA's daily file, read the old ticker's row as the current name's value.
+# This lets a full (re)fetch reconstruct renamed-ticker history natively -- so it SURVIVES
+# --refresh, unlike a manual cache splice, which any refetch silently overwrites with NaN.
+# Use this for SAME-security renames; pair with TICKER_VALID_FROM when the old string was
+# also (earlier) an UNRELATED company (e.g. ECHO) so that predecessor is masked out.
+TICKER_ALIASES = {
+    # EchoStar traded as SATS until it renamed to ECHO on 2026-06-24. The ECHO ticker was
+    # dormant (Echo Global went private) 2021-11-24 -> 2026-06-24, so read SATS in between.
+    "ECHO": [("SATS", pd.Timestamp("2021-11-24"), pd.Timestamp("2026-06-24"))],
+    # Fiserv round-tripped: FISV -> FI (~2023-06-06) -> back to FISV (2025-11-11). Fill the
+    # FI era from the FI string; native FISV covers both ends.
+    "FISV": [("FI", pd.Timestamp("2023-06-07"), pd.Timestamp("2025-11-11"))],
+    # Marsh & McLennan renamed MMC -> MRSH on 2026-01-14; backfill everything before it.
+    "MRSH": [("MMC", FINRA_MIN_DATE, pd.Timestamp("2026-01-14"))],
 }
 
 
@@ -439,14 +465,29 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
                     print(f"[{counter['n']:>4}/{total}] FINRA short-volume fetched", file=sys.stderr)
             return d, (vols if resolved else None)
 
+        # Pre-resolve which wanted symbols have a ticker alias (renamed security), so the
+        # per-day loop can fill their old-ticker rows without re-scanning the whole map.
+        aliased = {t: TICKER_ALIASES[t] for t in wanted if t in TICKER_ALIASES}
+
+        def _row(vols, take):
+            row = {s: vols[s][take] for s in wanted if s in vols}
+            for tgt, spans in aliased.items():
+                if tgt in row:          # native ticker present this day -> use it as-is
+                    continue
+                for old, a0, a1 in spans:
+                    if a0 <= d < a1 and old in vols:
+                        row[tgt] = vols[old][take]
+                        break
+            return row
+
         rows_s, rows_t, recorded = {}, {}, []
         for d, vols in parallel_map(_one, missing, workers):
             if vols is None:            # transient failure -> leave for a future run
                 continue
             recorded.append(d)          # includes holidays (empty vols) as NaN rows below
             if vols:
-                rows_s[d] = {s: vols[s][0] for s in wanted if s in vols}
-                rows_t[d] = {s: vols[s][1] for s in wanted if s in vols}
+                rows_s[d] = _row(vols, 0)
+                rows_t[d] = _row(vols, 1)
         if recorded:
             idx = pd.DatetimeIndex(sorted(recorded))
             for rows, doc, kind in ((rows_s, doc_s, "short"), (rows_t, doc_t, "offexch")):
