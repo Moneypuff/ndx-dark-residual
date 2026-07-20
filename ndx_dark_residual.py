@@ -4093,7 +4093,12 @@ def fetch_yahoo_one(sym, start, end, session=None, retries=3, pause=0.5):
     if requests is None:
         raise RuntimeError("The 'requests' package is required for live fetching.")
     get = (session or requests).get
-    url = YAHOO_CHART.format(sym=to_yahoo_symbol(sym), p1=_unix(start), p2=_unix(end))
+    # Yahoo's period2 is exclusive of bars at/after that instant, and `end` is a normalized
+    # midnight -- so passing it verbatim drops the `end` day's own daily bar (the pipeline then
+    # lags a full session behind, e.g. stuck on Friday all Monday evening even after the close).
+    # Push period2 to the end of the `end` day so that session's bar is included.
+    p2 = _unix(pd.Timestamp(end).normalize() + pd.Timedelta(days=1))
+    url = YAHOO_CHART.format(sym=to_yahoo_symbol(sym), p1=_unix(start), p2=p2)
     last = None
     for a in range(retries):
         try:
@@ -4142,7 +4147,15 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
     fields = ("close", "adjclose", "volume")
     base = {f: cached.get(f, pd.DataFrame()) for f in fields}
     end_n = pd.Timestamp(end).normalize()
-    synced_today = (cached.get("_synced") == str(end_n.date())) and not refresh
+    # The session we should already hold once the day's bars are published: today if a weekday,
+    # else the prior business day. A same-day cache is trusted only when its freshest close
+    # actually reaches that session -- otherwise a cache stamped "synced today" while still a
+    # session behind (e.g. written before the close, or under the old exclusive-end bug) would
+    # freeze the whole pipeline a day back, since Yahoo's calendar also drives the FINRA dates.
+    target_session = end_n if end_n.weekday() < 5 else (end_n - pd.offsets.BDay(1)).normalize()
+    base_latest = base["close"].dropna(how="all").index.max() if not base["close"].empty else None
+    synced_today = (cached.get("_synced") == str(end_n.date()) and not refresh
+                    and base_latest is not None and base_latest >= target_session)
     nodata = set(cached.get("_nodata", [])) if synced_today else set()
 
     def _fetch_start(sym):
