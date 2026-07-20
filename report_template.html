@@ -1,0 +1,300 @@
+<title>DPI into Earnings vs Post-Earnings Performance</title>
+<style>
+  .viz-root{
+    color-scheme:light;
+    --surface-1:#fcfcfb; --plane:#f9f9f7;
+    --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
+    --up:#2a78d6; --down:#e34948; --accent:#4a3aa7;
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    color:var(--text-primary); background:var(--plane);
+  }
+  @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{
+    color-scheme:dark; --surface-1:#1a1a19; --plane:#0d0d0d; --text-primary:#fff;
+    --text-secondary:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --axis:#383835;
+    --border:rgba(255,255,255,0.10); --up:#3987e5; --down:#e66767; --accent:#9085e9;}}
+  :root[data-theme="dark"] .viz-root{
+    color-scheme:dark; --surface-1:#1a1a19; --plane:#0d0d0d; --text-primary:#fff;
+    --text-secondary:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --axis:#383835;
+    --border:rgba(255,255,255,0.10); --up:#3987e5; --down:#e66767; --accent:#9085e9;}
+  .viz-root{max-width:1000px;margin:0 auto;padding:28px 20px 60px;line-height:1.5;}
+  .viz-root h1{font-size:1.7rem;line-height:1.2;margin:0 0 6px;letter-spacing:-0.01em;}
+  .viz-root h2{font-size:1.12rem;margin:34px 0 4px;letter-spacing:-0.01em;}
+  .viz-root p{color:var(--text-secondary);margin:8px 0;}
+  .viz-root .sub{color:var(--muted);font-size:.9rem;margin-top:0;}
+  .card{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:18px 18px 14px;margin-top:14px;}
+  .note-card{background:var(--surface-1);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:14px 16px;margin-top:14px;}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:18px;}
+  .kpi{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+  .kpi .label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .kpi .val{font-size:1.6rem;font-weight:650;margin-top:4px;letter-spacing:-0.02em;}
+  .kpi .note{font-size:.8rem;color:var(--text-secondary);margin-top:3px;}
+  .pos{color:var(--up);} .neg{color:var(--down);}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem;color:var(--text-secondary);margin:2px 0 8px;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block;}
+  .chart-wrap{overflow-x:auto;}
+  svg{display:block;max-width:100%;}
+  text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;}
+  .tick{fill:var(--muted);font-size:11px;} .axlab{fill:var(--text-secondary);font-size:12px;}
+  .vlab{fill:var(--text-primary);font-size:11px;font-variant-numeric:tabular-nums;}
+  .tip{position:fixed;pointer-events:none;background:var(--surface-1);border:1px solid var(--border);
+       border-radius:8px;padding:7px 10px;font-size:.8rem;box-shadow:0 4px 16px rgba(0,0,0,.18);
+       opacity:0;transition:opacity .08s;z-index:20;color:var(--text-primary);}
+  .foot{color:var(--muted);font-size:.8rem;margin-top:8px;}
+  ul{color:var(--text-secondary);} b.k{color:var(--text-primary);}
+</style>
+
+<div class="viz-root">
+  <h1>Dark-pool positioning into earnings vs. what the stock does after</h1>
+  <p class="sub">94 NDX-100 names · 2,694 quarterly earnings events · Aug 2018 – Jul 2026 · DPI = short ÷ total off-exchange volume (FINRA) · report dates &amp; AMC/BMO timing from SEC EDGAR 8-K Item 2.02 · prices split-adjusted (Yahoo)</p>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="note-card" id="headline"></div>
+
+  <h2>Sort events by DPI into the report → forward return climbs</h2>
+  <p>Events split into terciles by each name's <em>own</em> DPI history (so "high" means high for that stock). Bars are the average return in each bucket — the immediate reaction and one month out.</p>
+  <div class="card">
+    <div class="legend"><span>Within-name DPI10 terciles · solid = next-day reaction · faded = ~1 month later</span></div>
+    <div class="chart-wrap"><svg id="buckets"></svg></div>
+  </div>
+
+  <h2>The gradient is monotonic, and it grows over the month</h2>
+  <div class="card">
+    <div class="legend">
+      <span><span class="sw" style="background:var(--accent)"></span>next-day</span>
+      <span><span class="sw" style="background:var(--muted)"></span>1-month</span>
+      <span>· x = within-name DPI10 quintile (1 = lowest, 5 = highest)</span>
+    </div>
+    <div class="chart-wrap"><svg id="quint"></svg></div>
+  </div>
+
+  <h2>One month out, one point per earnings event</h2>
+  <p>10-day average DPI heading in vs. the stock's return over the ~21 sessions after the report. Noisy at the single-event level (that's earnings), but the fit tilts up.</p>
+  <div class="card">
+    <div class="legend">
+      <span><span class="sw" style="background:var(--up)"></span>up over the month</span>
+      <span><span class="sw" style="background:var(--down)"></span>down over the month</span>
+      <span><span class="sw" style="background:var(--accent);height:2px;width:16px;border-radius:2px"></span>pooled fit</span>
+    </div>
+    <div class="chart-wrap"><svg id="scatter"></svg></div>
+  </div>
+
+  <h2>Does it hold up? By year, by timing, by cohort</h2>
+  <p>Correlation of DPI10 with the 1-month return, computed within each calendar year. Same sign in almost every year, flat/absent in 2018–2019, and building from 2020 on.</p>
+  <div class="card"><div class="chart-wrap"><svg id="period"></svg></div></div>
+  <div class="card" id="subgroup"></div>
+
+  <h2>Per-name: mostly positive, with spread</h2>
+  <p>Correlation of DPI10 with the 1-month return, per name (≥8 events). Most names lean positive; per-name samples are ~30 events, so treat individual bars as texture.</p>
+  <div class="card"><div class="chart-wrap"><svg id="pername"></svg></div></div>
+
+  <h2>Post-earnings price paths: <span id="pathTk" style="color:var(--accent)">—</span></h2>
+  <p><b class="k">Click any name above</b> to load it here. Each faint line is one earnings event — cumulative return over the 21 sessions after the report, colored by whether DPI ran <span style="color:var(--up)">high</span> or <span style="color:var(--down)">low</span> into that print. Bold line = median path, dashed = mean path; the heavier blue/red lines are the high-/low-DPI mean paths.</p>
+  <div class="card">
+    <div class="legend" id="pathLegend"></div>
+    <div class="foot" id="pathStat" style="margin:0 0 8px"></div>
+    <div class="chart-wrap"><svg id="paths"></svg></div>
+  </div>
+
+  <h2>Read-out</h2>
+  <div class="card" id="readout"></div>
+
+  <div class="note-card">
+    <p style="margin:0"><b class="k">Note on an earlier preliminary cut.</b> A first pass on just 20 mega-caps over 2023–2026, with hand-typed report dates, suggested high DPI preceded a <em>weaker</em> next-day move. That did <b>not</b> survive: with authoritative EDGAR dates, AMC/BMO timing, the full 94-name universe and 8 years of history, the mega-cap next-day effect is −0.05 (p≈0.4, i.e. noise), while the durable signal is the <em>positive</em> 1-month relationship shown here. The earlier result was small-sample/single-window fragility.</p>
+  </div>
+
+  <h2>Method &amp; caveats</h2>
+  <ul>
+    <li><b>Signal (no look-ahead):</b> DPI5 / DPI10 = mean daily DPI over the 5 / 10 trading days ending the session before the report — strictly pre-announcement.</li>
+    <li><b>Outcome:</b> next-day = adjClose(T+1)/adjClose(T)−1; 1-month = adjClose(T+21 sessions)/adjClose(T)−1, where T is the last clean pre-news close. Timing-aware: for after-hours (AMC) reports T is the report day; for before-open (BMO) reports T is the prior session, so the reaction is always the first full session on the news. Split-adjusted.</li>
+    <li><b>Dates:</b> SEC EDGAR 8-K <b>Item 2.02</b> filings, matched to each 10-Q/10-K to isolate the quarterly earnings release (dropping delivery/sales/guidance 2.02s). Acceptance timestamp → US/Eastern gives AMC vs BMO. 94 of 100 names covered; 6 foreign filers (ASML, ARM, PDD, CCEP, FER, NBIS/TRI) file 6-K, not 8-K, and are omitted.</li>
+    <li><b>Direction:</b> a high dark-pool short-volume ratio is conventionally read as market-makers shorting to fill <em>buy</em> orders — i.e. accumulation. The positive DPI→forward-return link is consistent with that reading.</li>
+    <li><b>Caveats:</b> effect sizes are small (r≈0.05 next-day, ≈0.10 at a month) — a real but modest tilt, not a stand-alone trade. Single index, mostly-bull sample. DPI is a noisy daily series.</li>
+  </ul>
+  <p class="foot">Reproduce: <code>python fetch_earnings_edgar.py</code> then <code>python earnings_dpi_study.py --earnings earnings_dates_edgar.csv</code>. Event data: <code>earnings_dpi_events.csv</code>.</p>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const DATA = /*__PAYLOAD__*/;
+const $=id=>document.getElementById(id); const NS="http://www.w3.org/2000/svg"; const tip=$("tip");
+const PATHS = /*__PATHS__*/;
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+function showTip(h,ev){tip.innerHTML=h;tip.style.opacity=1;let x=ev.clientX+14,y=ev.clientY+14;
+  const w=tip.offsetWidth,hh=tip.offsetHeight;if(x+w>innerWidth-8)x=ev.clientX-w-14;if(y+hh>innerHeight-8)y=ev.clientY-hh-14;
+  tip.style.left=x+"px";tip.style.top=y+"px";}
+const hideTip=()=>tip.style.opacity=0;
+const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed(3);
+
+/* KPIs */
+(function(){
+  const cm=DATA.corr.dpi10_m1,cn=DATA.corr.dpi10_next_day,t=DATA.tercile.m1;
+  const cards=[
+    {label:"Sample",val:DATA.n_events.toLocaleString(),note:DATA.n_names+" names · 2018–2026"},
+    {label:"DPI10 vs 1-month",val:r3(cm.pearson),note:"Pearson r · p<0.001",cls:cm.pearson>=0?"pos":"neg"},
+    {label:"High vs low DPI, 1-month",val:pct(t.diff*100),note:"tercile spread · t="+t.t.toFixed(1)+" · p<0.001",cls:t.diff>=0?"pos":"neg"},
+    {label:"DPI10 vs next-day",val:r3(cn.pearson),note:"Pearson r · p="+cn.pearson_p.toFixed(3),cls:cn.pearson>=0?"pos":"neg"},
+  ];
+  $("kpis").innerHTML=cards.map(k=>`<div class="kpi"><div class="label">${k.label}</div>
+    <div class="val ${k.cls||''}">${k.val}</div><div class="note">${k.note}</div></div>`).join("");
+})();
+
+/* Headline note */
+(function(){
+  const t=DATA.tercile.m1, cm=DATA.corr.dpi10_m1;
+  $("headline").innerHTML=`<p style="margin:0"><b class="k">Higher dark-pool positioning into a report lines up with better performance after it — modestly next day, and more clearly over the following month.</b>
+   Across ${DATA.n_events.toLocaleString()} earnings events, the third of events with the highest run-in DPI averaged
+   <span class="pos">${pct(t.hi*100)}</span> over the next month vs <span class="pos">${pct(t.lo*100)}</span> for the lowest third — a
+   <span class="pos">${pct(t.diff*100)}</span> spread (t=${t.t.toFixed(1)}, p&lt;0.001), and ${(t.hi_up*100).toFixed(0)}% of high-DPI events were up vs ${(t.lo_up*100).toFixed(0)}% of low-DPI ones.</p>`;
+})();
+
+/* Tercile buckets */
+(function(){
+  const T=DATA.tercile, rows=[["Low DPI",T.next.lo,T.m1.lo],["Mid DPI",T.next.mid,T.m1.mid],["High DPI",T.next.hi,T.m1.hi]];
+  const W=Math.max(560,Math.min(880,innerWidth-60)),H=340,m={l:52,r:16,t:16,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const s=$("buckets");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
+  const vals=rows.flatMap(r=>[r[1]*100,r[2]*100]); const lim=Math.max(4,Math.ceil(Math.max(...vals.map(Math.abs))/1)*1);
+  const Y=v=>m.t+(lim-v)/(2*lim)*ih;
+  for(let v=-lim;v<=lim;v++){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v+"%";s.appendChild(tk);}
+  const gw=iw/rows.length, bw=Math.min(46,gw/3.1);
+  rows.forEach((r,i)=>{const cx=m.l+gw*i+gw/2;
+    [["next-day",r[1],-bw*0.62],["1-month",r[2],bw*0.62]].forEach(([lbl,val,off])=>{
+      const v=val*100,y0=Y(0),y=Y(v),x=cx+off-bw/2,top=Math.min(y0,y),h=Math.abs(y-y0);
+      const rect=el("rect",{x,y:top,width:bw,height:Math.max(1,h),rx:4,fill:v>=0?"var(--up)":"var(--down)","fill-opacity":lbl==="1-month"?.5:.92});
+      rect.addEventListener("mousemove",e=>showTip(`<b>${r[0]}</b> · ${lbl}<br>mean ${pct(v)}`,e));rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
+      const vl=el("text",{x:x+bw/2,y:(v>=0?top-5:top+h+13),"text-anchor":"middle",class:"vlab"});vl.textContent=pct(v);s.appendChild(vl);});
+    const lb=el("text",{x:cx,y:H-6,"text-anchor":"middle",class:"axlab"});lb.textContent=r[0];s.appendChild(lb);});
+})();
+
+/* Quintile lines */
+(function(){
+  const q=DATA.quintile,W=Math.max(560,Math.min(880,innerWidth-60)),H=300,m={l:52,r:96,t:16,b:34},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const s=$("quint");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
+  const all=q.next_day.concat(q.m1).map(v=>v*100);const lim=Math.max(2,Math.ceil(Math.max(...all.map(Math.abs))));
+  const X=i=>m.l+i/4*iw, Y=v=>m.t+(lim-v)/(2*lim)*ih;
+  for(let v=-lim;v<=lim;v++){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v+"%";s.appendChild(tk);}
+  ["1","2","3","4","5"].forEach((lb,i)=>{const tk=el("text",{x:X(i),y:H-6,"text-anchor":"middle",class:"tick"});tk.textContent=lb;s.appendChild(tk);});
+  function series(arr,color,name,dash){let d="";arr.forEach((v,i)=>d+=(i?"L":"M")+X(i)+" "+Y(v*100));
+    s.appendChild(el("path",{d,fill:"none",stroke:color,"stroke-width":2.5,"stroke-linecap":"round","stroke-linejoin":"round","stroke-dasharray":dash||""}));
+    arr.forEach((v,i)=>{const c=el("circle",{cx:X(i),cy:Y(v*100),r:5,fill:color,stroke:"var(--surface-1)","stroke-width":1.5});
+      c.addEventListener("mousemove",e=>showTip(`<b>${name}</b><br>Q${i+1}: ${pct(v*100)}`,e));c.addEventListener("mouseleave",hideTip);s.appendChild(c);});
+    const last=arr.length-1;const t=el("text",{x:X(last)+10,y:Y(arr[last]*100)+4,class:"axlab",fill:color});t.textContent=name;s.appendChild(t);}
+  series(q.next_day,"var(--accent)","next-day");series(q.m1,"var(--muted)","1-month","4 4");
+})();
+
+/* Scatter DPI10 vs m1 */
+(function(){
+  const W=Math.max(640,Math.min(940,innerWidth-60)),H=420,m={l:52,r:16,t:12,b:44},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const s=$("scatter");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
+  const xs=DATA.scatter.map(d=>d[0]);const xmin=Math.floor(Math.min(...xs)/5)*5,xmax=Math.ceil(Math.max(...xs)/5)*5;
+  const ymax=30;
+  const X=v=>m.l+(v-xmin)/(xmax-xmin)*iw, Y=v=>m.t+(ymax-v)/(2*ymax)*ih;
+  for(let v=-ymax;v<=ymax;v+=10){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v+"%";s.appendChild(tk);}
+  for(let v=xmin;v<=xmax;v+=5){const x=X(v);const tk=el("text",{x,y:m.t+ih+18,"text-anchor":"middle",class:"tick"});tk.textContent=v+"%";s.appendChild(tk);}
+  const xl=el("text",{x:m.l+iw/2,y:H-6,"text-anchor":"middle",class:"axlab"});xl.textContent="10-day avg DPI into earnings";s.appendChild(xl);
+  const yl=el("text",{x:14,y:m.t+ih/2,"text-anchor":"middle",class:"axlab",transform:`rotate(-90 14 ${m.t+ih/2})`});yl.textContent="Return over next ~1 month";s.appendChild(yl);
+  DATA.scatter.forEach(d=>{const yv=Math.max(-ymax,Math.min(ymax,d[1]));
+    const c=el("circle",{cx:X(d[0]),cy:Y(yv),r:3,fill:d[1]>=0?"var(--up)":"var(--down)","fill-opacity":.5});
+    c.addEventListener("mousemove",e=>showTip(`<b>${d[2]}</b><br>DPI10 ${d[0].toFixed(1)}%<br>1-month ${pct(d[1])}`,e));c.addEventListener("mouseleave",hideTip);s.appendChild(c);});
+  const o=DATA.ols;s.appendChild(el("line",{x1:X(xmin),y1:Y(o.b0+o.b1*xmin),x2:X(xmax),y2:Y(o.b0+o.b1*xmax),stroke:"var(--accent)","stroke-width":2.5,"stroke-linecap":"round"}));
+})();
+
+/* Period bars: yearly corr(dpi10, m1) */
+(function(){
+  const d=DATA.period,W=Math.max(560,Math.min(880,innerWidth-60)),H=300,m={l:44,r:16,t:16,b:34},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const s=$("period");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
+  const lim=0.25;const Y=v=>m.t+(lim-v)/(2*lim)*ih;
+  for(let v=-0.2;v<=0.2;v+=0.1){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":Math.abs(v)<1e-9?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=v.toFixed(1);s.appendChild(tk);}
+  const gw=iw/d.length,bw=Math.min(46,gw*0.6);
+  d.forEach((r,i)=>{const cx=m.l+gw*i+gw/2,y0=Y(0),y=Y(r.m1_r),top=Math.min(y0,y),h=Math.abs(y-y0);
+    const rect=el("rect",{x:cx-bw/2,y:top,width:bw,height:Math.max(1,h),rx:3,fill:r.m1_r>=0?"var(--up)":"var(--down)","fill-opacity":.9});
+    rect.addEventListener("mousemove",e=>showTip(`<b>${r.year}</b><br>corr(DPI10,1-mo)=${r3(r.m1_r)}<br>p=${r.m1_p.toFixed(3)} · n=${r.n}`,e));rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
+    const lb=el("text",{x:cx,y:H-6,"text-anchor":"middle",class:"tick"});lb.textContent=r.year;s.appendChild(lb);});
+})();
+
+/* Subgroup table */
+(function(){
+  const g=DATA.subgroup;const rows=[["Mega-cap (20)","mega"],["Rest (74)","nonmega"],["After close (AMC)","amc"],["Before open (BMO)","bmo"]];
+  let h=`<table style="width:100%;border-collapse:collapse;font-size:.88rem">
+    <tr style="color:var(--muted);text-align:right"><th style="text-align:left;padding:5px 8px">Cohort</th><th style="padding:5px 8px">n</th><th style="padding:5px 8px">next-day r</th><th style="padding:5px 8px">1-month r</th></tr>`;
+  rows.forEach(([lbl,k])=>{const x=g[k];const col=v=>v>=0?"var(--up)":"var(--down)";
+    h+=`<tr style="text-align:right;border-top:1px solid var(--grid)"><td style="text-align:left;padding:6px 8px">${lbl}</td>
+    <td style="padding:6px 8px;font-variant-numeric:tabular-nums">${x.n}</td>
+    <td style="padding:6px 8px;font-variant-numeric:tabular-nums;color:${col(x.next_r)}">${r3(x.next_r)}</td>
+    <td style="padding:6px 8px;font-variant-numeric:tabular-nums;color:${col(x.m1_r)}">${r3(x.m1_r)}</td></tr>`;});
+  h+=`</table><div class="foot" style="margin-top:8px">1-month is positive in every cohort; next-day is ~flat for mega-caps and positive for the rest.</div>`;
+  $("subgroup").innerHTML=h;
+})();
+
+/* Per-name bars corr(dpi10, m1) */
+(function(){
+  const d=DATA.pername.slice().sort((a,b)=>a.r-b.r);const rowH=13.5,W=Math.max(560,Math.min(880,innerWidth-60)),m={l:52,r:16,t:8,b:24};
+  const H=m.t+m.b+d.length*rowH,iw=W-m.l-m.r;const s=$("pername");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
+  const lim=0.6;const X=v=>m.l+(Math.max(-lim,Math.min(lim,v))+lim)/(2*lim)*iw;
+  for(let v=-0.6;v<=0.6;v+=0.3){const x=X(v);s.appendChild(el("line",{x1:x,x2:x,y1:m.t,y2:m.t+d.length*rowH,stroke:"var(--grid)","stroke-width":Math.abs(v)<1e-9?1.5:1}));
+    const tk=el("text",{x,y:H-8,"text-anchor":"middle",class:"tick"});tk.textContent=v.toFixed(1);s.appendChild(tk);}
+  const hl=el("rect",{x:0,y:-99,width:W,height:rowH,fill:"var(--accent)","fill-opacity":0.12,rx:3});s.appendChild(hl);
+  window.__pnHighlight=(tk)=>{const i=d.findIndex(z=>z.ticker===tk);hl.setAttribute("y",i<0?-99:(m.t+i*rowH));};
+  d.forEach((r,i)=>{const y=m.t+i*rowH+rowH/2,x0=X(0),x=X(r.r);
+    const rect=el("rect",{x:Math.min(x0,x),y:y-4.5,width:Math.max(1,Math.abs(x-x0)),height:9,rx:2,fill:r.r<0?"var(--down)":"var(--up)","fill-opacity":.85,"pointer-events":"none"});
+    s.appendChild(rect);
+    const tk=el("text",{x:m.l-6,y:y+3,"text-anchor":"end",class:"tick","font-size":"8.5px","pointer-events":"none"});tk.textContent=r.ticker;s.appendChild(tk);
+    const hit=el("rect",{x:0,y:m.t+i*rowH,width:W,height:rowH,fill:"transparent",cursor:"pointer"});
+    hit.addEventListener("mousemove",e=>showTip(`<b>${r.ticker}</b> — click for paths<br>corr(DPI10,1-mo)=${r3(r.r)} · n=${r.n}`,e));
+    hit.addEventListener("mouseleave",hideTip);
+    hit.addEventListener("click",()=>window.selectTicker&&window.selectTicker(r.ticker));
+    s.appendChild(hit);});
+})();
+
+/* Readout */
+(function(){
+  const cm=DATA.corr.dpi10_m1,cn=DATA.corr.dpi10_next_day,t=DATA.tercile.m1,pos=DATA.pername.filter(p=>p.r>=0).length;
+  $("readout").innerHTML=`<p style="margin-top:0"><b class="k">Yes — a modest, positive tilt that shows up most at the one-month horizon.</b>
+   Pooled, DPI10 correlates ${r3(cm.pearson)} with the 1-month return (p&lt;0.001) and ${r3(cn.pearson)} with the next-day move (p=${cn.pearson_p.toFixed(3)}).
+   The high-DPI tercile beat the low-DPI tercile by ${pct(t.diff*100)} over the month.</p>
+   <p><b class="k">It's broad and reasonably stable.</b> Same sign for after-hours and before-open reporters, for mega-caps and the rest, and in ${pos} of ${DATA.pername.length} names individually. By year it's absent in 2018–2019 and builds from 2020 on.</p>
+   <p><b class="k">But small.</b> r≈0.1 explains ~1% of the variance in monthly post-earnings returns — a genuine edge in the aggregate, not a signal to trade a single name on. Read it as: elevated dark-pool accumulation into a print skews the odds modestly bullish for the month that follows.</p>`;
+})();
+
+/* Post-earnings path fan chart */
+$("pathLegend").innerHTML=`<span><span class="sw" style="background:var(--up)"></span>high-DPI event</span>
+  <span><span class="sw" style="background:var(--down)"></span>low-DPI event</span>
+  <span><span class="sw" style="background:var(--accent);height:3px;width:16px;border-radius:2px"></span>median</span>
+  <span><span style="display:inline-block;width:16px;border-top:2px dashed var(--text-primary)"></span>&nbsp;mean</span>`;
+function fmtpc(bp){const v=bp/100;return (v>=0?"+":"")+v.toFixed(1)+"%";}
+function renderPaths(tk){
+  const P=PATHS[tk],s=$("paths");while(s.firstChild)s.removeChild(s.firstChild);
+  $("pathTk").textContent=tk;
+  if(!P){$("pathStat").textContent="no path data";return;}
+  const H=21,W=Math.max(640,Math.min(940,innerWidth-60)),ht=430,m={l:52,r:64,t:14,b:34},iw=W-m.l-m.r,ih=ht-m.t-m.b;
+  s.setAttribute("viewBox",`0 0 ${W} ${ht}`);s.setAttribute("width",W);s.setAttribute("height",ht);
+  let mags=[];P.events.forEach(e=>e.p.forEach(v=>mags.push(Math.abs(v))));mags.sort((a,b)=>a-b);
+  let ylim=Math.max(6,Math.ceil((mags[Math.floor(mags.length*0.94)]/100)/2)*2);
+  const X=h=>m.l+h/H*iw,clip=v=>Math.max(-ylim,Math.min(ylim,v)),Y=v=>m.t+(ylim-clip(v))/(2*ylim)*ih;
+  const step=ylim<=8?2:(ylim<=16?4:(ylim<=30?5:10));
+  for(let v=-ylim;v<=ylim+1e-9;v+=step){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":Math.abs(v)<1e-9?1.5:1}));
+    const t=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});t.textContent=(v>0?"+":"")+v+"%";s.appendChild(t);}
+  [0,5,10,15,21].forEach(h=>{const t=el("text",{x:X(h),y:m.t+ih+18,"text-anchor":"middle",class:"tick"});t.textContent=h;s.appendChild(t);});
+  const xl=el("text",{x:m.l+iw/2,y:ht-3,"text-anchor":"middle",class:"axlab"});xl.textContent="trading sessions after report";s.appendChild(xl);
+  const line=arr=>{let dd="";arr.forEach((v,h)=>dd+=(h?"L":"M")+X(h)+" "+Y(v/100));return dd;};
+  const col={hi:"var(--up)",lo:"var(--down)",mid:"var(--muted)"};
+  P.events.forEach(e=>{const pe=el("path",{d:line(e.p),fill:"none",stroke:col[e.cls],"stroke-width":1,"stroke-opacity":0.20});
+    pe.addEventListener("mousemove",ev=>{pe.setAttribute("stroke-opacity",0.95);pe.setAttribute("stroke-width",2);
+      showTip(`<b>${tk}</b> ${e.d}<br>DPI ${e.cls==='hi'?'high':e.cls==='lo'?'low':'mid'} into print<br>+21d ${fmtpc(e.p[21])}`,ev);});
+    pe.addEventListener("mouseleave",()=>{pe.setAttribute("stroke-opacity",0.20);pe.setAttribute("stroke-width",1);hideTip();});s.appendChild(pe);});
+  if(P.hi_mean)s.appendChild(el("path",{d:line(P.hi_mean),fill:"none",stroke:"var(--up)","stroke-width":2,"stroke-opacity":0.9}));
+  if(P.lo_mean)s.appendChild(el("path",{d:line(P.lo_mean),fill:"none",stroke:"var(--down)","stroke-width":2,"stroke-opacity":0.9}));
+  s.appendChild(el("path",{d:line(P.mean),fill:"none",stroke:"var(--text-primary)","stroke-width":2,"stroke-dasharray":"5 4"}));
+  s.appendChild(el("path",{d:line(P.median),fill:"none",stroke:"var(--accent)","stroke-width":3,"stroke-linecap":"round","stroke-linejoin":"round"}));
+  const ml=el("text",{x:X(H)+6,y:Y(P.median[H]/100)+4,class:"vlab",fill:"var(--accent)"});ml.textContent="med";s.appendChild(ml);
+  $("pathStat").textContent=`${P.n} earnings events · median +21d ${fmtpc(P.final_med)} · mean ${fmtpc(P.final_mean)} · ${Math.round(100*P.pos/P.tot)}% up after a month`;
+}
+window.selectTicker=tk=>{renderPaths(tk);if(window.__pnHighlight)window.__pnHighlight(tk);};
+window.selectTicker(PATHS["NVDA"]?"NVDA":Object.keys(PATHS)[0]);
+</script>
