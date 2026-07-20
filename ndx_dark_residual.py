@@ -1183,6 +1183,18 @@ def build_grid_payload(res, bench_key, bench_label, keep, weight_map=None, weigh
             "dates": [d.strftime("%Y-%m-%d") for d in keep]}
 
 
+def _weekly_anchored(idx, step=5):
+    """Every `step`-th entry of a DatetimeIndex, anchored to the LAST element so the most
+    recent session is always kept. A plain `idx[::step]` starts at position 0 and drops the
+    final `step-1` sessions when the length isn't a multiple of `step` -- which left the
+    downsampled S&P 500 grid a few days behind the other tabs (e.g. ending 07-15 while
+    everything else showed 07-20)."""
+    n = len(idx)
+    if n == 0:
+        return idx
+    return idx[sorted(range(n - 1, -1, -step))]
+
+
 def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, weekly_over=378):
     """Per-name raw 1-day dark ratio ('d') + 1/2/3-month forward returns for the cell-modal
     decile bars. Bounded to everything since `plot_start` when given (to match the grid's
@@ -1207,7 +1219,7 @@ def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, wee
     else:
         keep = idx[-keep_days:] if len(idx) > keep_days else idx
     if len(keep) > weekly_over:
-        keep = keep[::5]
+        keep = _weekly_anchored(keep)
 
     def pk(df):
         out = {}
@@ -1285,7 +1297,7 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         # NDX ran from 2020), downsample the 500-name grid sparklines to weekly (every 5th
         # session) when the window is long, so full history stays light in the payload.
         if len(spx_keep) > spx_keep_days:
-            spx_keep = spx_keep[::5]
+            spx_keep = _weekly_anchored(spx_keep)
         spx_grid = build_grid_payload(spx_res, "SPX-DIX", "SPX-DIX", spx_keep,
                                       spx_weight_map, spx_weight_order,
                                       sector_map=spx_sector_map)
