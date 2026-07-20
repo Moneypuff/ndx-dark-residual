@@ -5,42 +5,32 @@
     --surface-1:#fcfcfb; --plane:#f9f9f7;
     --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
     --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
-    --up:#2a78d6;      /* positive return  (diverging cool) */
-    --down:#e34948;    /* negative return  (diverging warm) */
-    --neutral:#b9b8b1;
-    --accent:#4a3aa7;
+    --up:#2a78d6; --down:#e34948; --accent:#4a3aa7;
     font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
     color:var(--text-primary); background:var(--plane);
   }
-  @media (prefers-color-scheme:dark){
-    :root:where(:not([data-theme="light"])) .viz-root{
-      color-scheme:dark;
-      --surface-1:#1a1a19; --plane:#0d0d0d;
-      --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
-      --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
-      --up:#3987e5; --down:#e66767; --neutral:#4a4a46; --accent:#9085e9;
-    }
-  }
+  @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{
+    color-scheme:dark; --surface-1:#1a1a19; --plane:#0d0d0d; --text-primary:#fff;
+    --text-secondary:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --axis:#383835;
+    --border:rgba(255,255,255,0.10); --up:#3987e5; --down:#e66767; --accent:#9085e9;}}
   :root[data-theme="dark"] .viz-root{
-    color-scheme:dark;
-    --surface-1:#1a1a19; --plane:#0d0d0d;
-    --text-primary:#fff; --text-secondary:#c3c2b7; --muted:#898781;
-    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
-    --up:#3987e5; --down:#e66767; --neutral:#4a4a46; --accent:#9085e9;
-  }
+    color-scheme:dark; --surface-1:#1a1a19; --plane:#0d0d0d; --text-primary:#fff;
+    --text-secondary:#c3c2b7; --muted:#898781; --grid:#2c2c2a; --axis:#383835;
+    --border:rgba(255,255,255,0.10); --up:#3987e5; --down:#e66767; --accent:#9085e9;}
   .viz-root{max-width:1000px;margin:0 auto;padding:28px 20px 60px;line-height:1.5;}
   .viz-root h1{font-size:1.7rem;line-height:1.2;margin:0 0 6px;letter-spacing:-0.01em;}
   .viz-root h2{font-size:1.12rem;margin:34px 0 4px;letter-spacing:-0.01em;}
   .viz-root p{color:var(--text-secondary);margin:8px 0;}
   .viz-root .sub{color:var(--muted);font-size:.9rem;margin-top:0;}
   .card{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:18px 18px 14px;margin-top:14px;}
-  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:18px;}
+  .note-card{background:var(--surface-1);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:14px 16px;margin-top:14px;}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-top:18px;}
   .kpi{background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
   .kpi .label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
-  .kpi .val{font-size:1.65rem;font-weight:650;margin-top:4px;letter-spacing:-0.02em;}
+  .kpi .val{font-size:1.6rem;font-weight:650;margin-top:4px;letter-spacing:-0.02em;}
   .kpi .note{font-size:.8rem;color:var(--text-secondary);margin-top:3px;}
   .pos{color:var(--up);} .neg{color:var(--down);}
-  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem;color:var(--text-secondary);margin:2px 0 6px;}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem;color:var(--text-secondary);margin:2px 0 8px;}
   .legend span{display:inline-flex;align-items:center;gap:6px;}
   .sw{width:11px;height:11px;border-radius:3px;display:inline-block;}
   .chart-wrap{overflow-x:auto;}
@@ -48,1497 +38,211 @@
   text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;}
   .tick{fill:var(--muted);font-size:11px;} .axlab{fill:var(--text-secondary);font-size:12px;}
   .vlab{fill:var(--text-primary);font-size:11px;font-variant-numeric:tabular-nums;}
-  table{border-collapse:collapse;width:100%;font-size:.86rem;margin-top:6px;}
-  th,td{text-align:right;padding:6px 10px;border-bottom:1px solid var(--grid);font-variant-numeric:tabular-nums;}
-  th:first-child,td:first-child{text-align:left;}
-  th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.03em;}
   .tip{position:fixed;pointer-events:none;background:var(--surface-1);border:1px solid var(--border);
        border-radius:8px;padding:7px 10px;font-size:.8rem;box-shadow:0 4px 16px rgba(0,0,0,.18);
        opacity:0;transition:opacity .08s;z-index:20;color:var(--text-primary);}
   .foot{color:var(--muted);font-size:.8rem;margin-top:8px;}
-  ul{color:var(--text-secondary);}
+  ul{color:var(--text-secondary);} b.k{color:var(--text-primary);}
 </style>
 
 <div class="viz-root">
   <h1>Dark-pool positioning into earnings vs. what the stock does after</h1>
-  <p class="sub">20 NDX mega-caps · 202 after-hours earnings events · Jul 2023 – Jan 2026 · DPI = short ÷ total off-exchange volume (FINRA), prices split-adjusted (Yahoo)</p>
+  <p class="sub">94 NDX-100 names · 2,694 quarterly earnings events · Aug 2018 – Jul 2026 · DPI = short ÷ total off-exchange volume (FINRA) · report dates &amp; AMC/BMO timing from SEC EDGAR 8-K Item 2.02 · prices split-adjusted (Yahoo)</p>
 
   <div class="kpis" id="kpis"></div>
 
-  <h2>The relationship, one point per earnings event</h2>
-  <p>Each dot is one company's earnings report: its 10-day average DPI heading in (through the day <em>before</em> the report) against its next-day reaction (close on report day → close the following session). The line is the pooled fit.</p>
+  <div class="note-card" id="headline"></div>
+
+  <h2>Sort events by DPI into the report → forward return climbs</h2>
+  <p>Events split into terciles by each name's <em>own</em> DPI history (so "high" means high for that stock). Bars are the average return in each bucket — the immediate reaction and one month out.</p>
+  <div class="card">
+    <div class="legend"><span>Within-name DPI10 terciles · solid = next-day reaction · faded = ~1 month later</span></div>
+    <div class="chart-wrap"><svg id="buckets"></svg></div>
+  </div>
+
+  <h2>The gradient is monotonic, and it grows over the month</h2>
   <div class="card">
     <div class="legend">
-      <span><span class="sw" style="background:var(--up)"></span>up next day</span>
-      <span><span class="sw" style="background:var(--down)"></span>down next day</span>
+      <span><span class="sw" style="background:var(--accent)"></span>next-day</span>
+      <span><span class="sw" style="background:var(--muted)"></span>1-month</span>
+      <span>· x = within-name DPI10 quintile (1 = lowest, 5 = highest)</span>
+    </div>
+    <div class="chart-wrap"><svg id="quint"></svg></div>
+  </div>
+
+  <h2>One month out, one point per earnings event</h2>
+  <p>10-day average DPI heading in vs. the stock's return over the ~21 sessions after the report. Noisy at the single-event level (that's earnings), but the fit tilts up.</p>
+  <div class="card">
+    <div class="legend">
+      <span><span class="sw" style="background:var(--up)"></span>up over the month</span>
+      <span><span class="sw" style="background:var(--down)"></span>down over the month</span>
       <span><span class="sw" style="background:var(--accent);height:2px;width:16px;border-radius:2px"></span>pooled fit</span>
     </div>
     <div class="chart-wrap"><svg id="scatter"></svg></div>
   </div>
 
-  <h2>Sort events into DPI buckets → the effect, and how fast it fades</h2>
-  <p>Events split into terciles by each name's <em>own</em> DPI history (so a "high" reading is high for that stock, not just a high-DPI name). Bars are the average return in each bucket.</p>
-  <div class="card">
-    <div class="legend"><span>Within-name DPI terciles · solid bar = next-day reaction · faded bar = ~1 month later</span></div>
-    <div class="chart-wrap"><svg id="buckets"></svg></div>
-  </div>
+  <h2>Does it hold up? By year, by timing, by cohort</h2>
+  <p>Correlation of DPI10 with the 1-month return, computed within each calendar year. Same sign in almost every year, flat/absent in 2018–2019, and building from 2020 on.</p>
+  <div class="card"><div class="chart-wrap"><svg id="period"></svg></div></div>
+  <div class="card" id="subgroup"></div>
 
-  <h2>The gradient is monotonic next-day, and gone by a month</h2>
-  <div class="card">
-    <div class="chart-wrap"><svg id="quint"></svg></div>
-  </div>
-
-  <h2>It's a pooled tendency, not a universal law</h2>
-  <p>Per-name correlation of DPI10 with the next-day reaction. The effect is concentrated in high-beta / semiconductor names and reverses for a handful. Per-name samples are small (~10 events), so read these as texture, not precision.</p>
+  <h2>Per-name: mostly positive, with spread</h2>
+  <p>Correlation of DPI10 with the 1-month return, per name (≥8 events). Most names lean positive; per-name samples are ~30 events, so treat individual bars as texture.</p>
   <div class="card"><div class="chart-wrap"><svg id="pername"></svg></div></div>
 
   <h2>Read-out</h2>
   <div class="card" id="readout"></div>
 
+  <div class="note-card">
+    <p style="margin:0"><b class="k">Note on an earlier preliminary cut.</b> A first pass on just 20 mega-caps over 2023–2026, with hand-typed report dates, suggested high DPI preceded a <em>weaker</em> next-day move. That did <b>not</b> survive: with authoritative EDGAR dates, AMC/BMO timing, the full 94-name universe and 8 years of history, the mega-cap next-day effect is −0.05 (p≈0.4, i.e. noise), while the durable signal is the <em>positive</em> 1-month relationship shown here. The earlier result was small-sample/single-window fragility.</p>
+  </div>
+
   <h2>Method &amp; caveats</h2>
   <ul>
-    <li><b>Signal (no look-ahead):</b> DPI5 / DPI10 = mean of daily per-name DPI over the 5 / 10 trading days ending the day before the report date. Because these names report after the close, that cut-off is strictly pre-announcement.</li>
-    <li><b>Outcome:</b> next-day = adj-close(T+1)/adj-close(T)−1 where T is the report day; 1-month = adj-close(T+21 sessions)/adj-close(T)−1. Split-adjusted, so NVDA/AVGO/PANW splits don't distort the windows.</li>
-    <li><b>Earnings dates</b> are hand-curated (no bulk earnings feed was reachable from this environment) and validated against the price tape — known reactions (META +20%, NVDA −8.5%, AVGO +24%…) reproduce to the tenth of a percent.</li>
-    <li><b>Take it as suggestive, not decisive:</b> the effect size is modest, it lives inside a single 2½-year bull-market regime, DPI is a noisy daily series, and 20 mega-caps ≠ the whole market. The next-day tercile spread is significant (p≈0.02); the 1-month spread is not.</li>
+    <li><b>Signal (no look-ahead):</b> DPI5 / DPI10 = mean daily DPI over the 5 / 10 trading days ending the session before the report — strictly pre-announcement.</li>
+    <li><b>Outcome:</b> next-day = adjClose(T+1)/adjClose(T)−1; 1-month = adjClose(T+21 sessions)/adjClose(T)−1, where T is the last clean pre-news close. Timing-aware: for after-hours (AMC) reports T is the report day; for before-open (BMO) reports T is the prior session, so the reaction is always the first full session on the news. Split-adjusted.</li>
+    <li><b>Dates:</b> SEC EDGAR 8-K <b>Item 2.02</b> filings, matched to each 10-Q/10-K to isolate the quarterly earnings release (dropping delivery/sales/guidance 2.02s). Acceptance timestamp → US/Eastern gives AMC vs BMO. 94 of 100 names covered; 6 foreign filers (ASML, ARM, PDD, CCEP, FER, NBIS/TRI) file 6-K, not 8-K, and are omitted.</li>
+    <li><b>Direction:</b> a high dark-pool short-volume ratio is conventionally read as market-makers shorting to fill <em>buy</em> orders — i.e. accumulation. The positive DPI→forward-return link is consistent with that reading.</li>
+    <li><b>Caveats:</b> effect sizes are small (r≈0.05 next-day, ≈0.10 at a month) — a real but modest tilt, not a stand-alone trade. Single index, mostly-bull sample. DPI is a noisy daily series.</li>
   </ul>
-  <p class="foot">Built on this repo's DPI/DIX construction (<code>ndx_dark_residual.py</code>). Reproduce: <code>python earnings_dpi_study.py</code>. Event-level data in <code>earnings_dpi_events.csv</code>.</p>
+  <p class="foot">Reproduce: <code>python fetch_earnings_edgar.py</code> then <code>python earnings_dpi_study.py --earnings earnings_dates_edgar.csv</code>. Event data: <code>earnings_dpi_events.csv</code>.</p>
 </div>
-
 <div class="tip" id="tip"></div>
 
 <script>
-const DATA = {
-"n_events": 202,
-"n_names": 20,
-"window": [
-"2023-07",
-"2026-01"
-],
-"next_day": {
-"mean": -0.009086307844454541,
-"median": -0.0143349639800124,
-"pos": 0.4158415841584158,
-"std": 0.07889550122979856
-},
-"m1": {
-"mean": 0.017429595588687317,
-"median": -0.00688213011850055,
-"pos": 0.4752475247524752,
-"std": 0.14171333892428795
-},
-"corr": {
-"dpi5_next_day": {
-"pearson": -0.15061163132943822,
-"pearson_p": 0.03239285907121547,
-"spearman": -0.1487477988295852,
-"spearman_p": 0.03462203811428878,
-"within": -0.15199451822373478,
-"within_p": 0.030818836056364752,
-"n": 202
-},
-"dpi5_m1": {
-"pearson": -0.005254802422773606,
-"pearson_p": 0.9408338943195496,
-"spearman": -0.03683115903679184,
-"spearman_p": 0.6027867650912142,
-"within": -0.032041230152075155,
-"within_p": 0.6507780071148732,
-"n": 202
-},
-"dpi10_next_day": {
-"pearson": -0.15944408839254187,
-"pearson_p": 0.02341571462170249,
-"spearman": -0.16222234678434388,
-"spearman_p": 0.021076892370868756,
-"within": -0.16513379901756553,
-"within_p": 0.01884544768597553,
-"n": 202
-},
-"dpi10_m1": {
-"pearson": -0.014112463329980155,
-"pearson_p": 0.8419960235406447,
-"spearman": -0.049129322902145375,
-"spearman_p": 0.48746584170479323,
-"within": -0.03610526421739416,
-"within_p": 0.6099575363981931,
-"n": 202
-}
-},
-"tercile": {
-"dpi5_next": {
-"hi": -0.022746403071047316,
-"mid": -0.0014508120025747272,
-"lo": 0.001237140087726682,
-"hi_up": 0.35,
-"lo_up": 0.5,
-"nh": 80,
-"nm": 62,
-"nl": 60,
-"diff": -0.023983543158773997,
-"t": -1.9129857873897897,
-"p": 0.058077977063288974
-},
-"dpi5_m1": {
-"hi": 0.01190313958324329,
-"mid": 0.0043452996997235035,
-"lo": 0.038318642681208596,
-"hi_up": 0.4625,
-"lo_up": 0.55,
-"nh": 80,
-"nm": 62,
-"nl": 60,
-"diff": -0.026415503097965306,
-"t": -1.0668630322437982,
-"p": 0.28833965616931156
-},
-"dpi10_next": {
-"hi": -0.026938694072386433,
-"mid": -0.0013252077871049857,
-"lo": 0.006697070400193434,
-"hi_up": 0.3375,
-"lo_up": 0.5333333333333333,
-"nh": 80,
-"nm": 62,
-"nl": 60,
-"diff": -0.03363576447257987,
-"t": -2.4060889602065516,
-"p": 0.01764035232605399
-},
-"dpi10_m1": {
-"hi": 0.009879874951577444,
-"mid": 0.008454118046490228,
-"lo": 0.03677054989843746,
-"hi_up": 0.4375,
-"lo_up": 0.55,
-"nh": 80,
-"nm": 62,
-"nl": 60,
-"diff": -0.026890674946860017,
-"t": -1.030387880435612,
-"p": 0.304860187214662
-}
-},
-"quintile": {
-"next_day": [
-0.00228468818949373,
-0.019072842979761234,
--0.013480232048452234,
--0.03022488102721766,
--0.0236525071175552
-],
-"m1": [
-0.015263037928511622,
-0.054475909424341364,
--0.002242391429562533,
--0.0054647366643041945,
-0.02522448656745908
-]
-},
-"pername": [
-{
-"ticker": "MU",
-"r": -0.8162260689116558,
-"n": 10,
-"dpi10": 0.3845846305563958,
-"next_mean": 0.008150762818835058
-},
-{
-"ticker": "QCOM",
-"r": -0.5973133054879897,
-"n": 10,
-"dpi10": 0.46404742250109904,
-"next_mean": -0.030999539982574285
-},
-{
-"ticker": "PANW",
-"r": -0.5915227518374465,
-"n": 10,
-"dpi10": 0.5197842785319162,
-"next_mean": -0.026428346358738676
-},
-{
-"ticker": "AVGO",
-"r": -0.5682957206358572,
-"n": 10,
-"dpi10": 0.40430668967530214,
-"next_mean": 0.017914675488809685
-},
-{
-"ticker": "TSLA",
-"r": -0.4658016214340788,
-"n": 10,
-"dpi10": 0.5095885943256175,
-"next_mean": -0.0071942332568757485
-},
-{
-"ticker": "NVDA",
-"r": -0.3841337148531264,
-"n": 10,
-"dpi10": 0.4983253877038156,
-"next_mean": 0.008342295853013892
-},
-{
-"ticker": "GILD",
-"r": -0.22805575864851915,
-"n": 10,
-"dpi10": 0.4407718253983985,
-"next_mean": -0.0019432620515455912
-},
-{
-"ticker": "AAPL",
-"r": -0.2273115951748803,
-"n": 11,
-"dpi10": 0.43939864971736936,
-"next_mean": -0.006673351154858263
-},
-{
-"ticker": "META",
-"r": -0.1966265090924849,
-"n": 10,
-"dpi10": 0.438998116021712,
-"next_mean": 0.016856332879095038
-},
-{
-"ticker": "AMZN",
-"r": -0.12618192095209563,
-"n": 10,
-"dpi10": 0.37277583016534227,
-"next_mean": 0.0198015426929277
-},
-{
-"ticker": "INTC",
-"r": -0.041694022126948685,
-"n": 10,
-"dpi10": 0.39393728394626437,
-"next_mean": -0.04128628488027824
-},
-{
-"ticker": "CSCO",
-"r": 0.016463397744144473,
-"n": 10,
-"dpi10": 0.44375206697172753,
-"next_mean": 0.003076745851191242
-},
-{
-"ticker": "AMAT",
-"r": 0.051962932528378525,
-"n": 10,
-"dpi10": 0.4836820081979883,
-"next_mean": -0.03221022631588122
-},
-{
-"ticker": "AMD",
-"r": 0.14478417854362016,
-"n": 10,
-"dpi10": 0.44980171731616636,
-"next_mean": -0.023443972494720078
-},
-{
-"ticker": "COST",
-"r": 0.17294549153170174,
-"n": 10,
-"dpi10": 0.4765083870402254,
-"next_mean": -0.009465090194818712
-},
-{
-"ticker": "NFLX",
-"r": 0.18007639517297747,
-"n": 10,
-"dpi10": 0.4556398069693223,
-"next_mean": 0.014891929637325486
-},
-{
-"ticker": "GOOGL",
-"r": 0.2209222755099201,
-"n": 10,
-"dpi10": 0.3072072921467934,
-"next_mean": -0.00516562584794236
-},
-{
-"ticker": "MSFT",
-"r": 0.22133659711430792,
-"n": 11,
-"dpi10": 0.35780628977546103,
-"next_mean": -0.014742224838663075
-},
-{
-"ticker": "ADBE",
-"r": 0.33144268757075235,
-"n": 10,
-"dpi10": 0.42554518132639263,
-"next_mean": -0.049267044381178834
-},
-{
-"ticker": "TXN",
-"r": 0.5162350116960975,
-"n": 10,
-"dpi10": 0.49653347893352856,
-"next_mean": -0.02161694432175267
-}
-],
-"scatter": [
-[
-51.4,
--4.8,
-"AAPL"
-],
-[
-42.07,
--0.52,
-"AAPL"
-],
-[
-47.85,
--0.54,
-"AAPL"
-],
-[
-46.04,
-5.98,
-"AAPL"
-],
-[
-39.53,
-0.69,
-"AAPL"
-],
-[
-49.33,
--1.33,
-"AAPL"
-],
-[
-43.11,
--0.67,
-"AAPL"
-],
-[
-41.93,
--3.74,
-"AAPL"
-],
-[
-44.42,
--2.5,
-"AAPL"
-],
-[
-46.27,
--0.38,
-"AAPL"
-],
-[
-31.4,
-0.46,
-"AAPL"
-],
-[
-44.97,
--4.21,
-"ADBE"
-],
-[
-43.83,
--6.35,
-"ADBE"
-],
-[
-38.15,
--13.67,
-"ADBE"
-],
-[
-40.26,
-14.51,
-"ADBE"
-],
-[
-49.04,
--8.47,
-"ADBE"
-],
-[
-36.55,
--13.69,
-"ADBE"
-],
-[
-37.54,
--13.85,
-"ADBE"
-],
-[
-43.14,
--5.32,
-"ADBE"
-],
-[
-43.88,
--0.34,
-"ADBE"
-],
-[
-48.18,
-2.13,
-"ADBE"
-],
-[
-52.01,
-3.68,
-"AMAT"
-],
-[
-42.64,
--4.02,
-"AMAT"
-],
-[
-53.11,
-6.35,
-"AMAT"
-],
-[
-53.17,
--0.91,
-"AMAT"
-],
-[
-45.01,
--1.86,
-"AMAT"
-],
-[
-35.96,
--9.2,
-"AMAT"
-],
-[
-57.92,
--8.18,
-"AMAT"
-],
-[
-51.79,
--5.25,
-"AMAT"
-],
-[
-52.29,
--14.07,
-"AMAT"
-],
-[
-39.78,
-1.25,
-"AMAT"
-],
-[
-47.3,
--7.02,
-"AMD"
-],
-[
-47.15,
-9.69,
-"AMD"
-],
-[
-49.25,
--2.54,
-"AMD"
-],
-[
-38.23,
--8.91,
-"AMD"
-],
-[
-49.35,
-4.36,
-"AMD"
-],
-[
-47.99,
--10.62,
-"AMD"
-],
-[
-46.17,
--6.27,
-"AMD"
-],
-[
-39.24,
-1.76,
-"AMD"
-],
-[
-42.32,
--6.42,
-"AMD"
-],
-[
-42.79,
-2.51,
-"AMD"
-],
-[
-36.12,
-8.27,
-"AMZN"
-],
-[
-41.22,
-6.83,
-"AMZN"
-],
-[
-38.67,
-7.87,
-"AMZN"
-],
-[
-30.45,
-2.29,
-"AMZN"
-],
-[
-35.74,
--8.78,
-"AMZN"
-],
-[
-41.74,
-6.19,
-"AMZN"
-],
-[
-38.19,
--4.05,
-"AMZN"
-],
-[
-36.3,
--0.12,
-"AMZN"
-],
-[
-41.66,
--8.27,
-"AMZN"
-],
-[
-32.69,
-9.58,
-"AMZN"
-],
-[
-52.33,
--5.46,
-"AVGO"
-],
-[
-41.95,
-2.39,
-"AVGO"
-],
-[
-44.5,
--6.99,
-"AVGO"
-],
-[
-38.87,
-12.27,
-"AVGO"
-],
-[
-40.54,
--10.35,
-"AVGO"
-],
-[
-38.8,
-24.43,
-"AVGO"
-],
-[
-28.4,
-8.64,
-"AVGO"
-],
-[
-39.94,
--5.0,
-"AVGO"
-],
-[
-31.25,
-9.41,
-"AVGO"
-],
-[
-47.74,
--11.43,
-"AVGO"
-],
-[
-49.74,
-1.91,
-"COST"
-],
-[
-58.61,
-4.45,
-"COST"
-],
-[
-49.95,
--7.64,
-"COST"
-],
-[
-40.14,
--0.67,
-"COST"
-],
-[
-50.56,
--1.75,
-"COST"
-],
-[
-51.92,
-0.1,
-"COST"
-],
-[
-45.65,
--6.07,
-"COST"
-],
-[
-40.65,
-3.12,
-"COST"
-],
-[
-45.03,
--2.9,
-"COST"
-],
-[
-44.25,
--0.0,
-"COST"
-],
-[
-55.51,
-3.34,
-"CSCO"
-],
-[
-49.14,
--9.83,
-"CSCO"
-],
-[
-44.72,
--2.43,
-"CSCO"
-],
-[
-35.13,
--2.68,
-"CSCO"
-],
-[
-41.9,
-6.8,
-"CSCO"
-],
-[
-46.13,
--2.13,
-"CSCO"
-],
-[
-30.18,
-2.1,
-"CSCO"
-],
-[
-40.51,
-4.85,
-"CSCO"
-],
-[
-43.35,
--1.56,
-"CSCO"
-],
-[
-57.18,
-4.62,
-"CSCO"
-],
-[
-54.99,
-0.11,
-"GILD"
-],
-[
-53.09,
--3.36,
-"GILD"
-],
-[
-45.93,
--4.25,
-"GILD"
-],
-[
-32.65,
-0.23,
-"GILD"
-],
-[
-44.4,
--2.55,
-"GILD"
-],
-[
-44.85,
--1.36,
-"GILD"
-],
-[
-37.72,
-7.46,
-"GILD"
-],
-[
-31.41,
--2.81,
-"GILD"
-],
-[
-44.63,
-8.28,
-"GILD"
-],
-[
-51.09,
--3.7,
-"GILD"
-],
-[
-36.84,
-5.78,
-"GOOGL"
-],
-[
-24.34,
--9.51,
-"GOOGL"
-],
-[
-28.28,
--7.5,
-"GOOGL"
-],
-[
-28.11,
-10.22,
-"GOOGL"
-],
-[
-28.05,
--5.04,
-"GOOGL"
-],
-[
-19.54,
-2.82,
-"GOOGL"
-],
-[
-33.67,
--7.29,
-"GOOGL"
-],
-[
-32.23,
-1.68,
-"GOOGL"
-],
-[
-36.57,
-1.02,
-"GOOGL"
-],
-[
-39.58,
-2.65,
-"GOOGL"
-],
-[
-39.83,
-6.6,
-"INTC"
-],
-[
-46.84,
-9.29,
-"INTC"
-],
-[
-49.76,
--11.91,
-"INTC"
-],
-[
-30.22,
--9.2,
-"INTC"
-],
-[
-41.16,
--26.06,
-"INTC"
-],
-[
-34.3,
-7.81,
-"INTC"
-],
-[
-38.27,
--2.9,
-"INTC"
-],
-[
-42.15,
--6.7,
-"INTC"
-],
-[
-34.14,
--8.53,
-"INTC"
-],
-[
-37.27,
-0.31,
-"INTC"
-],
-[
-44.44,
-4.4,
-"META"
-],
-[
-55.57,
--3.73,
-"META"
-],
-[
-44.01,
-20.32,
-"META"
-],
-[
-47.28,
--10.56,
-"META"
-],
-[
-40.37,
-4.82,
-"META"
-],
-[
-49.88,
--4.09,
-"META"
-],
-[
-43.11,
-1.55,
-"META"
-],
-[
-43.6,
-4.23,
-"META"
-],
-[
-35.9,
-11.25,
-"META"
-],
-[
-34.83,
--11.33,
-"META"
-],
-[
-41.38,
--3.76,
-"MSFT"
-],
-[
-32.4,
-3.07,
-"MSFT"
-],
-[
-35.82,
--2.69,
-"MSFT"
-],
-[
-31.8,
-1.82,
-"MSFT"
-],
-[
-31.89,
--1.08,
-"MSFT"
-],
-[
-29.96,
--6.05,
-"MSFT"
-],
-[
-40.89,
--6.18,
-"MSFT"
-],
-[
-40.04,
-7.63,
-"MSFT"
-],
-[
-41.44,
-3.95,
-"MSFT"
-],
-[
-34.41,
--2.92,
-"MSFT"
-],
-[
-33.55,
--9.99,
-"MSFT"
-],
-[
-36.07,
--4.41,
-"MU"
-],
-[
-29.92,
-8.63,
-"MU"
-],
-[
-30.49,
-14.13,
-"MU"
-],
-[
-42.81,
--7.12,
-"MU"
-],
-[
-37.96,
-14.73,
-"MU"
-],
-[
-51.1,
--16.18,
-"MU"
-],
-[
-40.38,
--8.04,
-"MU"
-],
-[
-39.06,
--0.98,
-"MU"
-],
-[
-44.55,
--2.82,
-"MU"
-],
-[
-32.24,
-10.21,
-"MU"
-],
-[
-45.25,
--8.41,
-"NFLX"
-],
-[
-43.8,
-16.05,
-"NFLX"
-],
-[
-53.09,
-10.7,
-"NFLX"
-],
-[
-45.71,
--9.09,
-"NFLX"
-],
-[
-46.34,
--1.51,
-"NFLX"
-],
-[
-49.5,
-11.09,
-"NFLX"
-],
-[
-37.06,
-9.69,
-"NFLX"
-],
-[
-54.41,
-1.53,
-"NFLX"
-],
-[
-37.0,
--5.1,
-"NFLX"
-],
-[
-43.48,
--10.07,
-"NFLX"
-],
-[
-47.65,
-0.1,
-"NVDA"
-],
-[
-53.72,
--2.46,
-"NVDA"
-],
-[
-44.7,
-16.4,
-"NVDA"
-],
-[
-44.8,
-9.32,
-"NVDA"
-],
-[
-56.29,
--6.38,
-"NVDA"
-],
-[
-46.45,
-0.53,
-"NVDA"
-],
-[
-54.05,
--8.48,
-"NVDA"
-],
-[
-56.51,
-3.25,
-"NVDA"
-],
-[
-56.44,
--0.79,
-"NVDA"
-],
-[
-37.72,
--3.15,
-"NVDA"
-],
-[
-40.36,
-14.84,
-"PANW"
-],
-[
-56.57,
--5.42,
-"PANW"
-],
-[
-61.25,
--28.44,
-"PANW"
-],
-[
-50.64,
--3.74,
-"PANW"
-],
-[
-56.26,
-7.18,
-"PANW"
-],
-[
-47.36,
-1.22,
-"PANW"
-],
-[
-42.02,
--0.92,
-"PANW"
-],
-[
-58.17,
--6.8,
-"PANW"
-],
-[
-57.38,
-3.06,
-"PANW"
-],
-[
-49.78,
--7.42,
-"PANW"
-],
-[
-47.63,
--8.18,
-"QCOM"
-],
-[
-37.92,
-5.83,
-"QCOM"
-],
-[
-50.3,
--4.98,
-"QCOM"
-],
-[
-41.51,
-9.74,
-"QCOM"
-],
-[
-45.91,
--9.37,
-"QCOM"
-],
-[
-39.03,
--0.05,
-"QCOM"
-],
-[
-48.1,
--3.72,
-"QCOM"
-],
-[
-44.6,
--8.92,
-"QCOM"
-],
-[
-54.29,
--7.73,
-"QCOM"
-],
-[
-54.76,
--3.63,
-"QCOM"
-],
-[
-57.36,
--9.74,
-"TSLA"
-],
-[
-51.42,
--9.3,
-"TSLA"
-],
-[
-53.28,
--12.13,
-"TSLA"
-],
-[
-45.12,
-12.06,
-"TSLA"
-],
-[
-64.16,
--12.33,
-"TSLA"
-],
-[
-54.42,
-21.92,
-"TSLA"
-],
-[
-41.78,
-2.87,
-"TSLA"
-],
-[
-40.52,
-5.37,
-"TSLA"
-],
-[
-52.3,
--8.2,
-"TSLA"
-],
-[
-49.22,
-2.28,
-"TSLA"
-],
-[
-57.82,
--5.42,
-"TXN"
-],
-[
-47.51,
--3.49,
-"TXN"
-],
-[
-47.78,
--2.45,
-"TXN"
-],
-[
-65.35,
-5.64,
-"TXN"
-],
-[
-49.32,
--0.01,
-"TXN"
-],
-[
-60.28,
-4.01,
-"TXN"
-],
-[
-41.79,
--7.52,
-"TXN"
-],
-[
-47.15,
-6.56,
-"TXN"
-],
-[
-46.72,
--13.34,
-"TXN"
-],
-[
-32.82,
--5.6,
-"TXN"
-]
-],
-"ols": {
-"b0": 5.874863233468433,
-"b1": -0.15495984262803347,
-"xmin": 19.53539369131589,
-"xmax": 65.3487779443334
-}
-};
-const $=id=>document.getElementById(id);
-const NS="http://www.w3.org/2000/svg";
-const tip=$("tip");
-function el(tag,attrs){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
-function showTip(html,ev){tip.innerHTML=html;tip.style.opacity=1;let x=ev.clientX+14,y=ev.clientY+14;
-  const w=tip.offsetWidth,h=tip.offsetHeight;if(x+w>innerWidth-8)x=ev.clientX-w-14;if(y+h>innerHeight-8)y=ev.clientY-h-14;
+const DATA = {"n_events": 2694, "n_names": 94, "window": ["2018-08", "2026-07"], "next_day": {"mean": 0.006043562766934668, "median": 0.00306649570768575, "pos": 0.5253863134657837}, "m1": {"mean": 0.023272921465127168, "median": 0.0129335537482171, "pos": 0.5470934510669611}, "corr": {"dpi5_next_day": {"pearson": 0.039105736363168934, "pearson_p": 0.04240037278287343, "spearman": 0.035789900961114104, "spearman_p": 0.0632594933929637, "within": 0.046287302406955035, "within_p": 0.016276414891821838, "n": 2694}, "dpi5_m1": {"pearson": 0.0641319495715729, "pearson_p": 0.0008666739873817497, "spearman": 0.08415040004649246, "spearman_p": 1.2229624275721718e-05, "within": 0.05077932509318603, "within_p": 0.008386124610179011, "n": 2694}, "dpi10_next_day": {"pearson": 0.04989975977867968, "pearson_p": 0.009586537391914575, "spearman": 0.04474039897616582, "spearman_p": 0.020217867512868824, "within": 0.05035604017022702, "within_p": 0.008945940635265087, "n": 2694}, "dpi10_m1": {"pearson": 0.09904791761661016, "pearson_p": 2.587643148112638e-07, "spearman": 0.11524089331541722, "spearman_p": 1.989598598146163e-09, "within": 0.09319994780673727, "within_p": 1.2614549397465459e-06, "n": 2694}}, "tercile": {"next": {"hi": 0.01270919711621881, "mid": 0.0004973261659036695, "lo": 0.0045695594955424985, "hi_up": 0.5645330535152151, "lo_up": 0.5075669383003493, "mid_up": 0.5045351473922902, "nh": 953, "nm": 882, "nl": 859, "diff": 0.008139637620676312, "t": 2.3620723270634825, "p": 0.018279559640624433}, "m1": {"hi": 0.039548459878838975, "mid": 0.018164640804728235, "lo": 0.01100765822444892, "hi_up": 0.608604407135362, "lo_up": 0.4970896391152503, "mid_up": 0.5374149659863946, "nh": 953, "nm": 882, "nl": 859, "diff": 0.028540801654390054, "t": 4.09786546929773, "p": 4.3563916361111343e-05}}, "quintile": {"next_day": [0.003760429366736155, 0.001719378536178296, 0.0010526641792271668, 0.008165247706749474, 0.016075775035544256], "m1": [0.008560926584563573, 0.012934416302945066, 0.02088674351369026, 0.03143604834042402, 0.04427620623101491]}, "period": [{"year": 2018, "n": 112, "m1_r": 0.0332714465184454, "m1_p": 0.727646287700044, "next_r": -0.11463652165803843, "next_p": 0.22875929185616706}, {"year": 2019, "n": 306, "m1_r": 0.021352079133122457, "m1_p": 0.7098760150687373, "next_r": 0.04446593285424787, "next_p": 0.4383182983613604}, {"year": 2020, "n": 317, "m1_r": 0.10014326059108823, "m1_p": 0.07500485136813365, "next_r": -0.0011675709433140785, "next_p": 0.9834802657997374}, {"year": 2021, "n": 338, "m1_r": 0.0556088799532041, "m1_p": 0.30803283750864574, "next_r": -0.04765608287397489, "next_p": 0.3824466964331287}, {"year": 2022, "n": 350, "m1_r": 0.14869270866536927, "m1_p": 0.0053141784518088795, "next_r": 0.14602070457075564, "next_p": 0.0062057332876142846}, {"year": 2023, "n": 356, "m1_r": 0.1240259407217987, "m1_p": 0.01923567432095465, "next_r": 0.030023356951288334, "next_p": 0.5723359323431088}, {"year": 2024, "n": 358, "m1_r": 0.16548214887473464, "m1_p": 0.0016790833242559698, "next_r": 0.04555237114822096, "next_p": 0.390162218353141}, {"year": 2025, "n": 372, "m1_r": 0.12565683975191136, "m1_p": 0.015306520801329373, "next_r": 0.16408319070128005, "next_p": 0.0014951612473185882}, {"year": 2026, "n": 185, "m1_r": -0.01651214949752942, "m1_p": 0.8234713069098017, "next_r": 0.010932161888663796, "next_p": 0.8825873714329637}], "subgroup": {"mega": {"n": 622, "next_r": 0.0028577372112648988, "next_p": 0.9432954529568534, "m1_r": 0.11409212184557044, "m1_p": 0.004385221882989875}, "nonmega": {"n": 2072, "next_r": 0.05458161033268514, "next_p": 0.01296002806780552, "m1_r": 0.09277600711938697, "m1_p": 2.3403582219374593e-05}, "amc": {"n": 1838, "next_r": 0.05262349901960617, "next_p": 0.024064497501443856, "m1_r": 0.10698426006755105, "m1_p": 4.292426440410489e-06}, "bmo": {"n": 811, "next_r": 0.056645454644158495, "next_p": 0.10697085161833542, "m1_r": 0.08349846457828941, "m1_p": 0.01738978423069916}}, "pername": [{"ticker": "ALAB", "r": -0.8164573524035723, "n": 9}, {"ticker": "DASH", "r": -0.5080848916938268, "n": 22}, {"ticker": "AMZN", "r": -0.4089718078777219, "n": 31}, {"ticker": "MNST", "r": -0.26566032662645434, "n": 32}, {"ticker": "RKLB", "r": -0.24514210768781503, "n": 18}, {"ticker": "CDNS", "r": -0.22106680363884948, "n": 31}, {"ticker": "STX", "r": -0.21965874089639756, "n": 31}, {"ticker": "GEHC", "r": -0.2183134987270258, "n": 14}, {"ticker": "CEG", "r": -0.19943003336809792, "n": 17}, {"ticker": "COST", "r": -0.18492279943782503, "n": 32}, {"ticker": "KLAC", "r": -0.16734364054103942, "n": 31}, {"ticker": "MU", "r": -0.15470266452873851, "n": 31}, {"ticker": "ODFL", "r": -0.1499479657104618, "n": 31}, {"ticker": "ROP", "r": -0.14278088776921283, "n": 30}, {"ticker": "LITE", "r": -0.1389398202896702, "n": 32}, {"ticker": "ADSK", "r": -0.132921491584511, "n": 31}, {"ticker": "ABNB", "r": -0.12405530268439159, "n": 22}, {"ticker": "QCOM", "r": -0.11141826119566202, "n": 31}, {"ticker": "WDC", "r": -0.10540463209705646, "n": 30}, {"ticker": "CRWD", "r": -0.08391120189577528, "n": 29}, {"ticker": "PCAR", "r": -0.0810858207634635, "n": 31}, {"ticker": "ALNY", "r": -0.05735325418115732, "n": 28}, {"ticker": "META", "r": -0.042130825230194846, "n": 31}, {"ticker": "CMCSA", "r": -0.02544048111582754, "n": 31}, {"ticker": "AMD", "r": -0.014957918186550172, "n": 31}, {"ticker": "AVGO", "r": -0.01332054673231091, "n": 32}, {"ticker": "ROST", "r": -0.009753384461067714, "n": 32}, {"ticker": "MAR", "r": -0.009564700889013688, "n": 32}, {"ticker": "BKR", "r": -0.007152280252133633, "n": 27}, {"ticker": "DXCM", "r": 0.005694255975276196, "n": 32}, {"ticker": "MSFT", "r": 0.005883425915341502, "n": 31}, {"ticker": "DDOG", "r": 0.006859389052443914, "n": 27}, {"ticker": "AAPL", "r": 0.007333349327140752, "n": 31}, {"ticker": "ADI", "r": 0.044882444813063894, "n": 32}, {"ticker": "PAYX", "r": 0.0564614847402956, "n": 31}, {"ticker": "AMAT", "r": 0.06147172502990121, "n": 31}, {"ticker": "VRTX", "r": 0.07765735195168108, "n": 31}, {"ticker": "SNPS", "r": 0.07806580246731054, "n": 32}, {"ticker": "NXPI", "r": 0.07961751313542742, "n": 27}, {"ticker": "CTAS", "r": 0.08064718907217398, "n": 31}, {"ticker": "ADP", "r": 0.08147545946346382, "n": 32}, {"ticker": "WMT", "r": 0.08956207574477362, "n": 31}, {"ticker": "NVDA", "r": 0.10011931278395557, "n": 32}, {"ticker": "ORLY", "r": 0.1254511086506486, "n": 30}, {"ticker": "TMUS", "r": 0.1274135290464728, "n": 32}, {"ticker": "LIN", "r": 0.13934337288114576, "n": 29}, {"ticker": "GOOGL", "r": 0.13997530836135716, "n": 31}, {"ticker": "LRCX", "r": 0.14003800012949238, "n": 31}, {"ticker": "MRVL", "r": 0.14253750848574684, "n": 21}, {"ticker": "KHC", "r": 0.1514970708444607, "n": 31}, {"ticker": "SBUX", "r": 0.15811022648175144, "n": 31}, {"ticker": "IDXX", "r": 0.16151049005075876, "n": 32}, {"ticker": "CSX", "r": 0.16587442297343374, "n": 31}, {"ticker": "MDLZ", "r": 0.16664569553919728, "n": 31}, {"ticker": "PYPL", "r": 0.16759760901655352, "n": 31}, {"ticker": "MCHP", "r": 0.17621588281688996, "n": 32}, {"ticker": "TTWO", "r": 0.17722057656157963, "n": 31}, {"ticker": "MSTR", "r": 0.18276313800467966, "n": 16}, {"ticker": "APP", "r": 0.1879984982244058, "n": 21}, {"ticker": "WBD", "r": 0.19013831041758786, "n": 17}, {"ticker": "FANG", "r": 0.19893987850085754, "n": 32}, {"ticker": "FTNT", "r": 0.20538148953288285, "n": 32}, {"ticker": "FAST", "r": 0.20798653667466627, "n": 31}, {"ticker": "TER", "r": 0.21550756634314086, "n": 29}, {"ticker": "BKNG", "r": 0.2174250394109102, "n": 32}, {"ticker": "KDP", "r": 0.21757966928252856, "n": 32}, {"ticker": "INTU", "r": 0.2237885552364312, "n": 32}, {"ticker": "INTC", "r": 0.23725088408414616, "n": 31}, {"ticker": "EXC", "r": 0.2399100515262893, "n": 31}, {"ticker": "AXON", "r": 0.25702187825656403, "n": 32}, {"ticker": "CSCO", "r": 0.26633087185418614, "n": 32}, {"ticker": "EA", "r": 0.26773580490090465, "n": 31}, {"ticker": "XEL", "r": 0.2728155698823187, "n": 30}, {"ticker": "ISRG", "r": 0.2741004706453415, "n": 31}, {"ticker": "TXN", "r": 0.27717406332474837, "n": 31}, {"ticker": "ADBE", "r": 0.297431383680104, "n": 27}, {"ticker": "PANW", "r": 0.3081128482173344, "n": 32}, {"ticker": "WDAY", "r": 0.316399761840757, "n": 32}, {"ticker": "AMGN", "r": 0.31752377572359886, "n": 31}, {"ticker": "REGN", "r": 0.33341724281808766, "n": 32}, {"ticker": "NFLX", "r": 0.34017638104345593, "n": 31}, {"ticker": "GILD", "r": 0.34818727155176615, "n": 31}, {"ticker": "AEP", "r": 0.3712188424853786, "n": 31}, {"ticker": "PEP", "r": 0.3713753728954547, "n": 31}, {"ticker": "MPWR", "r": 0.39725410997695504, "n": 31}, {"ticker": "GOOG", "r": 0.41344740465260665, "n": 31}, {"ticker": "CPRT", "r": 0.43975871349419393, "n": 32}, {"ticker": "MELI", "r": 0.44215486899891326, "n": 32}, {"ticker": "TSLA", "r": 0.44464284206041627, "n": 32}, {"ticker": "HON", "r": 0.4651655488954466, "n": 31}, {"ticker": "PLTR", "r": 0.478836299107098, "n": 23}], "scatter": [[48.32, -16.54, "AAPL"], [50.43, 12.42, "AAPL"], [53.0, -10.81, "AAPL"], [39.16, -1.18, "AAPL"], [39.5, 10.19, "AAPL"], [37.19, -13.7, "AAPL"], [42.81, 9.84, "AAPL"], [38.84, 29.98, "AAPL"], [38.11, 3.41, "AAPL"], [40.03, -14.51, "AAPL"], [41.62, -6.05, "AAPL"], [35.78, 1.23, "AAPL"], [49.94, 5.18, "AAPL"], [39.32, 3.84, "AAPL"], [60.03, -8.42, "AAPL"], [48.49, 4.13, "AAPL"], [52.14, -0.24, "AAPL"], [39.39, 2.15, "AAPL"], [43.72, 8.47, "AAPL"], [44.97, -0.76, "AAPL"], [50.73, 6.82, "AAPL"], [35.83, -6.17, "AAPL"], [47.07, 12.29, "AAPL"], [46.97, 4.99, "AAPL"], [52.36, 6.17, "AAPL"], [54.96, 0.3, "AAPL"], [40.88, -5.32, "AAPL"], [54.92, 11.96, "AAPL"], [47.78, 4.41, "AAPL"], [41.03, 2.59, "AAPL"], [45.11, 12.99, "AAPL"], [56.54, -4.21, "ABNB"], [33.33, 9.92, "ABNB"], [47.66, 6.07, "ABNB"], [48.62, 1.34, "ABNB"], [42.02, -12.51, "ABNB"], [47.32, -16.37, "ABNB"], [53.48, -2.77, "ABNB"], [47.65, -7.13, "ABNB"], [58.14, -0.73, "ABNB"], [52.33, -9.11, "ABNB"], [57.67, -5.81, "ABNB"], [61.63, 13.02, "ABNB"], [55.97, 10.36, "ABNB"], [40.86, -7.12, "ABNB"], [55.57, -10.97, "ABNB"], [47.33, -6.85, "ABNB"], [56.73, -10.0, "ABNB"], [35.24, 4.52, "ABNB"], [42.73, -5.13, "ABNB"], [33.79, 1.23, "ABNB"], [41.67, 10.66, "ABNB"], [54.58, -4.29, "ABNB"], [46.04, -7.32, "ADBE"], [36.67, 1.56, "ADBE"], [32.21, 12.03, "ADBE"], [42.65, -4.21, "ADBE"], [47.61, 12.51, "ADBE"], [45.42, 14.14, "ADBE"], [35.11, 1.74, "ADBE"], [51.25, 10.23, "ADBE"], [46.55, 9.19, "ADBE"], [45.66, -2.09, "ADBE"], [41.27, -10.5, "ADBE"], [50.07, 6.23, "ADBE"], [44.09, -20.67, "ADBE"], [48.03, 3.83, "ADBE"], [45.34, 13.72, "ADBE"], [41.58, 8.42, "ADBE"], [48.62, -0.62, "ADBE"], [49.57, -4.26, "ADBE"], [40.01, -17.59, "ADBE"], [42.75, 23.5, "ADBE"], [32.04, -15.54, "ADBE"], [34.42, -24.95, "ADBE"], [36.54, -20.19, "ADBE"], [40.49, -11.97, "ADBE"], [41.71, -3.72, "ADBE"], [53.07, -11.0, "ADBE"], [54.26, 0.9, "ADBE"], [51.16, -0.38, "ADI"], [50.29, -2.73, "ADI"], [30.53, 4.75, "ADI"], [38.74, 13.32, "ADI"], [27.53, 5.6, "ADI"], [43.86, 6.52, "ADI"], [39.63, -30.27, "ADI"], [45.85, 16.13, "ADI"], [67.78, -1.52, "ADI"], [51.97, 4.95, "ADI"], [57.88, -3.53, "ADI"], [48.75, 14.42, "ADI"], [40.17, 4.6, "ADI"], [41.85, -6.77, "ADI"], [45.29, -0.79, "ADI"], [39.9, -12.03, "ADI"], [54.1, -17.01, "ADI"], [47.31, 5.6, "ADI"], [55.31, 2.72, "ADI"], [51.5, -0.58, "ADI"], [48.68, -1.13, "ADI"], [60.28, 5.05, "ADI"], [48.4, 3.08, "ADI"], [54.39, 7.08, "ADI"], [50.44, 4.87, "ADI"], [60.64, -2.06, "ADI"], [44.82, -4.24, "ADI"], [61.6, 4.42, "ADI"], [60.36, 8.5, "ADI"], [50.77, 16.35, "ADI"], [45.43, -8.28, "ADI"], [40.21, 5.15, "ADI"], [46.56, 8.42, "ADP"], [38.12, 6.26, "ADP"], [42.69, 14.2, "ADP"], [38.31, -2.12, "ADP"], [37.26, 1.35, "ADP"], [31.7, 5.31, "ADP"], [45.09, -11.65, "ADP"], [38.16, 1.25, "ADP"], [36.22, -4.8, "ADP"], [45.04, 19.21, "ADP"], [56.23, 6.69, "ADP"], [47.61, -0.77, "ADP"], [35.85, 0.14, "ADP"], [50.83, 7.12, "ADP"], [59.3, -7.68, "ADP"], [43.32, -3.77, "ADP"], [50.07, 17.54, "ADP"], [48.68, 10.44, "ADP"], [57.03, -6.85, "ADP"], [48.64, 1.09, "ADP"], [54.08, 4.34, "ADP"], [48.97, -3.87, "ADP"], [58.9, 5.26, "ADP"], [51.57, -0.41, "ADP"], [52.75, 5.8, "ADP"], [50.13, 6.59, "ADP"], [44.57, 4.35, "ADP"], [42.91, 9.59, "ADP"], [55.15, -1.8, "ADP"], [57.14, -9.05, "ADP"], [30.51, -14.2, "ADP"], [56.23, 10.39, "ADP"], [37.82, 12.12, "ADSK"], [41.92, -2.23, "ADSK"], [34.2, -4.41, "ADSK"], [44.32, -0.61, "ADSK"], [57.22, -0.76, "ADSK"], [30.31, 8.54, "ADSK"], [34.9, -21.63, "ADSK"], [41.77, 17.35, "ADSK"], [40.34, -12.4, "ADSK"], [36.64, 16.38, "ADSK"], [36.02, -5.29, "ADSK"], [46.87, 2.33, "ADSK"], [50.76, -13.91, "ADSK"], [51.67, -7.57, "ADSK"], [45.03, -2.77, "ADSK"], [35.29, -7.73, "ADSK"], [60.5, -13.93, "ADSK"], [37.49, -9.96, "ADSK"], [56.98, -9.47, "ADSK"], [58.39, 4.7, "ADSK"], [47.17, -0.16, "ADSK"], [54.96, 11.13, "ADSK"], [43.62, 19.83, "ADSK"], [50.05, 6.68, "ADSK"], [35.14, -6.41, "ADSK"], [50.3, -7.34, "ADSK"], [54.9, 3.12, "ADSK"], [50.92, 11.63, "ADSK"], [47.06, 2.13, "ADSK"], [51.82, -1.55, "ADSK"], [64.25, -18.97, "ADSK"], [44.33, 1.3, "AEP"], [45.95, 7.02, "AEP"], [55.19, 5.8, "AEP"], [29.84, 2.28, "AEP"], [40.29, -2.83, "AEP"], [30.49, -21.92, "AEP"], [49.88, 2.22, "AEP"], [47.42, -5.44, "AEP"], [29.58, -8.05, "AEP"], [47.74, 9.88, "AEP"], [38.94, -2.64, "AEP"], [27.75, 7.6, "AEP"], [30.26, -1.16, "AEP"], [43.28, 13.94, "AEP"], [35.94, 3.88, "AEP"], [60.8, 7.31, "AEP"], [53.88, 10.2, "AEP"], [37.0, -5.96, "AEP"], [40.48, -7.33, "AEP"], [40.53, -9.09, "AEP"], [43.13, 6.47, "AEP"], [52.85, 2.12, "AEP"], [36.96, 1.91, "AEP"], [55.28, 2.43, "AEP"], [48.23, -1.99, "AEP"], [55.56, 3.14, "AEP"], [48.42, -4.36, "AEP"], [50.11, 4.21, "AEP"], [43.52, 7.45, "AEP"], [48.9, 9.29, "AEP"], [54.34, -5.52, "AEP"], [66.81, -17.3, "ALAB"], [62.31, -1.86, "ALAB"], [36.31, 65.5, "ALAB"], [63.55, -33.37, "ALAB"], [58.26, 27.12, "ALAB"], [57.62, 38.67, "ALAB"], [60.19, -14.95, "ALAB"], [56.91, -34.43, "ALAB"], [41.44, 66.0, "ALAB"], [44.68, 28.99, "ALNY"], [57.76, -13.79, "ALNY"], [62.77, 8.73, "ALNY"], [50.11, -23.09, "ALNY"], [51.93, 15.29, "ALNY"], [41.66, 34.23, "ALNY"], [51.66, -6.74, "ALNY"], [58.2, -6.61, "ALNY"], [38.01, -16.78, "ALNY"], [39.17, -7.12, "ALNY"], [49.64, -13.38, "ALNY"], [63.13, -2.3, "ALNY"], [39.91, 13.19, "ALNY"], [50.19, -1.38, "ALNY"], [51.37, 2.35, "ALNY"], [27.48, -18.93, "ALNY"], [49.55, 50.68, "ALNY"], [63.59, 5.82, "ALNY"], [58.61, -5.28, "ALNY"], [63.12, -2.92, "ALNY"], [70.51, 5.78, "ALNY"], [49.57, 9.18, "ALNY"], [48.48, -9.06, "ALNY"], [50.61, 13.03, "ALNY"], [42.17, 33.12, "ALNY"], [55.02, -6.3, "ALNY"], [58.34, -2.75, "ALNY"], [54.19, 0.26, "ALNY"], [27.74, -18.03, "AMAT"], [39.79, -4.43, "AMAT"], [33.04, -1.24, "AMAT"], [39.42, -2.29, "AMAT"], [30.27, 8.46, "AMAT"], [29.38, 5.63, "AMAT"], [38.54, -21.91, "AMAT"], [48.29, 5.23, "AMAT"], [32.19, -12.94, "AMAT"], [27.33, 27.17, "AMAT"], [47.92, 1.45, "AMAT"], [50.4, 2.28, "AMAT"], [41.02, 5.09, "AMAT"], [38.57, -8.5, "AMAT"], [57.39, -3.96, "AMAT"], [36.43, -13.85, "AMAT"], [49.31, -16.92, "AMAT"], [52.23, -0.2, "AMAT"], [53.1, 7.75, "AMAT"], [51.65, 6.89, "AMAT"], [49.56, 2.17, "AMAT"], [49.24, 3.81, "AMAT"], [41.68, 7.15, "AMAT"], [59.83, -11.28, "AMAT"], [41.76, -8.71, "AMAT"], [40.97, -15.44, "AMAT"], [61.01, 1.32, "AMAT"], [52.28, -8.94, "AMAT"], [42.38, 17.27, "AMAT"], [48.53, 5.55, "AMAT"], [51.57, 33.13, "AMAT"], [61.36, -14.96, "AMD"], [42.64, 22.23, "AMD"], [38.57, 1.45, "AMD"], [40.99, -9.12, "AMD"], [40.82, 19.32, "AMD"], [55.82, -12.9, "AMD"], [63.64, -6.79, "AMD"], [41.53, 27.23, "AMD"], [39.23, 3.45, "AMD"], [37.3, -12.98, "AMD"], [41.97, -8.06, "AMD"], [43.28, 18.97, "AMD"], [49.44, 28.37, "AMD"], [55.98, -4.11, "AMD"], [58.11, 19.16, "AMD"], [48.96, -14.52, "AMD"], [44.6, 29.87, "AMD"], [50.2, 7.04, "AMD"], [53.45, 32.88, "AMD"], [50.53, -9.36, "AMD"], [53.39, 23.01, "AMD"], [51.3, 11.9, "AMD"], [47.5, 5.28, "AMD"], [54.24, 5.72, "AMD"], [49.93, -18.05, "AMD"], [36.3, -17.28, "AMD"], [47.7, 17.31, "AMD"], [54.85, -7.18, "AMD"], [41.97, -13.63, "AMD"], [44.29, -17.62, "AMD"], [46.83, 47.27, "AMD"], [43.8, 7.78, "AMGN"], [32.28, -0.29, "AMGN"], [38.39, -4.92, "AMGN"], [36.13, 18.44, "AMGN"], [38.66, 12.97, "AMGN"], [38.29, -5.5, "AMGN"], [39.96, -4.5, "AMGN"], [49.97, -1.34, "AMGN"], [33.15, 4.6, "AMGN"], [41.47, -7.04, "AMGN"], [41.12, -5.84, "AMGN"], [33.28, -7.79, "AMGN"], [32.16, -5.32, "AMGN"], [53.34, 4.44, "AMGN"], [62.38, 2.53, "AMGN"], [56.28, -1.11, "AMGN"], [52.28, 7.9, "AMGN"], [47.28, -6.18, "AMGN"], [41.52, -8.89, "AMGN"], [48.3, 12.18, "AMGN"], [59.17, 2.09, "AMGN"], [42.12, -13.0, "AMGN"], [54.33, 11.21, "AMGN"], [52.95, -0.71, "AMGN"], [42.82, -9.64, "AMGN"], [60.27, 10.85, "AMGN"], [55.99, 2.55, "AMGN"], [57.42, -5.9, "AMGN"], [60.2, 15.47, "AMGN"], [55.96, 9.32, "AMGN"], [50.14, -4.23, "AMGN"], [37.22, -11.27, "AMZN"], [49.58, -1.31, "AMZN"], [47.27, -4.15, "AMZN"], [52.44, -11.36, "AMZN"], [41.12, -1.97, "AMZN"], [37.83, 4.45, "AMZN"], [36.38, -0.12, "AMZN"], [36.28, 11.47, "AMZN"], [36.64, -1.34, "AMZN"], [39.87, -11.91, "AMZN"], [39.29, -7.15, "AMZN"], [39.51, -6.95, "AMZN"], [46.48, 3.34, "AMZN"], [53.68, -1.0, "AMZN"], [55.55, -20.37, "AMZN"], [41.44, 6.93, "AMZN"], [43.79, -15.33, "AMZN"], [37.87, -16.97, "AMZN"], [36.2, 9.37, "AMZN"], [37.7, 7.14, "AMZN"], [32.26, 23.55, "AMZN"], [31.53, 11.49, "AMZN"], [31.49, 2.47, "AMZN"], [39.07, -3.03, "AMZN"], [39.65, 13.04, "AMZN"], [35.03, -18.54, "AMZN"], [39.51, 8.65, "AMZN"], [32.75, -2.18, "AMZN"], [33.72, 4.94, "AMZN"], [38.24, -4.13, "AMZN"], [27.71, 2.89, "AMZN"], [45.64, 57.74, "APP"], [54.47, 32.27, "APP"], [52.65, -5.29, "APP"], [51.58, -20.75, "APP"], [49.39, 32.37, "APP"], [47.18, -31.46, "APP"], [46.1, -24.6, "APP"], [61.94, -2.92, "APP"], [43.62, 27.23, "APP"], [40.31, 43.22, "APP"], [39.19, -6.88, "APP"], [65.58, 34.69, "APP"], [45.18, 10.69, "APP"], [58.38, 25.87, "APP"], [56.5, 138.21, "APP"], [48.32, -22.99, "APP"], [52.12, 37.71, "APP"], [51.97, 25.52, "APP"], [57.45, 12.14, "APP"], [53.73, 0.41, "APP"], [50.13, 18.85, "APP"], [39.93, 13.93, "AVGO"], [43.79, 4.98, "AVGO"], [38.95, 19.26, "AVGO"], [37.13, 3.37, "AVGO"], [48.68, -5.68, "AVGO"], [34.55, -5.03, "AVGO"], [52.91, 20.82, "AVGO"], [38.63, 4.27, "AVGO"], [36.67, 4.93, "AVGO"], [43.29, 10.53, "AVGO"], [40.68, 10.98, "AVGO"], [47.75, 1.51, "AVGO"], [51.83, -2.53, "AVGO"], [32.41, 7.15, "AVGO"], [47.14, 9.09, "AVGO"], [55.0, -4.09, "AVGO"], [50.85, -6.38, "AVGO"], [45.51, 9.16, "AVGO"], [41.99, 7.94, "AVGO"], [47.69, 11.54, "AVGO"], [47.53, -9.04, "AVGO"], [43.18, 17.91, "AVGO"], [54.18, -4.64, "AVGO"], [40.64, 14.99, "AVGO"], [50.61, 15.97, "AVGO"], [33.23, 26.54, "AVGO"], [32.93, -18.23, "AVGO"], [32.94, 4.81, "AVGO"], [31.09, 10.73, "AVGO"], [30.32, -12.57, "AVGO"], [36.38, -0.73, "AVGO"], [42.03, -21.86, "AVGO"], [54.01, 3.95, "AXON"], [37.8, -27.56, "AXON"], [49.47, -12.79, "AXON"], [60.92, 7.76, "AXON"], [50.16, -12.95, "AXON"], [55.85, 37.89, "AXON"], [50.65, -3.51, "AXON"], [45.64, 38.4, "AXON"], [50.23, -9.82, "AXON"], [30.21, 13.17, "AXON"], [37.97, -13.81, "AXON"], [54.11, 12.04, "AXON"], [41.71, -4.44, "AXON"], [40.69, -11.87, "AXON"], [57.18, 1.95, "AXON"], [44.28, 12.94, "AXON"], [69.27, 9.95, "AXON"], [57.65, 14.47, "AXON"], [48.35, 8.25, "AXON"], [44.35, -14.17, "AXON"], [57.67, 22.95, "AXON"], [50.51, 8.76, "AXON"], [59.25, 16.12, "AXON"], [57.66, -13.89, "AXON"], [56.5, 20.29, "AXON"], [41.03, 37.09, "AXON"], [53.85, 12.57, "AXON"], [57.31, 31.58, "AXON"], [60.54, -2.63, "AXON"], [52.73, -22.02, "AXON"], [57.9, 3.99, "AXON"], [63.37, 25.98, "AXON"], [40.16, -7.0, "BKNG"], [37.3, 0.59, "BKNG"], [32.14, -9.29, "BKNG"], [54.82, 2.6, "BKNG"], [44.31, 8.02, "BKNG"], [45.21, 3.02, "BKNG"], [53.32, -16.22, "BKNG"], [50.27, 27.49, "BKNG"], [49.16, 9.47, "BKNG"], [39.41, 20.39, "BKNG"], [51.54, -7.15, "BKNG"], [51.95, -0.95, "BKNG"], [53.33, 10.3, "BKNG"], [37.66, -13.18, "BKNG"], [51.35, -8.42, "BKNG"], [49.04, 11.06, "BKNG"], [49.82, -5.8, "BKNG"], [56.72, 17.28, "BKNG"], [53.39, 3.0, "BKNG"], [52.25, 2.58, "BKNG"], [57.37, 9.68, "BKNG"], [65.17, 10.42, "BKNG"], [49.37, -6.87, "BKNG"], [51.68, 8.37, "BKNG"], [48.34, 6.69, "BKNG"], [39.5, 16.53, "BKNG"], [57.16, -7.8, "BKNG"], [62.99, 12.07, "BKNG"], [63.54, 0.45, "BKNG"], [29.7, -4.08, "BKNG"], [40.91, 0.8, "BKNG"], [35.61, -2.05, "BKNG"], [28.73, 3.82, "BKR"], [29.82, -8.37, "BKR"], [47.74, 22.43, "BKR"], [62.73, 1.21, "BKR"], [43.98, 37.89, "BKR"], [26.58, 3.07, "BKR"], [41.98, 29.32, "BKR"], [38.06, 6.59, "BKR"], [54.09, -8.76, "BKR"], [39.63, 12.71, "BKR"], [34.87, -5.72, "BKR"], [28.93, -11.64, "BKR"], [28.78, 25.87, "BKR"], [43.71, -2.43, "BKR"], [32.47, -6.85, "BKR"], [40.44, 0.37, "BKR"], [35.6, 0.18, "BKR"], [35.34, -6.72, "BKR"], [43.91, -2.11, "BKR"], [53.15, -0.41, "BKR"], [41.49, 23.84, "BKR"], [58.02, -1.77, "BKR"], [46.48, -3.86, "BKR"], [63.7, 7.64, "BKR"], [62.2, 0.45, "BKR"], [38.08, 20.48, "BKR"], [57.31, 2.78, "BKR"], [36.62, 5.1, "CDNS"], [35.48, 16.74, "CDNS"], [22.87, 1.78, "CDNS"], [33.15, -5.33, "CDNS"], [32.73, 2.61, "CDNS"], [45.74, -18.98, "CDNS"], [43.52, 9.76, "CDNS"], [53.1, 5.26, "CDNS"], [26.92, -0.07, "CDNS"], [40.73, -3.69, "CDNS"], [52.65, -11.61, "CDNS"], [38.74, 9.39, "CDNS"], [36.58, 8.49, "CDNS"], [45.91, 16.33, "CDNS"], [56.22, -4.7, "CDNS"], [38.74, 9.3, "CDNS"], [44.73, 3.11, "CDNS"], [59.46, 9.28, "CDNS"], [50.1, -3.39, "CDNS"], [50.95, -6.53, "CDNS"], [42.68, 12.7, "CDNS"], [55.18, -0.12, "CDNS"], [52.09, 1.78, "CDNS"], [52.73, -1.99, "CDNS"], [48.51, 22.68, "CDNS"], [64.74, -13.89, "CDNS"], [50.4, 1.0, "CDNS"], [53.76, 3.08, "CDNS"], [43.99, -13.59, "CDNS"], [50.51, 2.18, "CDNS"], [45.85, 11.15, "CDNS"], [48.13, 4.47, "CEG"], [44.68, 23.07, "CEG"], [43.54, -1.49, "CEG"], [39.61, -10.42, "CEG"], [42.66, 14.82, "CEG"], [46.96, 9.3, "CEG"], [35.67, 1.29, "CEG"], [45.25, 39.45, "CEG"], [49.93, -4.66, "CEG"], [45.46, 4.64, "CEG"], [45.32, -3.95, "CEG"], [54.98, -33.42, "CEG"], [55.76, 20.82, "CEG"], [49.45, -10.79, "CEG"], [56.94, 1.93, "CEG"], [50.24, 0.49, "CEG"], [50.88, -16.99, "CEG"], [38.76, 9.58, "CMCSA"], [31.23, 5.25, "CMCSA"], [37.1, 2.1, "CMCSA"], [39.24, -2.45, "CMCSA"], [43.14, -2.97, "CMCSA"], [42.64, -3.41, "CMCSA"], [49.8, 1.54, "CMCSA"], [36.59, 1.46, "CMCSA"], [32.35, 23.27, "CMCSA"], [34.91, 8.88, "CMCSA"], [35.3, 5.99, "CMCSA"], [29.33, 1.76, "CMCSA"], [41.81, -2.56, "CMCSA"], [43.12, -2.87, "CMCSA"], [44.61, -0.72, "CMCSA"], [41.61, -13.3, "CMCSA"], [50.49, 13.17, "CMCSA"], [50.72, -7.73, "CMCSA"], [29.4, 7.04, "CMCSA"], [34.09, 5.43, "CMCSA"], [48.44, -0.4, "CMCSA"], [50.14, -4.34, "CMCSA"], [40.5, -3.81, "CMCSA"], [38.51, 1.26, "CMCSA"], [32.3, 2.25, "CMCSA"], [31.71, -3.96, "CMCSA"], [44.3, 0.35, "CMCSA"], [34.6, 3.29, "CMCSA"], [25.84, -6.45, "CMCSA"], [46.83, 8.98, "CMCSA"], [23.03, -14.61, "CMCSA"], [46.59, -0.66, "COST"], [52.27, -6.83, "COST"], [34.66, 13.41, "COST"], [39.01, 9.41, "COST"], [32.98, 2.68, "COST"], [31.22, 0.81, "COST"], [41.72, -8.59, "COST"], [32.97, -4.2, "COST"], [33.07, 7.95, "COST"], [36.49, -2.3, "COST"], [37.06, 13.1, "COST"], [49.19, 2.33, "COST"], [46.14, 6.45, "COST"], [46.0, -1.05, "COST"], [42.88, 7.98, "COST"], [47.19, 0.78, "COST"], [42.63, -1.85, "COST"], [44.92, -0.0, "COST"], [56.52, 2.3, "COST"], [48.62, 9.0, "COST"], [54.63, -0.54, "COST"], [44.62, 10.93, "COST"], [38.58, -9.39, "COST"], [51.99, 3.72, "COST"], [42.52, -1.13, "COST"], [52.42, -6.57, "COST"], [50.28, -10.73, "COST"], [41.67, -1.86, "COST"], [37.83, -1.18, "COST"], [49.71, 6.5, "COST"], [43.65, 3.66, "COST"], [44.2, -4.88, "COST"], [43.78, -20.54, "CPRT"], [51.05, -2.96, "CPRT"], [58.59, 11.74, "CPRT"], [44.58, 14.12, "CPRT"], [30.24, 4.71, "CPRT"], [49.3, 6.83, "CPRT"], [38.24, -33.02, "CPRT"], [39.35, -2.63, "CPRT"], [34.0, 2.42, "CPRT"], [45.68, 5.51, "CPRT"], [44.88, -10.25, "CPRT"], [48.78, 5.91, "CPRT"], [38.23, -2.62, "CPRT"], [41.45, -8.94, "CPRT"], [57.24, 1.87, "CPRT"], [44.14, -1.5, "CPRT"], [43.91, -4.64, "CPRT"], [51.08, -2.66, "CPRT"], [44.93, 4.05, "CPRT"], [38.01, 6.44, "CPRT"], [53.99, 2.01, "CPRT"], [42.02, -1.18, "CPRT"], [53.39, 16.19, "CPRT"], [47.57, -0.42, "CPRT"], [59.77, -1.62, "CPRT"], [46.75, 2.57, "CPRT"], [52.98, -7.88, "CPRT"], [28.96, -19.8, "CPRT"], [31.12, -9.73, "CPRT"], [30.31, -4.05, "CPRT"], [22.13, -12.72, "CPRT"], [31.88, -13.95, "CPRT"], [56.35, 32.03, "CRWD"], [55.33, -26.49, "CRWD"], [39.97, 3.4, "CRWD"], [41.99, 63.94, "CRWD"], [49.18, 11.6, "CRWD"], [52.41, -1.55, "CRWD"], [50.4, 41.35, "CRWD"], [41.57, 8.55, "CRWD"], [40.92, 16.94, "CRWD"], [48.11, -12.53, "CRWD"], [34.9, 1.61, "CRWD"], [52.94, 27.82, "CRWD"], [55.64, 7.47, "CRWD"], [53.28, -14.28, "CRWD"], [39.02, -24.22, "CRWD"], [60.67, 2.3, "CRWD"], [59.9, -8.28, "CRWD"], [61.4, 12.2, "CRWD"], [54.86, 20.62, "CRWD"], [44.74, 3.91, "CRWD"], [48.56, 27.52, "CRWD"], [57.72, 8.2, "CRWD"], [61.54, -2.56, "CRWD"], [48.56, -4.79, "CRWD"], [49.88, 5.18, "CRWD"], [47.05, 13.92, "CRWD"], [51.5, -12.19, "CRWD"], [49.49, 0.48, "CRWD"], [47.64, 6.68, "CRWD"], [45.78, 118.19, "CRWV"], [47.47, -24.24, "CRWV"], [44.35, -16.52, "CRWV"], [44.34, -23.37, "CRWV"], [44.19, -20.54, "CRWV"], [42.26, 8.07, "CSCO"], [37.3, -0.29, "CSCO"], [45.29, 12.0, "CSCO"], [47.52, 4.41, "CSCO"], [37.98, -1.15, "CSCO"], [41.08, -6.52, "CSCO"], [29.24, -24.61, "CSCO"], [56.04, 7.44, "CSCO"], [39.11, -17.09, "CSCO"], [34.69, 14.4, "CSCO"], [38.02, 0.62, "CSCO"], [38.02, -0.76, "CSCO"], [39.53, 3.08, "CSCO"], [48.98, 6.52, "CSCO"], [40.92, 3.17, "CSCO"], [47.15, -10.28, "CSCO"], [41.12, -7.2, "CSCO"], [49.34, 7.7, "CSCO"], [48.57, 3.59, "CSCO"], [50.54, 9.32, "CSCO"], [37.75, 5.82, "CSCO"], [42.46, -6.4, "CSCO"], [42.01, -2.68, "CSCO"], [34.06, -8.03, "CSCO"], [45.02, 9.6, "CSCO"], [39.19, -0.95, "CSCO"], [45.73, -3.25, "CSCO"], [52.66, 4.57, "CSCO"], [33.3, -5.5, "CSCO"], [52.23, 5.19, "CSCO"], [59.43, -8.43, "CSCO"], [36.37, 18.88, "CSCO"], [50.52, -2.35, "CSX"], [37.75, 10.95, "CSX"], [34.73, 3.07, "CSX"], [34.3, -18.82, "CSX"], [43.44, 4.12, "CSX"], [31.01, 3.61, "CSX"], [33.99, 11.35, "CSX"], [33.32, 0.89, "CSX"], [29.28, 16.49, "CSX"], [39.08, 1.06, "CSX"], [15.19, -0.09, "CSX"], [41.23, 6.4, "CSX"], [43.25, 5.08, "CSX"], [41.48, -1.65, "CSX"], [24.86, -12.35, "CSX"], [31.12, 15.54, "CSX"], [39.37, 14.03, "CSX"], [39.6, -0.97, "CSX"], [45.84, 4.87, "CSX"], [43.75, -8.42, "CSX"], [53.61, 3.54, "CSX"], [48.33, 11.46, "CSX"], [32.42, -0.67, "CSX"], [36.47, 6.01, "CSX"], [44.45, 0.45, "CSX"], [35.45, -5.52, "CSX"], [49.73, 14.52, "CSX"], [33.22, 2.57, "CSX"], [33.59, -3.03, "CSX"], [40.63, 17.3, "CSX"], [35.61, 6.3, "CSX"], [43.29, -20.93, "CTAS"], [54.05, 14.52, "CTAS"], [52.7, 1.27, "CTAS"], [49.41, 7.22, "CTAS"], [47.11, 6.34, "CTAS"], [37.61, 9.0, "CTAS"], [53.53, 5.96, "CTAS"], [47.49, 10.6, "CTAS"], [33.57, 4.53, "CTAS"], [37.4, -6.25, "CTAS"], [33.59, 1.12, "CTAS"], [45.13, 2.81, "CTAS"], [42.08, 9.55, "CTAS"], [53.08, -13.11, "CTAS"], [41.89, 6.59, "CTAS"], [43.79, 13.79, "CTAS"], [51.57, 7.4, "CTAS"], [50.06, -1.39, "CTAS"], [46.27, 1.62, "CTAS"], [52.83, -0.59, "CTAS"], [62.64, 0.06, "CTAS"], [55.8, 9.03, "CTAS"], [42.0, 5.03, "CTAS"], [52.1, 6.88, "CTAS"], [52.19, 2.37, "CTAS"], [50.18, -2.63, "CTAS"], [59.62, 8.42, "CTAS"], [44.7, 3.43, "CTAS"], [43.53, -3.51, "CTAS"], [52.41, 3.4, "CTAS"], [47.15, -0.29, "CTAS"], [66.99, -19.69, "DASH"], [44.36, 37.53, "DASH"], [40.73, 10.85, "DASH"], [49.03, -14.14, "DASH"], [55.11, 13.07, "DASH"], [52.26, -4.37, "DASH"], [59.3, -28.43, "DASH"], [65.63, 11.8, "DASH"], [59.8, -11.32, "DASH"], [48.55, 10.38, "DASH"], [56.68, -2.15, "DASH"], [46.98, 27.25, "DASH"], [53.56, 2.62, "DASH"], [53.97, -13.61, "DASH"], [49.28, 18.96, "DASH"], [42.05, 16.25, "DASH"], [48.52, -7.66, "DASH"], [50.04, 7.22, "DASH"], [50.77, -4.35, "DASH"], [53.54, -5.46, "DASH"], [46.02, -8.14, "DASH"], [63.03, -6.65, "DASH"], [52.53, 3.87, "DDOG"], [35.6, -40.29, "DDOG"], [40.66, 40.53, "DDOG"], [42.2, -11.6, "DDOG"], [34.87, 9.64, "DDOG"], [49.65, -25.5, "DDOG"], [36.82, 26.99, "DDOG"], [29.89, 19.28, "DDOG"], [44.08, -3.32, "DDOG"], [47.05, -18.32, "DDOG"], [46.73, -11.39, "DDOG"], [47.88, -13.59, "DDOG"], [56.12, 0.31, "DDOG"], [41.42, -22.66, "DDOG"], [55.71, 50.02, "DDOG"], [59.17, -8.13, "DDOG"], [47.7, 43.7, "DDOG"], [45.41, -8.35, "DDOG"], [47.81, -12.99, "DDOG"], [36.76, -0.78, "DDOG"], [60.3, 31.4, "DDOG"], [45.44, -31.26, "DDOG"], [47.58, 13.25, "DDOG"], [64.59, -0.64, "DDOG"], [37.71, -2.3, "DDOG"], [49.86, 11.82, "DDOG"], [37.74, 62.9, "DDOG"], [28.26, 51.3, "DXCM"], [45.55, -8.66, "DXCM"], [43.62, -11.77, "DXCM"], [42.26, 2.26, "DXCM"], [46.08, 9.68, "DXCM"], [40.82, 46.79, "DXCM"], [33.23, -19.79, "DXCM"], [44.58, 15.41, "DXCM"], [34.88, 1.89, "DXCM"], [34.96, -17.89, "DXCM"], [42.6, -11.77, "DXCM"], [43.81, -12.4, "DXCM"], [39.89, 14.18, "DXCM"], [35.01, 0.12, "DXCM"], [49.49, -7.91, "DXCM"], [41.12, -30.04, "DXCM"], [51.98, -2.87, "DXCM"], [39.22, 11.18, "DXCM"], [51.29, 3.19, "DXCM"], [59.48, -6.9, "DXCM"], [38.83, -22.11, "DXCM"], [52.17, 40.56, "DXCM"], [49.76, 4.71, "DXCM"], [47.71, -7.71, "DXCM"], [42.08, -31.32, "DXCM"], [34.13, -2.7, "DXCM"], [49.89, -15.15, "DXCM"], [52.68, 21.71, "DXCM"], [41.78, -15.7, "DXCM"], [44.3, -6.86, "DXCM"], [53.32, 1.94, "DXCM"], [47.1, 25.73, "DXCM"], [36.04, -8.9, "EA"], [37.22, 7.39, "EA"], [29.25, 3.95, "EA"], [43.95, 4.32, "EA"], [31.08, 6.76, "EA"], [42.99, -4.25, "EA"], [45.31, -2.03, "EA"], [30.53, 1.65, "EA"], [57.9, 2.09, "EA"], [35.25, -11.76, "EA"], [38.23, 3.16, "EA"], [36.32, 4.05, "EA"], [32.4, -10.2, "EA"], [34.78, -1.62, "EA"], [51.43, 21.86, "EA"], [51.6, -1.42, "EA"], [49.03, 4.39, "EA"], [53.28, -12.59, "EA"], [38.47, 1.51, "EA"], [41.33, -11.3, "EA"], [54.39, 11.45, "EA"], [67.36, 1.54, "EA"], [48.16, 5.65, "EA"], [63.15, 0.26, "EA"], [52.29, 12.13, "EA"], [56.35, 12.98, "EA"], [65.43, -4.19, "EA"], [62.05, 16.92, "EA"], [27.22, 0.81, "EA"], [39.57, -0.22, "EA"], [41.57, 1.0, "EA"], [37.48, 5.46, "EXC"], [39.01, 6.69, "EXC"], [49.09, 2.75, "EXC"], [44.05, -3.69, "EXC"], [45.12, 4.58, "EXC"], [34.79, -4.06, "EXC"], [33.13, -16.96, "EXC"], [41.74, 20.76, "EXC"], [46.84, -3.41, "EXC"], [45.12, 2.41, "EXC"], [49.1, 6.24, "EXC"], [51.47, 3.13, "EXC"], [40.67, 5.52, "EXC"], [29.8, -0.83, "EXC"], [50.87, 4.97, "EXC"], [30.92, -3.48, "EXC"], [39.26, 9.91, "EXC"], [40.62, 2.46, "EXC"], [33.64, -6.47, "EXC"], [49.95, -1.66, "EXC"], [23.99, -0.44, "EXC"], [49.45, 6.4, "EXC"], [36.71, 0.23, "EXC"], [39.09, 3.28, "EXC"], [31.76, 0.91, "EXC"], [41.82, 3.58, "EXC"], [40.53, -5.73, "EXC"], [53.74, -0.25, "EXC"], [59.18, -2.75, "EXC"], [61.26, 13.04, "EXC"], [64.22, -2.45, "EXC"], [57.88, -15.71, "FANG"], [32.39, -9.31, "FANG"], [35.33, 0.48, "FANG"], [38.29, -0.48, "FANG"], [31.42, 7.45, "FANG"], [42.45, -11.19, "FANG"], [41.82, -79.0, "FANG"], [56.62, 12.94, "FANG"], [33.63, -3.01, "FANG"], [39.82, 47.94, "FANG"], [57.29, 6.05, "FANG"], [52.5, 3.52, "FANG"], [44.17, 1.09, "FANG"], [40.41, -7.31, "FANG"], [54.39, 11.9, "FANG"], [60.1, 22.8, "FANG"], [45.47, 8.97, "FANG"], [38.99, -15.33, "FANG"], [47.11, -2.67, "FANG"], [54.15, -9.85, "FANG"], [55.83, 3.21, "FANG"], [56.04, -6.55, "FANG"], [60.21, 10.17, "FANG"], [64.63, -0.91, "FANG"], [57.07, 0.71, "FANG"], [38.04, -4.41, "FANG"], [53.18, 4.84, "FANG"], [59.48, 5.44, "FANG"], [49.85, -3.02, "FANG"], [58.32, 12.88, "FANG"], [52.2, 14.05, "FANG"], [53.84, -0.91, "FANG"], [55.6, -0.94, "FAST"], [45.57, 17.19, "FAST"], [63.39, 1.31, "FAST"], [60.59, -4.17, "FAST"], [59.15, 20.21, "FAST"], [63.17, 3.35, "FAST"], [51.38, 21.14, "FAST"], [61.54, 9.84, "FAST"], [51.61, -1.3, "FAST"], [47.82, -5.64, "FAST"], [60.39, 4.87, "FAST"], [61.0, 2.1, "FAST"], [60.07, 13.18, "FAST"], [44.5, -9.87, "FAST"], [52.28, -8.97, "FAST"], [55.97, 9.59, "FAST"], [50.3, 14.33, "FAST"], [60.14, 12.3, "FAST"], [57.98, 5.08, "FAST"], [66.64, -2.74, "FAST"], [66.72, 6.22, "FAST"], [65.34, 11.31, "FAST"], [51.36, -9.0, "FAST"], [58.69, 4.05, "FAST"], [58.13, 19.68, "FAST"], [63.84, 0.63, "FAST"], [59.29, 6.32, "FAST"], [64.69, 11.08, "FAST"], [50.84, -2.02, "FAST"], [68.45, 5.7, "FAST"], [51.8, -11.47, "FAST"], [58.31, 28.56, "FTNT"], [51.69, -10.25, "FTNT"], [46.21, -0.68, "FTNT"], [33.17, -23.89, "FTNT"], [47.17, 0.2, "FTNT"], [59.4, 27.42, "FTNT"], [45.72, -28.18, "FTNT"], [54.89, 26.04, "FTNT"], [51.04, -15.68, "FTNT"], [43.01, 4.43, "FTNT"], [63.57, 5.87, "FTNT"], [55.81, 11.8, "FTNT"], [50.43, 15.26, "FTNT"], [46.29, -13.7, "FTNT"], [54.88, -1.9, "FTNT"], [51.09, 3.23, "FTNT"], [53.86, -22.79, "FTNT"], [46.18, 0.71, "FTNT"], [43.99, 11.47, "FTNT"], [53.57, 16.49, "FTNT"], [56.39, -19.65, "FTNT"], [53.3, -9.27, "FTNT"], [59.89, 8.28, "FTNT"], [48.66, -9.82, "FTNT"], [50.02, 35.82, "FTNT"], [57.59, 15.97, "FTNT"], [45.3, -8.29, "FTNT"], [61.11, -1.67, "FTNT"], [47.97, -18.38, "FTNT"], [61.77, 1.08, "FTNT"], [59.31, 6.18, "FTNT"], [43.86, 60.84, "FTNT"], [39.19, 8.45, "GEHC"], [55.87, -12.04, "GEHC"], [50.99, -14.51, "GEHC"], [50.66, 7.19, "GEHC"], [44.03, 26.82, "GEHC"], [47.03, -11.79, "GEHC"], [50.64, 1.55, "GEHC"], [46.79, -2.66, "GEHC"], [44.23, -4.58, "GEHC"], [41.64, 5.05, "GEHC"], [53.24, -4.45, "GEHC"], [63.98, 1.55, "GEHC"], [54.52, -2.12, "GEHC"], [37.55, -8.23, "GEHC"], [21.4, -2.45, "GILD"], [20.3, -10.18, "GILD"], [29.57, -2.56, "GILD"], [29.18, -5.14, "GILD"], [34.53, -1.12, "GILD"], [36.17, 12.95, "GILD"], [32.52, -10.52, "GILD"], [31.44, -9.77, "GILD"], [26.89, 2.23, "GILD"], [27.54, -1.64, "GILD"], [38.38, 3.56, "GILD"], [28.95, 2.08, "GILD"], [42.14, 4.92, "GILD"], [30.75, -9.87, "GILD"], [30.39, 5.26, "GILD"], [47.21, 6.6, "GILD"], [41.0, 21.38, "GILD"], [47.84, -0.34, "GILD"], [37.74, -7.73, "GILD"], [41.93, 1.48, "GILD"], [50.19, -3.18, "GILD"], [40.11, -5.22, "GILD"], [35.11, 0.63, "GILD"], [53.39, 4.74, "GILD"], [24.37, 0.48, "GILD"], [36.09, 17.9, "GILD"], [52.04, 1.15, "GILD"], [56.67, 5.08, "GILD"], [51.28, 4.97, "GILD"], [41.45, -1.37, "GILD"], [27.12, -4.45, "GILD"], [36.77, -4.29, "GOOG"], [33.62, 2.21, "GOOG"], [44.98, -13.29, "GOOG"], [38.54, 1.69, "GOOG"], [50.26, 1.83, "GOOG"], [45.44, -6.69, "GOOG"], [58.3, 14.84, "GOOG"], [32.43, 7.38, "GOOG"], [56.25, 12.35, "GOOG"], [42.31, 6.31, "GOOG"], [56.46, 5.48, "GOOG"], [52.89, 4.5, "GOOG"], [46.84, 5.04, "GOOG"], [51.06, -2.59, "GOOG"], [49.07, -11.44, "GOOG"], [43.59, 8.78, "GOOG"], [28.68, -5.82, "GOOG"], [31.15, -12.15, "GOOG"], [47.58, 16.28, "GOOG"], [44.0, 8.49, "GOOG"], [45.01, -0.07, "GOOG"], [34.18, -8.67, "GOOG"], [47.72, 11.64, "GOOG"], [40.78, -8.7, "GOOG"], [34.83, -0.19, "GOOG"], [36.02, -16.13, "GOOG"], [34.59, 5.03, "GOOG"], [42.41, 4.76, "GOOG"], [44.05, 16.34, "GOOG"], [24.37, -10.51, "GOOG"], [29.07, 8.38, "GOOG"], [37.5, -4.32, "GOOGL"], [40.27, 2.06, "GOOGL"], [42.07, -13.6, "GOOGL"], [47.1, 1.55, "GOOGL"], [35.23, 1.86, "GOOGL"], [49.67, -6.81, "GOOGL"], [50.13, 15.06, "GOOGL"], [34.44, 6.57, "GOOGL"], [35.4, 12.69, "GOOGL"], [26.15, 5.98, "GOOGL"], [46.65, 3.9, "GOOGL"], [52.77, 7.72, "GOOGL"], [38.58, 4.89, "GOOGL"], [41.98, -2.72, "GOOGL"], [41.38, -10.83, "GOOGL"], [32.66, 8.26, "GOOGL"], [36.32, -5.76, "GOOGL"], [31.64, -11.7, "GOOGL"], [31.46, 16.42, "GOOGL"], [31.09, 8.31, "GOOGL"], [27.21, -0.23, "GOOGL"], [23.33, -8.58, "GOOGL"], [32.04, 12.17, "GOOGL"], [27.97, -8.77, "GOOGL"], [24.08, -0.27, "GOOGL"], [25.64, -16.49, "GOOGL"], [34.13, 5.77, "GOOGL"], [33.51, 5.0, "GOOGL"], [35.67, 16.61, "GOOGL"], [31.83, -10.37, "GOOGL"], [33.64, 8.69, "GOOGL"], [27.01, -0.66, "HON"], [41.72, 8.14, "HON"], [52.75, 4.33, "HON"], [39.22, -3.28, "HON"], [40.85, 10.34, "HON"], [53.06, -7.41, "HON"], [46.32, 3.78, "HON"], [54.24, 3.03, "HON"], [49.76, 24.47, "HON"], [34.4, 2.12, "HON"], [52.39, -2.23, "HON"], [43.65, -1.78, "HON"], [33.42, -2.27, "HON"], [34.71, -9.2, "HON"], [54.0, 3.92, "HON"], [51.5, 9.68, "HON"], [50.92, 16.22, "HON"], [41.28, -4.28, "HON"], [50.62, 1.25, "HON"], [32.19, -10.61, "HON"], [47.79, 9.24, "HON"], [38.77, -1.24, "HON"], [42.67, 2.9, "HON"], [42.39, -5.81, "HON"], [39.5, 3.11, "HON"], [31.87, -3.01, "HON"], [43.72, 12.51, "HON"], [36.8, -8.66, "HON"], [39.4, -2.81, "HON"], [53.02, 13.0, "HON"], [53.6, 2.3, "HON"], [46.89, 3.89, "IDXX"], [38.89, -3.94, "IDXX"], [45.96, 0.3, "IDXX"], [51.18, 7.63, "IDXX"], [52.85, 2.57, "IDXX"], [46.28, -8.13, "IDXX"], [55.57, -7.66, "IDXX"], [55.07, 13.25, "IDXX"], [40.29, 2.64, "IDXX"], [54.57, 7.41, "IDXX"], [39.03, 1.14, "IDXX"], [54.69, -0.42, "IDXX"], [49.44, -5.1, "IDXX"], [47.42, -10.06, "IDXX"], [60.71, 4.87, "IDXX"], [68.12, -11.38, "IDXX"], [64.85, -12.38, "IDXX"], [61.57, 18.4, "IDXX"], [51.75, -1.75, "IDXX"], [58.04, -5.07, "IDXX"], [71.19, -7.79, "IDXX"], [49.65, 16.61, "IDXX"], [44.15, 5.91, "IDXX"], [67.1, 1.42, "IDXX"], [54.98, 3.56, "IDXX"], [46.1, -6.5, "IDXX"], [74.8, 4.63, "IDXX"], [66.49, 18.65, "IDXX"], [72.03, 19.4, "IDXX"], [56.92, 16.4, "IDXX"], [56.15, -5.21, "IDXX"], [52.27, -0.42, "IDXX"], [51.32, 10.4, "INTC"], [38.17, 10.19, "INTC"], [50.95, -23.7, "INTC"], [27.49, -11.01, "INTC"], [47.11, 13.19, "INTC"], [33.99, 3.07, "INTC"], [50.52, 3.71, "INTC"], [37.01, -18.91, "INTC"], [30.43, -14.11, "INTC"], [44.54, 8.05, "INTC"], [35.27, -11.63, "INTC"], [32.45, -6.13, "INTC"], [33.44, -9.65, "INTC"], [42.68, -7.69, "INTC"], [43.68, -3.09, "INTC"], [40.65, -12.29, "INTC"], [40.16, 9.28, "INTC"], [34.06, -14.32, "INTC"], [40.87, -5.29, "INTC"], [44.46, -4.81, "INTC"], [45.31, 34.34, "INTC"], [40.28, -12.17, "INTC"], [36.7, -12.46, "INTC"], [39.94, -34.1, "INTC"], [33.56, 7.85, "INTC"], [36.24, 20.15, "INTC"], [35.99, -0.19, "INTC"], [37.5, 0.04, "INTC"], [44.29, -8.94, "INTC"], [45.28, -18.69, "INTC"], [45.27, 81.55, "INTC"], [23.9, 3.04, "INTU"], [40.22, -3.6, "INTU"], [34.4, 7.51, "INTU"], [31.66, 8.71, "INTU"], [32.58, -2.43, "INTU"], [45.57, -1.8, "INTU"], [35.69, -18.37, "INTU"], [49.29, 1.42, "INTU"], [39.96, -8.27, "INTU"], [34.67, 4.01, "INTU"], [42.8, -5.46, "INTU"], [34.64, 9.94, "INTU"], [37.29, 4.21, "INTU"], [38.73, -3.87, "INTU"], [48.89, -7.6, "INTU"], [50.64, 16.34, "INTU"], [49.02, -11.76, "INTU"], [51.06, 2.94, "INTU"], [60.71, 4.29, "INTU"], [45.08, 0.64, "INTU"], [50.27, 1.97, "INTU"], [53.09, 11.14, "INTU"], [44.29, -2.16, "INTU"], [53.27, -4.8, "INTU"], [36.96, -3.51, "INTU"], [41.26, -5.95, "INTU"], [50.3, 10.66, "INTU"], [38.38, 13.96, "INTU"], [53.77, 0.62, "INTU"], [56.9, 5.93, "INTU"], [53.43, 5.58, "INTU"], [32.09, -32.86, "INTU"], [39.75, -0.72, "ISRG"], [44.63, 3.22, "ISRG"], [35.83, -8.49, "ISRG"], [44.64, -7.67, "ISRG"], [44.6, 7.58, "ISRG"], [44.11, -5.66, "ISRG"], [56.01, 1.95, "ISRG"], [51.02, 5.05, "ISRG"], [45.49, 1.67, "ISRG"], [45.79, -7.17, "ISRG"], [30.98, 0.72, "ISRG"], [35.86, 8.83, "ISRG"], [40.86, 8.67, "ISRG"], [52.91, -4.08, "ISRG"], [36.34, -25.63, "ISRG"], [36.2, 0.01, "ISRG"], [46.41, 35.78, "ISRG"], [47.76, -8.95, "ISRG"], [48.67, 14.46, "ISRG"], [41.09, -17.75, "ISRG"], [57.44, 11.64, "ISRG"], [46.56, 4.76, "ISRG"], [46.56, 7.03, "ISRG"], [51.19, 15.1, "ISRG"], [46.6, 11.37, "ISRG"], [47.23, -2.9, "ISRG"], [43.45, 14.27, "ISRG"], [33.62, -5.98, "ISRG"], [41.23, 22.02, "ISRG"], [47.14, -6.41, "ISRG"], [45.46, -0.5, "ISRG"], [39.03, -3.65, "KDP"], [41.01, -6.08, "KDP"], [55.54, 3.82, "KDP"], [44.63, -2.65, "KDP"], [56.7, -2.72, "KDP"], [33.97, 3.98, "KDP"], [26.78, -13.71, "KDP"], [28.23, 7.39, "KDP"], [31.04, -4.25, "KDP"], [39.44, 10.93, "KDP"], [29.9, 9.79, "KDP"], [40.59, 4.09, "KDP"], [40.79, -1.02, "KDP"], [35.7, 2.28, "KDP"], [40.46, -2.1, "KDP"], [21.8, -6.15, "KDP"], [45.1, 6.95, "KDP"], [22.13, -1.32, "KDP"], [22.85, -4.67, "KDP"], [32.52, -11.13, "KDP"], [39.87, 2.74, "KDP"], [49.79, 12.1, "KDP"], [33.55, -6.39, "KDP"], [36.98, 5.07, "KDP"], [33.18, 8.85, "KDP"], [22.61, -12.15, "KDP"], [38.27, -0.85, "KDP"], [35.62, -6.19, "KDP"], [45.21, 5.07, "KDP"], [47.31, 0.74, "KDP"], [64.69, -11.96, "KDP"], [54.85, 8.44, "KDP"], [23.68, -0.85, "KHC"], [27.04, -7.41, "KHC"], [34.99, 6.12, "KHC"], [31.72, -10.23, "KHC"], [30.67, 8.32, "KHC"], [32.13, -18.83, "KHC"], [34.0, 1.11, "KHC"], [30.17, -1.16, "KHC"], [52.64, 13.73, "KHC"], [44.39, 13.6, "KHC"], [41.09, 9.24, "KHC"], [39.43, -6.26, "KHC"], [26.52, -2.34, "KHC"], [56.02, 10.0, "KHC"], [51.57, -5.74, "KHC"], [32.06, 0.7, "KHC"], [48.68, 6.05, "KHC"], [58.2, -3.25, "KHC"], [45.79, -3.19, "KHC"], [51.93, -6.16, "KHC"], [55.75, 12.89, "KHC"], [42.09, -3.92, "KHC"], [46.74, -10.26, "KHC"], [44.71, 4.58, "KHC"], [40.74, -8.25, "KHC"], [53.64, 3.38, "KHC"], [58.09, -7.88, "KHC"], [61.31, -2.35, "KHC"], [49.24, 0.31, "KHC"], [59.09, -8.82, "KHC"], [52.62, -0.31, "KHC"], [46.65, 16.93, "KLAC"], [37.82, 15.16, "KLAC"], [36.48, -14.09, "KLAC"], [29.36, 19.79, "KLAC"], [43.75, -4.8, "KLAC"], [58.42, -11.93, "KLAC"], [54.48, 20.28, "KLAC"], [51.37, 0.58, "KLAC"], [55.43, 33.88, "KLAC"], [60.29, 3.63, "KLAC"], [66.41, -2.61, "KLAC"], [43.92, 7.7, "KLAC"], [45.37, 17.44, "KLAC"], [45.58, -3.42, "KLAC"], [53.7, 11.95, "KLAC"], [67.17, -2.58, "KLAC"], [61.87, 24.45, "KLAC"], [63.57, -11.3, "KLAC"], [51.96, 21.93, "KLAC"], [65.38, 0.14, "KLAC"], [52.3, 22.5, "KLAC"], [64.04, 6.8, "KLAC"], [61.46, 16.0, "KLAC"], [63.87, 5.85, "KLAC"], [52.95, -6.21, "KLAC"], [57.53, -6.7, "KLAC"], [67.52, 7.97, "KLAC"], [58.77, -0.58, "KLAC"], [55.76, -4.68, "KLAC"], [59.67, -8.77, "KLAC"], [55.29, 5.94, "KLAC"], [54.63, 16.17, "LIN"], [28.55, 0.21, "LIN"], [42.13, 2.46, "LIN"], [50.15, -18.36, "LIN"], [50.56, 24.24, "LIN"], [40.36, 2.54, "LIN"], [45.67, 6.91, "LIN"], [53.87, 2.24, "LIN"], [59.82, 3.19, "LIN"], [48.93, 5.04, "LIN"], [40.43, 0.5, "LIN"], [47.54, -7.32, "LIN"], [33.21, 4.33, "LIN"], [39.48, 2.3, "LIN"], [42.01, 16.82, "LIN"], [44.65, 9.92, "LIN"], [47.0, -2.3, "LIN"], [45.41, -2.65, "LIN"], [50.28, 13.68, "LIN"], [37.1, 15.72, "LIN"], [44.08, -1.6, "LIN"], [50.24, 5.49, "LIN"], [40.63, -2.62, "LIN"], [44.33, 3.32, "LIN"], [42.41, 3.17, "LIN"], [47.56, 3.92, "LIN"], [23.52, -5.3, "LIN"], [40.64, 2.41, "LIN"], [56.15, -0.74, "LIN"], [30.57, 12.19, "LITE"], [46.27, -18.63, "LITE"], [53.02, -5.54, "LITE"], [54.98, -29.86, "LITE"], [42.32, 4.91, "LITE"], [40.7, 28.78, "LITE"], [57.64, 10.32, "LITE"], [62.48, -0.28, "LITE"], [43.77, -17.5, "LITE"], [40.39, 5.18, "LITE"], [44.02, -9.46, "LITE"], [56.8, -1.05, "LITE"], [58.56, 7.76, "LITE"], [57.99, -1.05, "LITE"], [60.83, -7.55, "LITE"], [56.38, 7.17, "LITE"], [54.68, -18.03, "LITE"], [48.66, -26.54, "LITE"], [62.56, -15.74, "LITE"], [72.48, 6.08, "LITE"], [53.76, 3.08, "LITE"], [64.22, 3.64, "LITE"], [50.4, -18.87, "LITE"], [61.96, 2.92, "LITE"], [58.82, 22.51, "LITE"], [48.64, 21.94, "LITE"], [63.23, -38.05, "LITE"], [61.54, 26.73, "LITE"], [59.08, 37.79, "LITE"], [49.85, 74.06, "LITE"], [40.11, 49.58, "LITE"], [41.32, -4.98, "LITE"], [45.53, -1.74, "LRCX"], [50.93, 28.63, "LRCX"], [44.77, -5.11, "LRCX"], [51.55, -0.46, "LRCX"], [33.0, 13.17, "LRCX"], [45.46, -1.61, "LRCX"], [55.64, -4.08, "LRCX"], [43.04, -5.37, "LRCX"], [45.29, 19.38, "LRCX"], [47.01, 10.13, "LRCX"], [55.39, -2.27, "LRCX"], [44.2, -7.82, "LRCX"], [52.78, 12.43, "LRCX"], [41.4, -3.93, "LRCX"], [56.28, -1.94, "LRCX"], [62.18, 2.25, "LRCX"], [48.29, 39.71, "LRCX"], [61.74, -2.0, "LRCX"], [57.0, 21.94, "LRCX"], [57.84, 2.11, "LRCX"], [61.88, 9.06, "LRCX"], [50.88, 9.47, "LRCX"], [45.68, 8.28, "LRCX"], [45.01, -13.45, "LRCX"], [37.76, 0.37, "LRCX"], [32.47, 2.12, "LRCX"], [51.91, 23.72, "LRCX"], [46.62, 5.05, "LRCX"], [43.05, -1.18, "LRCX"], [35.43, -2.37, "LRCX"], [51.64, 13.82, "LRCX"], [48.81, -2.99, "MAR"], [55.59, -4.1, "MAR"], [57.53, -0.14, "MAR"], [45.94, -1.64, "MAR"], [28.05, -3.21, "MAR"], [51.84, 7.37, "MAR"], [61.57, -30.82, "MAR"], [39.42, 23.12, "MAR"], [44.0, 10.88, "MAR"], [63.43, 31.76, "MAR"], [58.69, 17.47, "MAR"], [39.37, -0.66, "MAR"], [54.82, -6.72, "MAR"], [55.01, -5.59, "MAR"], [55.45, 0.56, "MAR"], [45.78, 0.98, "MAR"], [39.67, -3.73, "MAR"], [47.91, 8.53, "MAR"], [52.67, -8.99, "MAR"], [64.08, -1.08, "MAR"], [65.45, 2.41, "MAR"], [63.13, 11.13, "MAR"], [51.47, 1.25, "MAR"], [61.39, -2.78, "MAR"], [53.42, -4.52, "MAR"], [60.79, 9.6, "MAR"], [60.59, -19.74, "MAR"], [66.63, 6.2, "MAR"], [57.65, 2.55, "MAR"], [56.33, 16.48, "MAR"], [60.66, -1.27, "MAR"], [55.44, 8.9, "MAR"], [48.13, -13.96, "MCHP"], [55.01, 2.78, "MCHP"], [47.83, 1.86, "MCHP"], [53.82, -11.31, "MCHP"], [42.6, 4.86, "MCHP"], [41.33, -2.92, "MCHP"], [43.27, -12.52, "MCHP"], [50.73, 27.4, "MCHP"], [53.97, 7.23, "MCHP"], [51.24, 22.84, "MCHP"], [39.62, 4.24, "MCHP"], [38.69, 5.11, "MCHP"], [44.29, 6.31, "MCHP"], [39.88, 1.53, "MCHP"], [44.26, -11.86, "MCHP"], [58.61, 7.6, "MCHP"], [65.52, -5.41, "MCHP"], [53.18, 29.36, "MCHP"], [59.71, -2.62, "MCHP"], [53.87, -0.51, "MCHP"], [58.46, -7.6, "MCHP"], [66.05, 15.39, "MCHP"], [55.97, 2.03, "MCHP"], [52.71, 1.05, "MCHP"], [64.8, -2.08, "MCHP"], [40.77, -21.89, "MCHP"], [39.86, 1.4, "MCHP"], [61.41, 39.55, "MCHP"], [54.31, -0.71, "MCHP"], [47.32, 14.5, "MCHP"], [62.51, -16.22, "MCHP"], [46.07, -9.6, "MCHP"], [43.77, 10.75, "MDLZ"], [32.26, 7.81, "MDLZ"], [42.44, 0.79, "MDLZ"], [38.64, 0.13, "MDLZ"], [33.06, -0.19, "MDLZ"], [28.28, -3.23, "MDLZ"], [34.75, 0.47, "MDLZ"], [43.63, 4.76, "MDLZ"], [30.56, 6.99, "MDLZ"], [34.12, -6.06, "MDLZ"], [53.78, 8.36, "MDLZ"], [40.45, -5.15, "MDLZ"], [45.56, -3.1, "MDLZ"], [44.39, -2.95, "MDLZ"], [38.15, -2.61, "MDLZ"], [47.75, 2.64, "MDLZ"], [40.76, 10.05, "MDLZ"], [52.48, -0.12, "MDLZ"], [39.02, 1.77, "MDLZ"], [30.56, -1.19, "MDLZ"], [51.6, 5.99, "MDLZ"], [48.97, -4.28, "MDLZ"], [46.27, -5.63, "MDLZ"], [52.17, 6.26, "MDLZ"], [27.98, -5.91, "MDLZ"], [55.21, 18.96, "MDLZ"], [57.93, 2.77, "MDLZ"], [53.08, -11.4, "MDLZ"], [54.13, -4.98, "MDLZ"], [52.52, -2.17, "MDLZ"], [44.82, 6.58, "MDLZ"], [44.47, -5.21, "MELI"], [48.3, 0.13, "MELI"], [48.23, 31.25, "MELI"], [58.07, 17.92, "MELI"], [45.34, -2.57, "MELI"], [39.97, 11.21, "MELI"], [44.22, -16.33, "MELI"], [52.22, 35.28, "MELI"], [40.44, -14.36, "MELI"], [55.37, 18.37, "MELI"], [44.72, -16.65, "MELI"], [45.77, -13.4, "MELI"], [50.95, 23.01, "MELI"], [41.64, -28.55, "MELI"], [48.32, 36.56, "MELI"], [40.43, -11.96, "MELI"], [42.52, -3.6, "MELI"], [55.64, 1.27, "MELI"], [51.15, 4.49, "MELI"], [46.72, -0.73, "MELI"], [59.16, 17.82, "MELI"], [42.56, 27.08, "MELI"], [51.56, -13.53, "MELI"], [39.01, 12.43, "MELI"], [49.34, 28.37, "MELI"], [42.21, -8.03, "MELI"], [48.67, -0.72, "MELI"], [41.68, 9.74, "MELI"], [54.49, -0.95, "MELI"], [38.42, -9.76, "MELI"], [43.02, -14.72, "MELI"], [38.56, -13.8, "MELI"], [33.3, -5.16, "META"], [31.36, 7.88, "META"], [26.54, -0.94, "META"], [35.99, -11.05, "META"], [49.96, 7.11, "META"], [32.63, -13.78, "META"], [56.22, 15.91, "META"], [34.73, 25.23, "META"], [45.3, -1.37, "META"], [34.7, -5.34, "META"], [43.01, 8.35, "META"], [37.9, -2.38, "META"], [44.21, 2.6, "META"], [55.76, -38.06, "META"], [47.84, 9.53, "META"], [41.18, -0.47, "META"], [41.75, -14.18, "META"], [39.26, 20.98, "META"], [36.36, 20.67, "META"], [42.85, -3.96, "META"], [42.15, 12.92, "META"], [41.78, 26.33, "META"], [36.8, -5.62, "META"], [49.53, 9.14, "META"], [46.41, -2.95, "META"], [39.2, -1.23, "META"], [48.35, 17.94, "META"], [34.46, 8.04, "META"], [46.49, -13.8, "META"], [39.88, -3.07, "META"], [34.05, -5.47, "META"], [35.79, 1.58, "MNST"], [38.2, 1.86, "MNST"], [30.24, -7.29, "MNST"], [34.17, 8.31, "MNST"], [45.28, -5.33, "MNST"], [24.19, 6.8, "MNST"], [35.55, -11.53, "MNST"], [38.61, 13.38, "MNST"], [30.26, 10.92, "MNST"], [30.69, 4.17, "MNST"], [30.91, 7.38, "MNST"], [34.3, -0.76, "MNST"], [32.2, 6.12, "MNST"], [35.11, -2.36, "MNST"], [34.27, -2.05, "MNST"], [49.16, 10.02, "MNST"], [53.89, -8.27, "MNST"], [31.7, 12.16, "MNST"], [51.0, 2.5, "MNST"], [34.18, 2.49, "MNST"], [44.81, -2.47, "MNST"], [43.5, 4.77, "MNST"], [43.03, 6.14, "MNST"], [49.0, -2.81, "MNST"], [58.27, -3.72, "MNST"], [29.3, -2.78, "MNST"], [43.77, 11.44, "MNST"], [47.53, 4.76, "MNST"], [45.36, 3.65, "MNST"], [33.59, 11.51, "MNST"], [53.05, -17.11, "MNST"], [45.77, 16.45, "MNST"], [64.0, 17.1, "MPWR"], [55.09, 4.51, "MPWR"], [51.64, -23.7, "MPWR"], [46.38, 1.53, "MPWR"], [51.01, 10.36, "MPWR"], [62.12, -11.19, "MPWR"], [45.88, 7.23, "MPWR"], [46.33, 8.92, "MPWR"], [40.41, 0.42, "MPWR"], [40.98, -17.83, "MPWR"], [39.78, 0.54, "MPWR"], [47.32, 18.66, "MPWR"], [44.69, 2.66, "MPWR"], [48.16, -5.47, "MPWR"], [54.05, 9.1, "MPWR"], [61.72, 0.19, "MPWR"], [57.48, 7.89, "MPWR"], [57.35, 3.44, "MPWR"], [51.26, 6.15, "MPWR"], [67.16, -8.34, "MPWR"], [67.99, 36.75, "MPWR"], [56.26, 13.45, "MPWR"], [62.71, 12.72, "MPWR"], [58.61, 19.08, "MPWR"], [35.05, -38.29, "MPWR"], [54.07, -12.0, "MPWR"], [61.35, 11.14, "MPWR"], [59.81, 17.51, "MPWR"], [61.73, -14.64, "MPWR"], [55.5, -8.13, "MPWR"], [60.73, -4.46, "MPWR"], [25.64, 17.42, "MRVL"], [25.65, -0.27, "MRVL"], [27.74, 25.9, "MRVL"], [27.68, 9.0, "MRVL"], [27.26, -20.48, "MRVL"], [37.53, -22.65, "MRVL"], [32.92, -20.73, "MRVL"], [38.16, -6.34, "MRVL"], [42.31, 22.48, "MRVL"], [39.96, -8.13, "MRVL"], [56.91, 4.38, "MRVL"], [40.79, -15.48, "MRVL"], [37.86, -7.61, "MRVL"], [44.93, 3.26, "MRVL"], [38.68, 23.22, "MRVL"], [30.4, -38.27, "MRVL"], [42.62, 21.45, "MRVL"], [34.63, 6.68, "MRVL"], [36.82, -3.77, "MRVL"], [36.92, 44.7, "MRVL"], [40.98, 34.26, "MRVL"], [40.57, 1.17, "MSFT"], [35.5, 6.23, "MSFT"], [43.28, 1.31, "MSFT"], [31.76, 0.12, "MSFT"], [33.06, 9.29, "MSFT"], [38.98, -3.33, "MSFT"], [45.48, 3.57, "MSFT"], [29.65, 1.58, "MSFT"], [28.81, 0.55, "MSFT"], [42.67, -1.21, "MSFT"], [38.0, -3.78, "MSFT"], [43.47, 5.6, "MSFT"], [44.45, 9.16, "MSFT"], [47.1, 2.33, "MSFT"], [47.91, -2.62, "MSFT"], [38.71, 9.72, "MSFT"], [33.29, -0.95, "MSFT"], [36.99, 5.52, "MSFT"], [39.57, 14.2, "MSFT"], [39.35, -6.64, "MSFT"], [35.15, 14.55, "MSFT"], [37.8, 1.42, "MSFT"], [36.18, 7.99, "MSFT"], [42.55, -2.74, "MSFT"], [30.73, -1.9, "MSFT"], [38.08, -10.07, "MSFT"], [37.79, 16.68, "MSFT"], [31.1, -0.54, "MSFT"], [36.79, -8.98, "MSFT"], [36.56, -18.27, "MSFT"], [32.71, 6.3, "MSFT"], [54.71, 2.34, "MSTR"], [49.92, -2.07, "MSTR"], [30.64, -5.4, "MSTR"], [39.47, 35.28, "MSTR"], [61.01, 14.93, "MSTR"], [52.22, -18.72, "MSTR"], [54.73, 161.05, "MSTR"], [45.15, 25.19, "MSTR"], [47.11, -12.41, "MSTR"], [40.32, 56.67, "MSTR"], [45.54, -14.71, "MSTR"], [50.63, -2.44, "MSTR"], [42.25, -16.78, "MSTR"], [48.77, -32.66, "MSTR"], [47.05, 29.87, "MSTR"], [42.75, -30.78, "MSTR"], [36.98, -12.18, "MU"], [58.81, 4.84, "MU"], [51.44, 8.15, "MU"], [38.28, 46.17, "MU"], [41.89, -1.17, "MU"], [36.76, 11.18, "MU"], [52.65, 3.91, "MU"], [41.76, 2.52, "MU"], [50.45, -1.4, "MU"], [29.51, 6.19, "MU"], [34.58, -2.43, "MU"], [38.89, -8.71, "MU"], [52.74, -6.52, "MU"], [45.6, 3.82, "MU"], [48.78, -14.35, "MU"], [55.79, 13.35, "MU"], [43.93, 8.29, "MU"], [59.05, 19.94, "MU"], [52.49, 4.63, "MU"], [48.82, 6.36, "MU"], [49.31, -5.24, "MU"], [40.01, 11.38, "MU"], [31.69, 11.04, "MU"], [32.75, -23.08, "MU"], [36.18, 11.7, "MU"], [49.01, 5.27, "MU"], [47.94, -35.12, "MU"], [42.59, -12.48, "MU"], [34.61, 19.34, "MU"], [33.27, 61.91, "MU"], [43.87, -1.4, "MU"], [50.53, -17.23, "NFLX"], [59.19, 2.47, "NFLX"], [56.82, -0.04, "NFLX"], [38.32, -18.4, "NFLX"], [61.02, 1.17, "NFLX"], [55.79, 14.16, "NFLX"], [57.39, 3.19, "NFLX"], [41.0, -8.48, "NFLX"], [41.71, -8.3, "NFLX"], [41.14, 9.26, "NFLX"], [44.95, -11.26, "NFLX"], [40.55, -1.73, "NFLX"], [55.01, 8.25, "NFLX"], [51.4, -23.01, "NFLX"], [49.55, -49.17, "NFLX"], [61.15, 19.6, "NFLX"], [55.14, 27.05, "NFLX"], [53.3, 10.19, "NFLX"], [53.46, 1.88, "NFLX"], [54.17, -15.62, "NFLX"], [57.12, 34.88, "NFLX"], [53.27, 19.56, "NFLX"], [43.15, 1.73, "NFLX"], [55.72, 4.83, "NFLX"], [47.69, 19.82, "NFLX"], [36.41, 17.81, "NFLX"], [50.27, 22.47, "NFLX"], [51.59, -2.76, "NFLX"], [36.45, -11.39, "NFLX"], [39.78, -11.76, "NFLX"], [40.35, -19.27, "NFLX"], [41.81, 6.46, "NVDA"], [38.18, -27.32, "NVDA"], [41.42, 9.44, "NVDA"], [35.12, -9.36, "NVDA"], [39.11, 21.25, "NVDA"], [44.54, 7.4, "NVDA"], [51.97, -27.43, "NVDA"], [59.19, 8.61, "NVDA"], [44.1, 0.45, "NVDA"], [35.33, -1.14, "NVDA"], [42.27, -13.51, "NVDA"], [42.85, 21.24, "NVDA"], [38.59, 15.04, "NVDA"], [45.74, -4.98, "NVDA"], [52.33, -0.2, "NVDA"], [57.52, -0.6, "NVDA"], [40.53, -27.3, "NVDA"], [44.66, 4.18, "NVDA"], [48.28, 31.04, "NVDA"], [51.95, 33.07, "NVDA"], [50.08, -11.68, "NVDA"], [46.02, -1.9, "NVDA"], [41.97, 35.52, "NVDA"], [43.33, 24.4, "NVDA"], [41.17, -3.34, "NVDA"], [51.29, -7.66, "NVDA"], [45.27, -15.11, "NVDA"], [44.66, 17.02, "NVDA"], [37.21, -1.87, "NVDA"], [35.43, -2.96, "NVDA"], [42.2, -12.43, "NVDA"], [33.69, -6.52, "NVDA"], [33.55, 7.34, "NXPI"], [27.48, -3.52, "NXPI"], [29.49, 7.47, "NXPI"], [31.1, 5.88, "NXPI"], [32.05, 17.48, "NXPI"], [28.27, 2.6, "NXPI"], [29.07, -0.13, "NXPI"], [37.09, 2.94, "NXPI"], [43.92, 8.71, "NXPI"], [47.56, -8.32, "NXPI"], [57.68, 4.28, "NXPI"], [49.13, -0.11, "NXPI"], [55.74, 20.37, "NXPI"], [52.74, -0.34, "NXPI"], [58.03, 7.89, "NXPI"], [66.71, -5.32, "NXPI"], [58.69, 12.65, "NXPI"], [47.2, 13.68, "NXPI"], [50.59, 10.8, "NXPI"], [54.03, -10.5, "NXPI"], [44.45, -5.59, "NXPI"], [50.11, 5.88, "NXPI"], [46.68, -0.02, "NXPI"], [62.66, 0.44, "NXPI"], [44.03, -13.78, "NXPI"], [56.73, -6.37, "NXPI"], [58.34, 43.36, "NXPI"], [53.42, 4.5, "ODFL"], [60.42, 2.79, "ODFL"], [61.41, -12.12, "ODFL"], [48.38, 0.47, "ODFL"], [55.03, 4.07, "ODFL"], [31.14, -4.0, "ODFL"], [33.34, 21.57, "ODFL"], [25.39, 11.16, "ODFL"], [33.94, 2.55, "ODFL"], [47.3, 11.28, "ODFL"], [34.47, 7.26, "ODFL"], [52.18, 10.33, "ODFL"], [50.47, 10.15, "ODFL"], [71.73, 6.06, "ODFL"], [67.91, -7.63, "ODFL"], [66.34, 6.69, "ODFL"], [47.78, 8.39, "ODFL"], [59.18, 6.59, "ODFL"], [66.31, -11.46, "ODFL"], [63.76, 4.37, "ODFL"], [59.16, 4.63, "ODFL"], [62.05, 11.77, "ODFL"], [40.96, -21.34, "ODFL"], [64.48, 4.67, "ODFL"], [59.69, 7.41, "ODFL"], [53.81, -3.16, "ODFL"], [61.25, 7.97, "ODFL"], [61.43, -5.12, "ODFL"], [62.44, -0.87, "ODFL"], [70.51, 11.17, "ODFL"], [67.55, -0.41, "ODFL"], [44.53, 8.61, "ORLY"], [47.85, 2.96, "ORLY"], [50.93, -7.71, "ORLY"], [43.12, -3.61, "ORLY"], [52.13, -12.2, "ORLY"], [37.44, 9.78, "ORLY"], [47.25, 1.49, "ORLY"], [55.49, 0.17, "ORLY"], [46.3, 5.73, "ORLY"], [47.02, 0.03, "ORLY"], [48.25, -1.53, "ORLY"], [49.03, -2.34, "ORLY"], [51.38, 5.45, "ORLY"], [47.0, -10.39, "ORLY"], [64.15, 3.53, "ORLY"], [43.61, 10.1, "ORLY"], [53.41, 4.14, "ORLY"], [58.51, 4.56, "ORLY"], [57.46, -3.16, "ORLY"], [55.09, 12.83, "ORLY"], [53.12, 1.61, "ORLY"], [40.55, -10.69, "ORLY"], [56.83, 7.32, "ORLY"], [37.71, 0.46, "ORLY"], [52.07, -2.17, "ORLY"], [55.73, -1.14, "ORLY"], [42.43, 7.81, "ORLY"], [44.88, -2.17, "ORLY"], [28.82, -2.21, "ORLY"], [33.37, -5.25, "ORLY"], [39.93, -2.11, "PANW"], [49.14, 4.07, "PANW"], [27.77, 1.66, "PANW"], [53.27, -4.84, "PANW"], [34.19, 3.98, "PANW"], [47.12, -6.69, "PANW"], [48.98, -32.28, "PANW"], [57.45, 1.47, "PANW"], [54.63, -10.46, "PANW"], [49.93, 22.71, "PANW"], [49.46, -15.81, "PANW"], [49.13, 8.28, "PANW"], [60.29, 27.75, "PANW"], [53.81, 1.85, "PANW"], [61.83, 27.03, "PANW"], [54.24, 14.44, "PANW"], [55.48, 1.05, "PANW"], [42.25, -3.86, "PANW"], [51.92, 14.38, "PANW"], [58.7, 28.57, "PANW"], [51.54, 12.63, "PANW"], [56.98, 19.95, "PANW"], [51.94, -22.96, "PANW"], [48.48, -3.93, "PANW"], [52.7, -3.96, "PANW"], [51.23, -4.92, "PANW"], [51.87, -8.36, "PANW"], [51.42, 2.45, "PANW"], [55.84, 15.3, "PANW"], [53.1, -6.51, "PANW"], [49.33, 3.31, "PANW"], [47.46, 17.12, "PANW"], [34.46, -11.66, "PAYX"], [48.5, 7.16, "PAYX"], [61.14, 5.72, "PAYX"], [46.42, 5.88, "PAYX"], [49.15, 1.09, "PAYX"], [52.5, 3.56, "PAYX"], [58.88, 12.34, "PAYX"], [63.01, -5.84, "PAYX"], [51.08, 7.05, "PAYX"], [62.0, -10.01, "PAYX"], [52.42, 0.42, "PAYX"], [38.77, 8.06, "PAYX"], [40.64, 14.38, "PAYX"], [48.51, -6.14, "PAYX"], [60.14, -0.1, "PAYX"], [64.81, 7.0, "PAYX"], [57.56, 1.83, "PAYX"], [59.44, 3.35, "PAYX"], [50.54, -1.05, "PAYX"], [62.14, 14.28, "PAYX"], [61.74, -0.47, "PAYX"], [57.63, -3.94, "PAYX"], [48.02, -2.31, "PAYX"], [66.48, -0.84, "PAYX"], [64.25, 5.72, "PAYX"], [63.7, 6.57, "PAYX"], [63.21, 0.06, "PAYX"], [56.4, -3.11, "PAYX"], [50.26, -3.49, "PAYX"], [53.59, -6.17, "PAYX"], [55.58, 0.38, "PAYX"], [41.92, -1.41, "PCAR"], [56.17, 12.16, "PCAR"], [65.67, -4.9, "PCAR"], [51.22, -6.45, "PCAR"], [45.69, 9.25, "PCAR"], [46.22, -7.26, "PCAR"], [50.84, 2.48, "PCAR"], [25.34, 11.55, "PCAR"], [48.71, -2.11, "PCAR"], [57.42, -3.42, "PCAR"], [43.82, -2.64, "PCAR"], [29.42, -5.54, "PCAR"], [36.12, 3.5, "PCAR"], [48.74, 0.5, "PCAR"], [37.09, -4.38, "PCAR"], [55.16, 5.73, "PCAR"], [53.94, 15.63, "PCAR"], [53.1, 7.61, "PCAR"], [51.66, -2.89, "PCAR"], [52.44, -3.95, "PCAR"], [53.7, 12.72, "PCAR"], [53.92, 12.22, "PCAR"], [65.34, -7.13, "PCAR"], [46.04, -11.98, "PCAR"], [60.06, 0.96, "PCAR"], [66.5, -3.23, "PCAR"], [46.74, 2.54, "PCAR"], [56.1, 7.4, "PCAR"], [57.62, -0.16, "PCAR"], [42.95, 2.29, "PCAR"], [58.46, -11.47, "PCAR"], [37.85, 2.76, "PEP"], [37.87, 5.0, "PEP"], [29.93, 6.42, "PEP"], [40.59, -4.61, "PEP"], [41.05, 2.41, "PEP"], [27.02, -12.16, "PEP"], [49.29, -2.71, "PEP"], [42.53, 1.13, "PEP"], [45.79, -3.33, "PEP"], [39.82, -2.61, "PEP"], [30.75, 3.0, "PEP"], [48.6, 3.29, "PEP"], [50.87, 8.35, "PEP"], [35.55, -10.0, "PEP"], [37.16, -3.41, "PEP"], [45.49, 2.36, "PEP"], [43.6, 9.82, "PEP"], [48.71, 1.19, "PEP"], [44.97, 0.31, "PEP"], [50.48, 0.32, "PEP"], [46.38, 3.61, "PEP"], [44.3, -4.52, "PEP"], [57.5, 2.62, "PEP"], [50.5, 5.37, "PEP"], [34.87, 0.38, "PEP"], [46.05, 2.4, "PEP"], [39.49, -8.53, "PEP"], [49.18, 9.8, "PEP"], [49.86, 1.97, "PEP"], [49.66, 5.62, "PEP"], [48.54, -3.99, "PEP"], [43.34, 86.83, "PLTR"], [32.73, -19.74, "PLTR"], [33.24, 30.86, "PLTR"], [33.81, 17.58, "PLTR"], [36.99, -25.91, "PLTR"], [43.5, -8.23, "PLTR"], [43.52, -3.69, "PLTR"], [48.57, -36.42, "PLTR"], [36.92, -11.85, "PLTR"], [46.17, 3.81, "PLTR"], [59.29, 89.79, "PLTR"], [43.22, -14.95, "PLTR"], [51.79, 35.86, "PLTR"], [54.79, 56.46, "PLTR"], [37.71, -8.93, "PLTR"], [51.52, 26.98, "PLTR"], [60.63, 68.68, "PLTR"], [61.08, 7.63, "PLTR"], [50.6, 5.04, "PLTR"], [43.49, -3.59, "PLTR"], [46.89, -15.01, "PLTR"], [50.48, 3.67, "PLTR"], [41.86, -2.62, "PLTR"], [34.16, 9.78, "PYPL"], [33.95, 6.9, "PYPL"], [43.49, 2.5, "PYPL"], [45.94, -10.33, "PYPL"], [36.6, 6.12, "PYPL"], [38.9, -7.43, "PYPL"], [47.25, 21.58, "PYPL"], [48.49, 10.69, "PYPL"], [40.68, 13.21, "PYPL"], [38.05, -5.1, "PYPL"], [49.6, 6.32, "PYPL"], [40.46, -9.39, "PYPL"], [44.34, -13.98, "PYPL"], [40.47, -42.35, "PYPL"], [36.96, -2.65, "PYPL"], [43.44, 4.25, "PYPL"], [33.48, -3.83, "PYPL"], [38.06, -7.41, "PYPL"], [35.21, -15.2, "PYPL"], [40.88, -14.6, "PYPL"], [41.93, 15.47, "PYPL"], [28.6, -6.69, "PYPL"], [34.6, -8.87, "PYPL"], [38.36, 21.46, "PYPL"], [49.37, 4.01, "PYPL"], [41.39, -22.36, "PYPL"], [47.92, 10.03, "PYPL"], [45.71, -10.28, "PYPL"], [38.53, -12.65, "PYPL"], [43.68, -10.39, "PYPL"], [42.0, -15.44, "PYPL"], [39.39, -8.46, "QCOM"], [44.42, 8.03, "QCOM"], [33.47, -22.64, "QCOM"], [36.14, 4.5, "QCOM"], [33.59, -0.19, "QCOM"], [39.42, -14.11, "QCOM"], [46.95, 2.42, "QCOM"], [43.42, 24.71, "QCOM"], [36.42, 22.74, "QCOM"], [32.43, -19.67, "QCOM"], [41.95, -2.15, "QCOM"], [35.85, -0.04, "QCOM"], [36.17, 27.94, "QCOM"], [39.27, -13.42, "QCOM"], [40.19, -0.19, "QCOM"], [31.1, -4.67, "QCOM"], [35.76, 12.41, "QCOM"], [42.34, -9.34, "QCOM"], [37.45, 3.18, "QCOM"], [39.94, -10.78, "QCOM"], [34.33, 17.68, "QCOM"], [42.06, 10.38, "QCOM"], [38.14, 24.85, "QCOM"], [46.93, -6.33, "QCOM"], [38.8, -7.31, "QCOM"], [45.27, -7.83, "QCOM"], [52.03, -2.2, "QCOM"], [52.19, 1.09, "QCOM"], [56.5, -2.24, "QCOM"], [44.51, -8.28, "QCOM"], [36.27, 60.91, "QCOM"], [48.35, 10.1, "REGN"], [46.57, 7.54, "REGN"], [40.38, -2.72, "REGN"], [36.95, -12.85, "REGN"], [38.85, -4.36, "REGN"], [39.92, 18.95, "REGN"], [44.11, 32.85, "REGN"], [48.57, 11.53, "REGN"], [44.82, -5.9, "REGN"], [39.18, -16.13, "REGN"], [48.29, -7.15, "REGN"], [46.97, 6.11, "REGN"], [43.19, 16.32, "REGN"], [48.36, -2.6, "REGN"], [54.26, -0.34, "REGN"], [50.32, -4.51, "REGN"], [56.82, 1.06, "REGN"], [56.93, 3.5, "REGN"], [44.7, 3.88, "REGN"], [48.41, -7.87, "REGN"], [50.87, 12.89, "REGN"], [56.77, 2.98, "REGN"], [48.29, 1.4, "REGN"], [57.36, 8.49, "REGN"], [41.14, 9.24, "REGN"], [32.19, -18.7, "REGN"], [59.68, 3.18, "REGN"], [37.41, -2.97, "REGN"], [48.92, 6.62, "REGN"], [49.4, 34.68, "REGN"], [56.24, 5.65, "REGN"], [30.43, -14.94, "REGN"], [43.48, -13.1, "RKLB"], [45.87, -19.96, "RKLB"], [48.79, -2.39, "RKLB"], [59.22, -15.61, "RKLB"], [59.84, -12.0, "RKLB"], [47.1, 34.01, "RKLB"], [42.58, -5.11, "RKLB"], [37.83, 10.09, "RKLB"], [56.5, -12.1, "RKLB"], [43.89, 9.36, "RKLB"], [38.3, 28.72, "RKLB"], [49.8, 54.02, "RKLB"], [57.05, -6.1, "RKLB"], [57.15, 28.31, "RKLB"], [43.94, 7.96, "RKLB"], [40.48, 10.83, "RKLB"], [43.57, -16.13, "RKLB"], [42.63, 44.63, "RKLB"], [30.47, 7.69, "ROP"], [48.29, 13.3, "ROP"], [60.45, 0.73, "ROP"], [54.59, -5.21, "ROP"], [46.86, 5.7, "ROP"], [52.45, -7.07, "ROP"], [43.43, 2.51, "ROP"], [41.94, 0.15, "ROP"], [39.29, -8.97, "ROP"], [55.51, 3.12, "ROP"], [46.15, -2.37, "ROP"], [45.85, 3.57, "ROP"], [53.04, 1.79, "ROP"], [49.67, -6.22, "ROP"], [47.9, 4.99, "ROP"], [38.72, 14.71, "ROP"], [63.3, -3.48, "ROP"], [49.4, 4.27, "ROP"], [62.56, 0.57, "ROP"], [49.99, 9.52, "ROP"], [44.15, -3.0, "ROP"], [69.59, 0.79, "ROP"], [58.19, -3.97, "ROP"], [50.09, -0.48, "ROP"], [52.69, 7.64, "ROP"], [49.81, 2.89, "ROP"], [54.59, -2.3, "ROP"], [31.42, -13.38, "ROP"], [50.21, -15.77, "ROP"], [66.41, -11.15, "ROP"], [53.75, 2.61, "ROST"], [56.8, -15.15, "ROST"], [51.05, 1.15, "ROST"], [35.98, 9.11, "ROST"], [36.44, -0.11, "ROST"], [46.5, 2.38, "ROST"], [41.34, -25.53, "ROST"], [40.34, -6.39, "ROST"], [42.77, 3.38, "ROST"], [52.19, 5.98, "ROST"], [45.1, 2.17, "ROST"], [32.74, -2.27, "ROST"], [38.96, -10.41, "ROST"], [37.08, -11.2, "ROST"], [52.7, 3.78, "ROST"], [43.55, -18.68, "ROST"], [50.39, -1.02, "ROST"], [47.65, 17.66, "ROST"], [43.5, -7.0, "ROST"], [23.21, 2.13, "ROST"], [40.44, 4.36, "ROST"], [30.19, 12.68, "ROST"], [37.78, -6.11, "ROST"], [45.04, 12.88, "ROST"], [50.85, -1.42, "ROST"], [58.52, 4.25, "ROST"], [58.4, -2.33, "ROST"], [36.13, -15.47, "ROST"], [36.55, -0.39, "ROST"], [36.74, 12.83, "ROST"], [37.38, 11.52, "ROST"], [47.64, 5.67, "ROST"], [41.01, 15.75, "SBUX"], [21.66, 10.32, "SBUX"], [45.33, -0.79, "SBUX"], [34.1, 4.48, "SBUX"], [29.98, 1.98, "SBUX"], [43.76, -11.22, "SBUX"], [57.93, 0.37, "SBUX"], [37.5, 11.01, "SBUX"], [36.3, 11.53, "SBUX"], [37.24, -0.74, "SBUX"], [45.43, -2.45, "SBUX"], [44.41, -7.94, "SBUX"], [48.43, -1.76, "SBUX"], [33.49, -6.85, "SBUX"], [46.51, 7.6, "SBUX"], [52.03, 1.0, "SBUX"], [46.23, 22.99, "SBUX"], [30.48, -3.33, "SBUX"], [40.05, -14.38, "SBUX"], [39.29, -1.47, "SBUX"], [45.85, 9.19, "SBUX"], [57.73, 1.48, "SBUX"], [36.83, -10.32, "SBUX"], [59.79, 26.25, "SBUX"], [41.8, 5.93, "SBUX"], [59.27, 14.64, "SBUX"], [57.52, -0.25, "SBUX"], [54.72, -5.08, "SBUX"], [49.78, 4.24, "SBUX"], [70.03, 3.13, "SBUX"], [49.09, 4.17, "SBUX"], [47.06, -19.49, "SHOP"], [53.92, 17.89, "SHOP"], [59.03, 14.29, "SHOP"], [50.36, -7.48, "SHOP"], [41.83, -0.84, "SHOP"], [43.11, -11.45, "SHOP"], [53.17, 11.95, "SNDK"], [36.06, 92.99, "SNDK"], [39.72, 8.56, "SNDK"], [42.01, 14.79, "SNDK"], [41.81, 60.64, "SNDK"], [30.67, 4.81, "SNPS"], [31.76, -0.98, "SNPS"], [39.36, 9.64, "SNPS"], [24.82, 11.95, "SNPS"], [41.79, -1.36, "SNPS"], [37.95, 4.39, "SNPS"], [42.15, -30.32, "SNPS"], [42.93, 11.47, "SNPS"], [49.53, -0.15, "SNPS"], [54.08, 13.34, "SNPS"], [47.86, -19.87, "SNPS"], [53.64, 12.01, "SNPS"], [42.59, 12.01, "SNPS"], [41.37, 10.08, "SNPS"], [46.96, 3.72, "SNPS"], [61.25, 8.66, "SNPS"], [50.18, -17.53, "SNPS"], [59.25, -5.96, "SNPS"], [53.67, -1.83, "SNPS"], [41.35, 17.0, "SNPS"], [65.09, 5.54, "SNPS"], [39.33, -6.8, "SNPS"], [62.88, 10.75, "SNPS"], [53.47, 3.92, "SNPS"], [45.87, -10.28, "SNPS"], [51.46, -14.79, "SNPS"], [60.86, -5.15, "SNPS"], [60.07, 8.69, "SNPS"], [40.35, -19.03, "SNPS"], [56.33, 12.1, "SNPS"], [49.06, -10.51, "SNPS"], [36.92, -13.61, "SNPS"], [53.31, 4.14, "STX"], [59.37, 1.54, "STX"], [53.81, -2.69, "STX"], [46.24, 8.54, "STX"], [58.38, 2.24, "STX"], [57.08, -14.75, "STX"], [54.37, 1.02, "STX"], [52.06, -5.85, "STX"], [55.23, 7.38, "STX"], [64.71, 16.75, "STX"], [39.61, 12.54, "STX"], [51.56, 4.14, "STX"], [49.79, 22.54, "STX"], [59.34, 8.92, "STX"], [59.53, 4.32, "STX"], [46.47, -4.35, "STX"], [57.15, -5.5, "STX"], [62.33, 6.17, "STX"], [58.08, -0.17, "STX"], [64.07, 11.95, "STX"], [57.96, 13.38, "STX"], [60.48, -1.33, "STX"], [62.59, 9.41, "STX"], [51.56, -0.82, "STX"], [52.11, -12.98, "STX"], [63.69, 1.37, "STX"], [55.42, 44.78, "STX"], [65.32, 9.54, "STX"], [50.69, 22.1, "STX"], [47.25, 10.2, "STX"], [42.52, 52.1, "STX"], [51.67, 11.21, "TER"], [45.13, -2.44, "TER"], [53.06, 11.1, "TER"], [52.34, 7.95, "TER"], [69.82, 4.27, "TER"], [39.95, 0.58, "TER"], [41.6, 19.19, "TER"], [40.55, -1.08, "TER"], [48.08, -1.48, "TER"], [42.66, -4.37, "TER"], [47.0, 31.07, "TER"], [52.39, -16.2, "TER"], [48.87, -6.83, "TER"], [47.21, -5.69, "TER"], [48.48, 18.05, "TER"], [46.06, -2.61, "TER"], [39.19, 4.34, "TER"], [50.47, -10.93, "TER"], [49.97, 5.34, "TER"], [54.98, -0.84, "TER"], [53.46, 39.39, "TER"], [51.91, -8.6, "TER"], [31.44, -15.2, "TER"], [39.91, -9.89, "TER"], [53.33, 4.61, "TER"], [60.76, 29.2, "TER"], [48.52, 24.34, "TER"], [37.09, 22.36, "TER"], [49.25, 0.7, "TER"], [43.57, 11.2, "TMUS"], [27.31, 7.45, "TMUS"], [27.5, 5.54, "TMUS"], [39.51, 6.27, "TMUS"], [48.59, -4.29, "TMUS"], [31.09, -4.78, "TMUS"], [47.93, -3.65, "TMUS"], [36.94, 16.79, "TMUS"], [39.19, 5.73, "TMUS"], [33.98, 13.39, "TMUS"], [29.28, -2.71, "TMUS"], [44.81, 10.77, "TMUS"], [29.4, -4.32, "TMUS"], [33.99, -4.7, "TMUS"], [37.39, 12.46, "TMUS"], [43.51, 5.19, "TMUS"], [46.86, 8.53, "TMUS"], [48.26, 6.59, "TMUS"], [49.58, -5.47, "TMUS"], [40.68, -9.86, "TMUS"], [52.58, -4.67, "TMUS"], [55.74, 5.56, "TMUS"], [50.31, 0.83, "TMUS"], [55.59, 1.19, "TMUS"], [51.62, 14.86, "TMUS"], [46.57, 7.07, "TMUS"], [51.27, 19.46, "TMUS"], [36.4, -7.36, "TMUS"], [38.5, 10.36, "TMUS"], [32.71, -7.43, "TMUS"], [34.4, 8.01, "TMUS"], [36.04, 1.23, "TMUS"], [60.95, 0.77, "TSLA"], [58.9, 12.94, "TSLA"], [53.89, -4.53, "TSLA"], [41.45, -24.42, "TSLA"], [41.45, -16.13, "TSLA"], [55.61, 39.32, "TSLA"], [56.22, 14.97, "TSLA"], [43.25, 4.31, "TSLA"], [49.1, 25.72, "TSLA"], [53.65, 18.13, "TSLA"], [43.06, -21.83, "TSLA"], [43.69, -18.09, "TSLA"], [38.83, 7.74, "TSLA"], [41.76, 26.63, "TSLA"], [52.7, -13.61, "TSLA"], [55.27, -27.4, "TSLA"], [46.12, 22.37, "TSLA"], [46.45, -17.51, "TSLA"], [53.12, 36.32, "TSLA"], [59.0, -2.05, "TSLA"], [48.7, -24.73, "TSLA"], [51.93, -3.75, "TSLA"], [46.32, -7.63, "TSLA"], [62.04, 24.49, "TSLA"], [55.28, -9.38, "TSLA"], [57.23, 58.97, "TSLA"], [39.96, -24.7, "TSLA"], [62.04, 40.61, "TSLA"], [44.46, -3.74, "TSLA"], [48.93, -9.96, "TSLA"], [45.92, -6.71, "TSLA"], [47.89, 7.83, "TSLA"], [37.73, 17.94, "TTWO"], [28.69, -16.35, "TTWO"], [31.41, -17.6, "TTWO"], [33.57, 8.7, "TTWO"], [23.94, 15.05, "TTWO"], [53.69, 2.69, "TTWO"], [49.82, -10.85, "TTWO"], [56.81, -2.88, "TTWO"], [41.54, 2.87, "TTWO"], [55.59, 8.72, "TTWO"], [36.84, -22.74, "TTWO"], [34.21, 1.68, "TTWO"], [28.53, -6.92, "TTWO"], [48.08, -9.98, "TTWO"], [52.38, -9.58, "TTWO"], [38.55, 14.58, "TTWO"], [50.67, -3.93, "TTWO"], [44.87, -8.22, "TTWO"], [61.72, 10.89, "TTWO"], [49.6, 1.49, "TTWO"], [58.59, 8.26, "TTWO"], [47.58, -13.99, "TTWO"], [45.63, 7.75, "TTWO"], [46.28, 12.64, "TTWO"], [48.45, 13.86, "TTWO"], [52.32, 10.3, "TTWO"], [34.38, 2.69, "TTWO"], [56.9, 9.84, "TTWO"], [44.69, -2.03, "TTWO"], [42.6, 0.17, "TTWO"], [49.79, 1.92, "TTWO"], [40.7, -3.28, "TXN"], [39.7, 13.24, "TXN"], [43.52, -7.64, "TXN"], [46.31, 5.6, "TXN"], [31.21, -8.92, "TXN"], [37.84, -2.92, "TXN"], [48.29, 10.82, "TXN"], [54.98, 2.92, "TXN"], [47.05, 2.53, "TXN"], [41.41, 0.05, "TXN"], [38.37, -0.43, "TXN"], [42.57, -4.21, "TXN"], [41.09, -1.11, "TXN"], [54.65, -1.87, "TXN"], [41.8, 1.62, "TXN"], [58.57, 7.76, "TXN"], [58.84, 11.25, "TXN"], [52.03, -2.26, "TXN"], [53.98, -0.61, "TXN"], [56.56, -8.09, "TXN"], [47.93, 5.73, "TXN"], [48.42, -4.36, "TXN"], [52.86, 23.29, "TXN"], [54.8, 5.77, "TXN"], [39.05, 2.85, "TXN"], [51.13, 0.8, "TXN"], [52.79, 19.45, "TXN"], [52.45, -5.91, "TXN"], [40.73, -12.36, "TXN"], [47.59, 8.84, "TXN"], [44.73, 26.91, "TXN"], [30.85, -1.66, "VRTX"], [38.98, -4.5, "VRTX"], [33.97, 0.76, "VRTX"], [39.78, 7.42, "VRTX"], [35.41, 11.28, "VRTX"], [41.31, 0.86, "VRTX"], [42.04, 14.7, "VRTX"], [41.13, -3.38, "VRTX"], [29.41, 10.02, "VRTX"], [34.91, -10.07, "VRTX"], [27.62, -1.52, "VRTX"], [28.03, -0.23, "VRTX"], [45.65, 12.71, "VRTX"], [43.6, 1.64, "VRTX"], [46.7, 0.61, "VRTX"], [46.59, 2.25, "VRTX"], [57.62, 9.52, "VRTX"], [54.84, -7.02, "VRTX"], [47.4, -6.21, "VRTX"], [43.69, 0.87, "VRTX"], [42.74, -8.37, "VRTX"], [37.8, -3.97, "VRTX"], [53.61, 20.01, "VRTX"], [49.81, -1.96, "VRTX"], [33.39, -1.87, "VRTX"], [61.23, 5.42, "VRTX"], [52.84, -10.86, "VRTX"], [48.48, -16.02, "VRTX"], [48.78, 8.72, "VRTX"], [41.67, 0.23, "VRTX"], [44.45, -0.35, "VRTX"], [31.29, -21.58, "WBD"], [42.51, -25.29, "WBD"], [31.84, -6.85, "WBD"], [36.8, -11.0, "WBD"], [39.22, -5.68, "WBD"], [47.94, 4.7, "WBD"], [33.59, -6.8, "WBD"], [44.26, -11.72, "WBD"], [39.34, 6.03, "WBD"], [52.69, -6.36, "WBD"], [36.4, 27.21, "WBD"], [53.05, 4.86, "WBD"], [50.92, 14.72, "WBD"], [49.23, -5.32, "WBD"], [38.69, 14.59, "WBD"], [22.3, -6.33, "WBD"], [22.39, -3.53, "WBD"], [49.49, -7.04, "WDAY"], [59.04, 9.94, "WDAY"], [38.23, -2.57, "WDAY"], [40.08, -3.89, "WDAY"], [53.36, -9.43, "WDAY"], [38.13, -2.92, "WDAY"], [34.38, -20.44, "WDAY"], [46.23, 9.32, "WDAY"], [36.03, 1.71, "WDAY"], [43.8, 4.99, "WDAY"], [48.31, -0.61, "WDAY"], [45.02, 2.5, "WDAY"], [42.56, 6.9, "WDAY"], [37.96, -9.83, "WDAY"], [54.29, 7.51, "WDAY"], [46.08, -14.21, "WDAY"], [56.4, -9.48, "WDAY"], [59.71, 17.09, "WDAY"], [55.6, 2.57, "WDAY"], [62.04, 14.16, "WDAY"], [56.34, 2.99, "WDAY"], [49.25, 16.33, "WDAY"], [53.73, -9.71, "WDAY"], [41.61, -16.68, "WDAY"], [45.18, 6.04, "WDAY"], [62.75, -1.46, "WDAY"], [59.99, -1.74, "WDAY"], [54.57, -12.09, "WDAY"], [60.41, 6.63, "WDAY"], [58.89, -5.56, "WDAY"], [53.55, -2.43, "WDAY"], [58.78, -5.51, "WDAY"], [36.54, -11.28, "WDC"], [59.17, 27.95, "WDC"], [56.72, -21.42, "WDC"], [38.07, 2.21, "WDC"], [40.15, -19.03, "WDC"], [29.67, -10.33, "WDC"], [50.26, -6.51, "WDC"], [36.83, 18.14, "WDC"], [33.45, 37.15, "WDC"], [34.88, 5.76, "WDC"], [47.91, -5.08, "WDC"], [47.12, 2.99, "WDC"], [40.28, -5.39, "WDC"], [34.89, 18.32, "WDC"], [51.19, -16.55, "WDC"], [40.58, 5.84, "WDC"], [46.28, -12.67, "WDC"], [38.48, 17.09, "WDC"], [47.25, -2.37, "WDC"], [45.9, 20.32, "WDC"], [51.04, -5.39, "WDC"], [45.75, 7.73, "WDC"], [56.77, -6.0, "WDC"], [53.85, 0.17, "WDC"], [40.07, 3.08, "WDC"], [54.05, 29.37, "WDC"], [37.0, 14.85, "WDC"], [48.14, 18.4, "WDC"], [46.6, -2.99, "WDC"], [48.85, 25.7, "WDC"], [31.05, 4.84, "WMT"], [37.94, -10.11, "WMT"], [43.15, 9.2, "WMT"], [47.42, 10.57, "WMT"], [47.03, -0.12, "WMT"], [35.67, 1.16, "WMT"], [37.55, -6.76, "WMT"], [34.73, 0.49, "WMT"], [33.45, -4.25, "WMT"], [27.59, -11.31, "WMT"], [43.98, -1.25, "WMT"], [44.23, -4.11, "WMT"], [31.52, -0.38, "WMT"], [49.86, 9.34, "WMT"], [43.69, -19.45, "WMT"], [49.83, 1.75, "WMT"], [50.06, 6.38, "WMT"], [25.75, -3.72, "WMT"], [40.12, 4.01, "WMT"], [54.53, 3.38, "WMT"], [38.19, -9.7, "WMT"], [42.53, 7.56, "WMT"], [37.12, 12.02, "WMT"], [35.46, 17.72, "WMT"], [37.7, 11.51, "WMT"], [41.79, -17.49, "WMT"], [32.8, -2.47, "WMT"], [24.63, -0.23, "WMT"], [32.14, 13.9, "WMT"], [50.85, -4.37, "WMT"], [39.21, -10.45, "WMT"], [47.28, 1.19, "XEL"], [37.42, 7.86, "XEL"], [45.28, 6.64, "XEL"], [67.33, 8.37, "XEL"], [46.23, -4.25, "XEL"], [32.61, -7.56, "XEL"], [53.5, 6.6, "XEL"], [42.7, -0.15, "XEL"], [36.8, -3.76, "XEL"], [37.93, -8.19, "XEL"], [25.39, 0.66, "XEL"], [35.55, -0.58, "XEL"], [28.06, -0.58, "XEL"], [31.64, 2.73, "XEL"], [40.89, 8.3, "XEL"], [38.77, 11.28, "XEL"], [46.68, -4.01, "XEL"], [33.11, -7.74, "XEL"], [32.07, -12.36, "XEL"], [26.52, 1.14, "XEL"], [34.05, 1.91, "XEL"], [31.31, -2.31, "XEL"], [38.74, 5.34, "XEL"], [31.98, 15.08, "XEL"], [43.14, 0.07, "XEL"], [40.26, -3.27, "XEL"], [48.59, -0.07, "XEL"], [54.8, 3.04, "XEL"], [50.26, 8.29, "XEL"], [57.77, 0.86, "XEL"]], "ols": {"b0": -4.518312570327274, "b1": 0.14934116724993654, "xmin": 15.185845100493761, "xmax": 74.79909934016983}};
+const $=id=>document.getElementById(id); const NS="http://www.w3.org/2000/svg"; const tip=$("tip");
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+function showTip(h,ev){tip.innerHTML=h;tip.style.opacity=1;let x=ev.clientX+14,y=ev.clientY+14;
+  const w=tip.offsetWidth,hh=tip.offsetHeight;if(x+w>innerWidth-8)x=ev.clientX-w-14;if(y+hh>innerHeight-8)y=ev.clientY-hh-14;
   tip.style.left=x+"px";tip.style.top=y+"px";}
-function hideTip(){tip.style.opacity=0;}
-const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%";
-const css=n=>getComputedStyle($("kpis")).getPropertyValue(n)||n;
+const hideTip=()=>tip.style.opacity=0;
+const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed(3);
 
-/* ---------- KPIs ---------- */
+/* KPIs */
 (function(){
-  const c=DATA.corr.dpi10_next_day, t=DATA.tercile.dpi10_next, m=DATA.corr.dpi10_m1;
+  const cm=DATA.corr.dpi10_m1,cn=DATA.corr.dpi10_next_day,t=DATA.tercile.m1;
   const cards=[
-    {label:"Sample",val:DATA.n_events,note:DATA.n_names+" names · after-hours reporters"},
-    {label:"DPI10 vs next-day",val:c.pearson.toFixed(2),note:"Pearson r · p="+c.pearson_p.toFixed(3),cls:c.pearson<0?"neg":"pos"},
-    {label:"High vs low DPI, next-day",val:pct(t.diff*100),note:"tercile spread · t="+t.t.toFixed(2)+" · p="+t.p.toFixed(3),cls:t.diff<0?"neg":"pos"},
-    {label:"DPI10 vs 1-month",val:m.pearson.toFixed(2),note:"Pearson r · p="+m.pearson_p.toFixed(2)+" — not significant"},
+    {label:"Sample",val:DATA.n_events.toLocaleString(),note:DATA.n_names+" names · 2018–2026"},
+    {label:"DPI10 vs 1-month",val:r3(cm.pearson),note:"Pearson r · p<0.001",cls:cm.pearson>=0?"pos":"neg"},
+    {label:"High vs low DPI, 1-month",val:pct(t.diff*100),note:"tercile spread · t="+t.t.toFixed(1)+" · p<0.001",cls:t.diff>=0?"pos":"neg"},
+    {label:"DPI10 vs next-day",val:r3(cn.pearson),note:"Pearson r · p="+cn.pearson_p.toFixed(3),cls:cn.pearson>=0?"pos":"neg"},
   ];
   $("kpis").innerHTML=cards.map(k=>`<div class="kpi"><div class="label">${k.label}</div>
     <div class="val ${k.cls||''}">${k.val}</div><div class="note">${k.note}</div></div>`).join("");
 })();
 
-/* ---------- Scatter ---------- */
+/* Headline note */
 (function(){
-  const W=Math.max(640,Math.min(940,innerWidth-60)),H=420,m={l:52,r:16,t:12,b:44};
-  const iw=W-m.l-m.r,ih=H-m.t-m.b;
-  const s=$("scatter");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
-  const xs=DATA.scatter.map(d=>d[0]),ys=DATA.scatter.map(d=>d[1]);
-  const xmin=Math.floor(Math.min(...xs)/5)*5,xmax=Math.ceil(Math.max(...xs)/5)*5;
-  const ymax=Math.ceil(Math.max(Math.abs(Math.min(...ys)),Math.abs(Math.max(...ys)))/5)*5;
-  const X=v=>m.l+(v-xmin)/(xmax-xmin)*iw, Y=v=>m.t+(ymax-v)/(2*ymax)*ih;
-  // grid + y ticks
-  for(let v=-ymax;v<=ymax;v+=5){const y=Y(v);
-    s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
-    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v+"%";s.appendChild(tk);}
-  for(let v=xmin;v<=xmax;v+=5){const x=X(v);
-    const tk=el("text",{x,y:m.t+ih+18,"text-anchor":"middle",class:"tick"});tk.textContent=v+"%";s.appendChild(tk);}
-  const xl=el("text",{x:m.l+iw/2,y:H-6,"text-anchor":"middle",class:"axlab"});xl.textContent="10-day avg DPI into earnings (short share of off-exchange volume)";s.appendChild(xl);
-  const yl=el("text",{x:14,y:m.t+ih/2,"text-anchor":"middle",class:"axlab",transform:`rotate(-90 14 ${m.t+ih/2})`});yl.textContent="Next-day reaction";s.appendChild(yl);
-  // OLS line
-  const o=DATA.ols;const lx0=xmin,lx1=xmax;
-  s.appendChild(el("line",{x1:X(lx0),y1:Y(o.b0+o.b1*lx0),x2:X(lx1),y2:Y(o.b0+o.b1*lx1),
-    stroke:"var(--accent)","stroke-width":2.5,"stroke-linecap":"round"}));
-  // points
-  DATA.scatter.forEach(d=>{
-    const c=el("circle",{cx:X(d[0]),cy:Y(Math.max(-ymax,Math.min(ymax,d[1]))),r:4.5,
-      fill:d[1]>=0?"var(--up)":"var(--down)","fill-opacity":.72,stroke:"var(--surface-1)","stroke-width":1});
-    c.addEventListener("mousemove",e=>showTip(`<b>${d[2]}</b><br>DPI10 ${d[0].toFixed(1)}%<br>next-day ${pct(d[1])}`,e));
-    c.addEventListener("mouseleave",hideTip);s.appendChild(c);});
+  const t=DATA.tercile.m1, cm=DATA.corr.dpi10_m1;
+  $("headline").innerHTML=`<p style="margin:0"><b class="k">Higher dark-pool positioning into a report lines up with better performance after it — modestly next day, and more clearly over the following month.</b>
+   Across ${DATA.n_events.toLocaleString()} earnings events, the third of events with the highest run-in DPI averaged
+   <span class="pos">${pct(t.hi*100)}</span> over the next month vs <span class="pos">${pct(t.lo*100)}</span> for the lowest third — a
+   <span class="pos">${pct(t.diff*100)}</span> spread (t=${t.t.toFixed(1)}, p&lt;0.001), and ${(t.hi_up*100).toFixed(0)}% of high-DPI events were up vs ${(t.lo_up*100).toFixed(0)}% of low-DPI ones.</p>`;
 })();
 
-/* ---------- Tercile buckets (grouped: next-day + 1-month) ---------- */
+/* Tercile buckets */
 (function(){
-  const T5=DATA.tercile,rows=[
-    {k:"Low DPI",nd:T5.dpi10_next.lo,m1:T5.dpi10_m1.lo},
-    {k:"Mid DPI",nd:T5.dpi10_next.mid,m1:T5.dpi10_m1.mid},
-    {k:"High DPI",nd:T5.dpi10_next.hi,m1:T5.dpi10_m1.hi}];
-  const W=Math.max(560,Math.min(880,innerWidth-60)),H=340,m={l:52,r:16,t:16,b:40};
-  const iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const T=DATA.tercile, rows=[["Low DPI",T.next.lo,T.m1.lo],["Mid DPI",T.next.mid,T.m1.mid],["High DPI",T.next.hi,T.m1.hi]];
+  const W=Math.max(560,Math.min(880,innerWidth-60)),H=340,m={l:52,r:16,t:16,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
   const s=$("buckets");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
-  const vals=rows.flatMap(r=>[r.nd*100,r.m1*100]);
-  const lim=Math.max(6,Math.ceil(Math.max(...vals.map(Math.abs))/2)*2);
+  const vals=rows.flatMap(r=>[r[1]*100,r[2]*100]); const lim=Math.max(4,Math.ceil(Math.max(...vals.map(Math.abs))/1)*1);
   const Y=v=>m.t+(lim-v)/(2*lim)*ih;
-  for(let v=-lim;v<=lim;v+=2){const y=Y(v);
-    s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
+  for(let v=-lim;v<=lim;v++){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
     const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v+"%";s.appendChild(tk);}
   const gw=iw/rows.length, bw=Math.min(46,gw/3.1);
-  rows.forEach((r,i)=>{
-    const cx=m.l+gw*i+gw/2;
-    [["next-day",r.nd,-bw*0.62],["1-month",r.m1,bw*0.62]].forEach(([lbl,val,off])=>{
-      const v=val*100,y0=Y(0),y=Y(v),x=cx+off-bw/2;
-      const top=Math.min(y0,y),h=Math.abs(y-y0);
-      const rect=el("rect",{x,y:top,width:bw,height:Math.max(1,h),rx:4,
-        fill:v>=0?"var(--up)":"var(--down)","fill-opacity":lbl==="1-month"?.5:.92});
-      rect.addEventListener("mousemove",e=>showTip(`<b>${r.k}</b> · ${lbl}<br>mean ${pct(v)}`,e));
-      rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
-      const vl=el("text",{x:x+bw/2,y:(v>=0?top-5:top+h+13),"text-anchor":"middle",class:"vlab"});vl.textContent=pct(v);s.appendChild(vl);
-    });
-    const lb=el("text",{x:cx,y:H-6,"text-anchor":"middle",class:"axlab"});lb.textContent=r.k;s.appendChild(lb);
-  });
+  rows.forEach((r,i)=>{const cx=m.l+gw*i+gw/2;
+    [["next-day",r[1],-bw*0.62],["1-month",r[2],bw*0.62]].forEach(([lbl,val,off])=>{
+      const v=val*100,y0=Y(0),y=Y(v),x=cx+off-bw/2,top=Math.min(y0,y),h=Math.abs(y-y0);
+      const rect=el("rect",{x,y:top,width:bw,height:Math.max(1,h),rx:4,fill:v>=0?"var(--up)":"var(--down)","fill-opacity":lbl==="1-month"?.5:.92});
+      rect.addEventListener("mousemove",e=>showTip(`<b>${r[0]}</b> · ${lbl}<br>mean ${pct(v)}`,e));rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
+      const vl=el("text",{x:x+bw/2,y:(v>=0?top-5:top+h+13),"text-anchor":"middle",class:"vlab"});vl.textContent=pct(v);s.appendChild(vl);});
+    const lb=el("text",{x:cx,y:H-6,"text-anchor":"middle",class:"axlab"});lb.textContent=r[0];s.appendChild(lb);});
 })();
 
-/* ---------- Quintile lines next-day vs 1-month ---------- */
+/* Quintile lines */
 (function(){
-  const q=DATA.quintile,W=Math.max(560,Math.min(880,innerWidth-60)),H=300,m={l:52,r:100,t:16,b:40};
-  const iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const q=DATA.quintile,W=Math.max(560,Math.min(880,innerWidth-60)),H=300,m={l:52,r:96,t:16,b:34},iw=W-m.l-m.r,ih=H-m.t-m.b;
   const s=$("quint");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
-  const all=q.next_day.concat(q.m1).map(v=>v*100);
-  const lim=Math.max(4,Math.ceil(Math.max(...all.map(Math.abs))/2)*2);
+  const all=q.next_day.concat(q.m1).map(v=>v*100);const lim=Math.max(2,Math.ceil(Math.max(...all.map(Math.abs))));
   const X=i=>m.l+i/4*iw, Y=v=>m.t+(lim-v)/(2*lim)*ih;
-  for(let v=-lim;v<=lim;v+=2){const y=Y(v);
-    s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
+  for(let v=-lim;v<=lim;v++){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
     const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v+"%";s.appendChild(tk);}
   ["1","2","3","4","5"].forEach((lb,i)=>{const tk=el("text",{x:X(i),y:H-6,"text-anchor":"middle",class:"tick"});tk.textContent=lb;s.appendChild(tk);});
-  const xl=el("text",{x:m.l+iw/2,y:H-6+0,"text-anchor":"middle"});
-  const cap=el("text",{x:m.l+iw/2,y:m.t-2,"text-anchor":"middle",class:"tick"});cap.textContent="Within-name DPI10 quintile  (1 = lowest, 5 = highest)";s.appendChild(cap);
-  function series(arr,color,name,dash){
-    let d="";arr.forEach((v,i)=>{d+=(i?"L":"M")+X(i)+" "+Y(v*100);});
+  function series(arr,color,name,dash){let d="";arr.forEach((v,i)=>d+=(i?"L":"M")+X(i)+" "+Y(v*100));
     s.appendChild(el("path",{d,fill:"none",stroke:color,"stroke-width":2.5,"stroke-linecap":"round","stroke-linejoin":"round","stroke-dasharray":dash||""}));
     arr.forEach((v,i)=>{const c=el("circle",{cx:X(i),cy:Y(v*100),r:5,fill:color,stroke:"var(--surface-1)","stroke-width":1.5});
       c.addEventListener("mousemove",e=>showTip(`<b>${name}</b><br>Q${i+1}: ${pct(v*100)}`,e));c.addEventListener("mouseleave",hideTip);s.appendChild(c);});
-    const last=arr.length-1;const t=el("text",{x:X(last)+10,y:Y(arr[last]*100)+4,class:"axlab",fill:color});t.textContent=name;s.appendChild(t);
-  }
-  series(q.next_day,"var(--accent)","next-day");
-  series(q.m1,"var(--muted)","1-month","4 4");
+    const last=arr.length-1;const t=el("text",{x:X(last)+10,y:Y(arr[last]*100)+4,class:"axlab",fill:color});t.textContent=name;s.appendChild(t);}
+  series(q.next_day,"var(--accent)","next-day");series(q.m1,"var(--muted)","1-month","4 4");
 })();
 
-/* ---------- Per-name correlation bars ---------- */
+/* Scatter DPI10 vs m1 */
 (function(){
-  const d=DATA.pername.slice().sort((a,b)=>a.r-b.r);
-  const rowH=20,W=Math.max(560,Math.min(880,innerWidth-60)),m={l:56,r:20,t:10,b:28};
-  const H=m.t+m.b+d.length*rowH;const iw=W-m.l-m.r;
-  const s=$("pername");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
-  const lim=1;const X=v=>m.l+(v+lim)/(2*lim)*iw;
-  for(let v=-1;v<=1;v+=0.5){const x=X(v);
-    s.appendChild(el("line",{x1:x,x2:x,y1:m.t,y2:m.t+d.length*rowH,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
-    const tk=el("text",{x,y:H-10,"text-anchor":"middle",class:"tick"});tk.textContent=v.toFixed(1);s.appendChild(tk);}
-  d.forEach((r,i)=>{
-    const y=m.t+i*rowH+rowH/2, x0=X(0),x=X(r.r);
-    const rect=el("rect",{x:Math.min(x0,x),y:y-6,width:Math.max(1,Math.abs(x-x0)),height:12,rx:3,
-      fill:r.r<0?"var(--down)":"var(--up)","fill-opacity":.85});
-    rect.addEventListener("mousemove",e=>showTip(`<b>${r.ticker}</b><br>corr(DPI10, next-day) = ${r.r.toFixed(2)}<br>n=${r.n} events`,e));
-    rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
-    const tk=el("text",{x:m.l-10,y:y+4,"text-anchor":"end",class:"vlab"});tk.textContent=r.ticker;s.appendChild(tk);});
-  const xl=el("text",{x:m.l+iw/2,y:m.t-0,"text-anchor":"middle",class:"tick"});
+  const W=Math.max(640,Math.min(940,innerWidth-60)),H=420,m={l:52,r:16,t:12,b:44},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const s=$("scatter");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
+  const xs=DATA.scatter.map(d=>d[0]);const xmin=Math.floor(Math.min(...xs)/5)*5,xmax=Math.ceil(Math.max(...xs)/5)*5;
+  const ymax=30;
+  const X=v=>m.l+(v-xmin)/(xmax-xmin)*iw, Y=v=>m.t+(ymax-v)/(2*ymax)*ih;
+  for(let v=-ymax;v<=ymax;v+=10){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v+"%";s.appendChild(tk);}
+  for(let v=xmin;v<=xmax;v+=5){const x=X(v);const tk=el("text",{x,y:m.t+ih+18,"text-anchor":"middle",class:"tick"});tk.textContent=v+"%";s.appendChild(tk);}
+  const xl=el("text",{x:m.l+iw/2,y:H-6,"text-anchor":"middle",class:"axlab"});xl.textContent="10-day avg DPI into earnings";s.appendChild(xl);
+  const yl=el("text",{x:14,y:m.t+ih/2,"text-anchor":"middle",class:"axlab",transform:`rotate(-90 14 ${m.t+ih/2})`});yl.textContent="Return over next ~1 month";s.appendChild(yl);
+  DATA.scatter.forEach(d=>{const yv=Math.max(-ymax,Math.min(ymax,d[1]));
+    const c=el("circle",{cx:X(d[0]),cy:Y(yv),r:3,fill:d[1]>=0?"var(--up)":"var(--down)","fill-opacity":.5});
+    c.addEventListener("mousemove",e=>showTip(`<b>${d[2]}</b><br>DPI10 ${d[0].toFixed(1)}%<br>1-month ${pct(d[1])}`,e));c.addEventListener("mouseleave",hideTip);s.appendChild(c);});
+  const o=DATA.ols;s.appendChild(el("line",{x1:X(xmin),y1:Y(o.b0+o.b1*xmin),x2:X(xmax),y2:Y(o.b0+o.b1*xmax),stroke:"var(--accent)","stroke-width":2.5,"stroke-linecap":"round"}));
 })();
 
-/* ---------- Readout ---------- */
+/* Period bars: yearly corr(dpi10, m1) */
 (function(){
-  const c=DATA.corr.dpi10_next_day,t=DATA.tercile.dpi10_next,nd=DATA.next_day;
-  const negNames=DATA.pername.filter(p=>p.r<0).length;
-  $("readout").innerHTML=`<p style="margin-top:0"><b>Yes — modestly, and mostly in the immediate reaction.</b>
-   Across ${DATA.n_events} after-hours earnings events, a higher 10-day DPI heading into the print lines up with a
-   <span class="neg">weaker</span> next-day move: pooled r = ${c.pearson.toFixed(2)} (p = ${c.pearson_p.toFixed(3)}).
-   Splitting by each name's own DPI history, the high-DPI tercile averaged
-   <span class="neg">${pct(t.hi*100)}</span> next day vs <span class="pos">${pct(t.lo*100)}</span> for the low-DPI tercile —
-   a ${pct(t.diff*100)} spread (t = ${t.t.toFixed(2)}, p = ${t.p.toFixed(3)}). The 5-day average tells the same story a touch weaker.</p>
-   <p><b>The edge is a next-day phenomenon.</b> One month out the relationship is gone (r ≈ ${DATA.corr.dpi10_m1.pearson.toFixed(2)}),
-   consistent with elevated pre-earnings DPI flagging crowded positioning that unwinds on the news rather than a durable directional signal.</p>
-   <p><b>Don't over-trust it.</b> ${negNames}/${DATA.pername.length} names show the negative tilt, but it's carried by semis/high-beta names
-   and flips for a few. Base-rate context: only ${(nd.pos*100).toFixed(0)}% of these events were up the next day at all (median ${pct(nd.median*100)}) —
-   this cohort "sold the news" often over the sample window.</p>`;
+  const d=DATA.period,W=Math.max(560,Math.min(880,innerWidth-60)),H=300,m={l:44,r:16,t:16,b:34},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const s=$("period");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
+  const lim=0.25;const Y=v=>m.t+(lim-v)/(2*lim)*ih;
+  for(let v=-0.2;v<=0.2;v+=0.1){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":Math.abs(v)<1e-9?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=v.toFixed(1);s.appendChild(tk);}
+  const gw=iw/d.length,bw=Math.min(46,gw*0.6);
+  d.forEach((r,i)=>{const cx=m.l+gw*i+gw/2,y0=Y(0),y=Y(r.m1_r),top=Math.min(y0,y),h=Math.abs(y-y0);
+    const rect=el("rect",{x:cx-bw/2,y:top,width:bw,height:Math.max(1,h),rx:3,fill:r.m1_r>=0?"var(--up)":"var(--down)","fill-opacity":.9});
+    rect.addEventListener("mousemove",e=>showTip(`<b>${r.year}</b><br>corr(DPI10,1-mo)=${r3(r.m1_r)}<br>p=${r.m1_p.toFixed(3)} · n=${r.n}`,e));rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
+    const lb=el("text",{x:cx,y:H-6,"text-anchor":"middle",class:"tick"});lb.textContent=r.year;s.appendChild(lb);});
+})();
+
+/* Subgroup table */
+(function(){
+  const g=DATA.subgroup;const rows=[["Mega-cap (20)","mega"],["Rest (74)","nonmega"],["After close (AMC)","amc"],["Before open (BMO)","bmo"]];
+  let h=`<table style="width:100%;border-collapse:collapse;font-size:.88rem">
+    <tr style="color:var(--muted);text-align:right"><th style="text-align:left;padding:5px 8px">Cohort</th><th style="padding:5px 8px">n</th><th style="padding:5px 8px">next-day r</th><th style="padding:5px 8px">1-month r</th></tr>`;
+  rows.forEach(([lbl,k])=>{const x=g[k];const col=v=>v>=0?"var(--up)":"var(--down)";
+    h+=`<tr style="text-align:right;border-top:1px solid var(--grid)"><td style="text-align:left;padding:6px 8px">${lbl}</td>
+    <td style="padding:6px 8px;font-variant-numeric:tabular-nums">${x.n}</td>
+    <td style="padding:6px 8px;font-variant-numeric:tabular-nums;color:${col(x.next_r)}">${r3(x.next_r)}</td>
+    <td style="padding:6px 8px;font-variant-numeric:tabular-nums;color:${col(x.m1_r)}">${r3(x.m1_r)}</td></tr>`;});
+  h+=`</table><div class="foot" style="margin-top:8px">1-month is positive in every cohort; next-day is ~flat for mega-caps and positive for the rest.</div>`;
+  $("subgroup").innerHTML=h;
+})();
+
+/* Per-name bars corr(dpi10, m1) */
+(function(){
+  const d=DATA.pername.slice().sort((a,b)=>a.r-b.r);const rowH=13.5,W=Math.max(560,Math.min(880,innerWidth-60)),m={l:52,r:16,t:8,b:24};
+  const H=m.t+m.b+d.length*rowH,iw=W-m.l-m.r;const s=$("pername");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
+  const lim=0.6;const X=v=>m.l+(Math.max(-lim,Math.min(lim,v))+lim)/(2*lim)*iw;
+  for(let v=-0.6;v<=0.6;v+=0.3){const x=X(v);s.appendChild(el("line",{x1:x,x2:x,y1:m.t,y2:m.t+d.length*rowH,stroke:"var(--grid)","stroke-width":Math.abs(v)<1e-9?1.5:1}));
+    const tk=el("text",{x,y:H-8,"text-anchor":"middle",class:"tick"});tk.textContent=v.toFixed(1);s.appendChild(tk);}
+  d.forEach((r,i)=>{const y=m.t+i*rowH+rowH/2,x0=X(0),x=X(r.r);
+    const rect=el("rect",{x:Math.min(x0,x),y:y-4.5,width:Math.max(1,Math.abs(x-x0)),height:9,rx:2,fill:r.r<0?"var(--down)":"var(--up)","fill-opacity":.85});
+    rect.addEventListener("mousemove",e=>showTip(`<b>${r.ticker}</b><br>corr(DPI10,1-mo)=${r3(r.r)}<br>n=${r.n}`,e));rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
+    if(i%2===0||d.length<50){const tk=el("text",{x:m.l-6,y:y+3,"text-anchor":"end",class:"tick","font-size":"8.5px"});tk.textContent=r.ticker;s.appendChild(tk);}});
+})();
+
+/* Readout */
+(function(){
+  const cm=DATA.corr.dpi10_m1,cn=DATA.corr.dpi10_next_day,t=DATA.tercile.m1,pos=DATA.pername.filter(p=>p.r>=0).length;
+  $("readout").innerHTML=`<p style="margin-top:0"><b class="k">Yes — a modest, positive tilt that shows up most at the one-month horizon.</b>
+   Pooled, DPI10 correlates ${r3(cm.pearson)} with the 1-month return (p&lt;0.001) and ${r3(cn.pearson)} with the next-day move (p=${cn.pearson_p.toFixed(3)}).
+   The high-DPI tercile beat the low-DPI tercile by ${pct(t.diff*100)} over the month.</p>
+   <p><b class="k">It's broad and reasonably stable.</b> Same sign for after-hours and before-open reporters, for mega-caps and the rest, and in ${pos} of ${DATA.pername.length} names individually. By year it's absent in 2018–2019 and builds from 2020 on.</p>
+   <p><b class="k">But small.</b> r≈0.1 explains ~1% of the variance in monthly post-earnings returns — a genuine edge in the aggregate, not a signal to trade a single name on. Read it as: elevated dark-pool accumulation into a print skews the odds modestly bullish for the month that follows.</p>`;
 })();
 </script>
