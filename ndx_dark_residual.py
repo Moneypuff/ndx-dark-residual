@@ -74,6 +74,12 @@ except ImportError:
 
 FINRA_TMPL = "https://cdn.finra.org/equity/regsho/daily/CNMSshvol{date}.txt"
 FINRA_MIN_DATE = pd.Timestamp("2018-08-01")  # earliest date FINRA's consolidated NMS short-volume file covers
+# A recent trading day whose FINRA file was not posted yet when we last ran returns "no file"
+# -- identical to a holiday -- and gets cached as an all-NaN row. Within this many days of
+# today we re-check such empty rows each run, so a delayed post (FINRA usually publishes after
+# ~5pm ET, occasionally later) is picked up instead of being frozen as a permanent gap. Wide
+# enough to span a long holiday weekend; a genuine holiday just stays empty and ages out.
+FINRA_RECENT_REFETCH_DAYS = 6
 # Cache lives under the user's home directory by default: a short, stable path that
 # (a) is found no matter which working directory the script runs from, and (b) avoids
 # Windows' 260-char MAX_PATH limit that a script-relative deep path would blow past.
@@ -509,6 +515,26 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
             print(f"FINRA cache [{ns or 'ndx'}]: transition config v{TICKER_TRANSITION_VERSION}"
                   f" -> dropping {len(set(drop_t) | set(drop_s))} target column(s) to rebuild: "
                   f"{', '.join(sorted(set(drop_t) | set(drop_s)))}", file=sys.stderr)
+    # Self-heal delayed FINRA posts: an all-NaN cached row within the recency window is either a
+    # genuine holiday or a day whose file simply was not up yet when we last ran. Drop those so
+    # they re-enter `missing` and are re-fetched -- once FINRA publishes, the real row replaces
+    # the empty one; a true holiday just comes back empty and eventually ages out of the window.
+    # (Rows are all-NaN in both docs for an empty day, so dropping per-doc stays consistent via
+    # the `have` intersection below.) Skipped on a full --refresh, which re-fetches everything.
+    if cache_dir and (not doc_t.empty or not doc_s.empty):
+        recent_cut = pd.Timestamp.today().normalize() - pd.Timedelta(days=FINRA_RECENT_REFETCH_DAYS)
+        def _drop_recent_empty(doc):
+            if doc.empty:
+                return doc, 0
+            recent = doc.index[doc.index >= recent_cut]
+            empty = recent[doc.loc[recent].isna().all(axis=1)] if len(recent) else recent[:0]
+            return (doc.drop(index=empty), len(empty)) if len(empty) else (doc, 0)
+        doc_t, n_t = _drop_recent_empty(doc_t)
+        doc_s, n_s = _drop_recent_empty(doc_s)
+        if n_t or n_s:
+            print(f"FINRA cache [{ns or 'ndx'}]: re-checking {max(n_t, n_s)} recent empty "
+                  f"day-row(s) in case FINRA has since posted them", file=sys.stderr)
+
     have_cols = (set(doc_t.columns) if not doc_t.empty else set()) & \
                 (set(doc_s.columns) if not doc_s.empty else set())
     new_syms = [s for s in wanted if s not in have_cols]
