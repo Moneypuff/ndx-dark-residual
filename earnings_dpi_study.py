@@ -17,28 +17,29 @@ the day BEFORE the report date (T-1):
     DPI5  = mean(DPI over the 5  trading days ending T-1)
     DPI10 = mean(DPI over the 10 trading days ending T-1)
 
-Outcome (post-earnings, split-adjusted closes)
-----------------------------------------------
-T = report date (company reports after the close of T).
+Outcome (post-earnings, split-adjusted closes), timing-aware
+------------------------------------------------------------
+T = last clean pre-news close. For an after-hours (AMC) report T is the report
+day; for a before-open (BMO) report T is the prior session -- so the reaction is
+always the first full session on the news.
     next_day_ret = adjclose(T+1) / adjclose(T) - 1      # the earnings reaction
-    m1_ret       = adjclose(T+MONTH) / adjclose(T) - 1  # ~1 calendar month later
+    m1_ret       = adjclose(T+MONTH) / adjclose(T) - 1  # ~1 month later
 MONTH defaults to 21 trading sessions.
 
-Date robustness
----------------
-Earnings dates here are hand-curated (no bulk earnings feed is reachable from
-this environment). To keep small date errors from corrupting the windows, each
-event is *anchored to its actual price reaction*: within a short window around
-the curated date we locate the dominant move (the earnings gap) and set T so
-that T+1 is that reaction day. Anchoring only refines the date -- every event
-is kept regardless of reaction size, so the sample is not selected on outcome.
-Events whose curated date has no clearly dominant nearby move keep the curated
-date and are flagged `anchored=0` so they can be audited.
+Dates
+-----
+Report dates + AMC/BMO timing come from SEC EDGAR 8-K Item 2.02 filings (see
+fetch_earnings_edgar.py -> earnings_dates_edgar.csv), matched to each 10-Q/10-K
+to isolate the quarterly earnings release. A hand-curated earnings_dates.csv (20
+mega-caps) is kept as a fallback example. An optional --anchor mode can snap T to
+the nearest price reaction; it is off by default (biased toward large moves) and
+unnecessary given authoritative dates.
 
 Usage
 -----
-    python earnings_dpi_study.py --cache-dir ~/.ndx_dark_cache \
-        --earnings earnings_dates.csv --out-prefix earnings_dpi
+    python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
+    python earnings_dpi_study.py --earnings earnings_dates_edgar.csv \
+        --cache-dir ~/.ndx_dark_cache --out-prefix earnings_dpi
 
 Outputs <out-prefix>_events.csv (one row per event) and prints a summary.
 """
@@ -97,51 +98,61 @@ def anchor_to_reaction(ret, close_index, approx_pos, sigma,
 
 
 def build_events(earnings, panels, month_sessions=21, dpi_windows=(5, 10), anchor=False):
-    """Build one row per earnings event.
+    """Build one row per earnings event, timing-aware.
 
-    `anchor=False` (default) trusts the curated report date: T = first trading
-    day on/after it (for an after-hours reporter, that IS the report date, so
-    T+1 is the reaction). `anchor=True` would snap T to the dominant nearby
-    move -- diagnostic only; it biases the sample toward large (and, via
-    volatility clustering, disproportionately negative) moves, so it is off.
+    A = the announce session (first trading day on/after the report date). The
+    base close T (the last clean pre-news close) depends on when the news hit:
+
+        amc  (after close of A) : T = A       -> reaction is the A -> A+1 gap
+        bmo  (before open of A) : T = A - 1   -> reaction is the (A-1) -> A move
+        intraday / non-session  : T = A - 1
+
+    Either way next-day = close(T+1)/close(T) is the first full session's
+    reaction, and the pre-earnings DPI window always ends on the last session
+    before A (the day before the report), matching the requested cut-off.
+
+    `anchor=True` snaps T to the dominant nearby move -- diagnostic only; it
+    biases the sample toward large (disproportionately negative) moves, off by
+    default. With authoritative EDGAR dates it is unnecessary.
     """
     dpi = panels["dpi"]
     adj = panels["adjclose"]
     ret = adj.pct_change()
+    idx = adj.index
     rows = []
     for _, e in earnings.iterrows():
         tk = e["ticker"]
         if tk not in adj.columns:
             continue
-        idx = adj.index
-        approx = _pos_at_or_after(idx, e["report_date"])
-        if approx is None:
+        A = e["report_date"]
+        fp = _pos_at_or_after(idx, A)          # announce-session position
+        if fp is None or fp < 1:
             continue
-        r = ret[tk]
-        a = adj[tk]
-        d = dpi[tk]
-        # trailing volatility, used only for the audit flag / optional anchor
-        pre = r.iloc[max(0, approx - 65):max(1, approx - 3)]
+        timing = str(e.get("timing", "amc")).lower()
+        exact = idx[fp].normalize() == A.normalize()
+        t_pos = fp if (timing == "amc" and exact) else fp - 1
+        if t_pos < 1:
+            continue
+        r = ret[tk]; a = adj[tk]; d = dpi[tk]
+        T = idx[t_pos]
+        # trailing vol (ending before the DPI window) for the audit flag only
+        pre = r.iloc[max(0, fp - 65):max(1, fp - 3)]
         sigma = float(pre.std()) if pre.notna().sum() > 10 else np.nan
         if anchor:
-            t_pos, anchored = anchor_to_reaction(r, idx, approx, sigma)
+            t_pos, anchored = anchor_to_reaction(r, idx, t_pos, sigma)
+            T = idx[t_pos]
         else:
-            t_pos, anchored = approx, False
-        T = idx[t_pos]
-        # audit flag: does T+1 look like a genuine earnings reaction?
+            anchored = False
         nxt_ret = r.iloc[t_pos + 1] if t_pos + 1 < len(r) else np.nan
         looks_reaction = int(np.isfinite(nxt_ret) and np.isfinite(sigma)
                              and abs(nxt_ret) >= max(0.02, 2.0 * sigma))
 
-        # --- pre-earnings DPI (strictly through T-1) ---
+        # --- pre-earnings DPI: w sessions ending the day before A ---
         win = {}
-        ok_dpi = True
         for w in dpi_windows:
-            seg = d.iloc[max(0, t_pos - w):t_pos]        # [T-w .. T-1]
+            seg = d.iloc[max(0, fp - w):fp]
             n_ok = int(seg.notna().sum())
             win[f"dpi{w}"] = float(seg.mean()) if n_ok >= max(3, w - 2) else np.nan
-            if not np.isfinite(win[f"dpi{w}"]):
-                ok_dpi = False
 
         # --- post-earnings returns (split-adjusted) ---
         base = a.iloc[t_pos]
@@ -152,10 +163,10 @@ def build_events(earnings, panels, month_sessions=21, dpi_windows=(5, 10), ancho
 
         rows.append({
             "ticker": tk,
-            "curated_date": e["report_date"].date().isoformat(),
-            "effective_T": T.date().isoformat(),
+            "report_date": A.date().isoformat(),
+            "timing": timing,
+            "base_T": T.date().isoformat(),
             "anchored": int(anchored),
-            "date_shift_days": int((T.normalize() - e["report_date"].normalize()).days),
             **win,
             "next_day_ret": next_day,
             "m1_ret": m1,
@@ -317,6 +328,22 @@ def summarize(ev, dpi_windows=(5, 10)):
             out.append(f"     {lbl:8s}: high {hm*100:+.2f}% ({hpos:.0f}% up)   "
                        f"low {lm*100:+.2f}% ({lpos:.0f}% up)   "
                        f"high-low {diff*100:+.2f}pp (t={t:+.2f}, p={pv:.3f})")
+
+    # robustness: does DPI10 vs next-day hold across timing and sub-periods?
+    def _cut(mask, name):
+        d = ev[mask]
+        r, p, n = _pearson(d["dpi10"], d["next_day_ret"])
+        out.append(f"    {name:20s} r={r:+.3f} (p={p:.3f}, n={n})")
+    out.append("")
+    out.append("--- ROBUSTNESS: DPI10 vs next-day across cuts ---")
+    if "timing" in ev.columns:
+        for tm in ["amc", "bmo"]:
+            _cut(ev["timing"] == tm, f"timing = {tm}")
+    if "report_date" in ev.columns:
+        yr = pd.to_datetime(ev["report_date"]).dt.year
+        mid = int(yr.median())
+        _cut(yr <= mid, f"reports <= {mid}")
+        _cut(yr > mid, f"reports >  {mid}")
     out.append("=" * 78)
     return "\n".join(out)
 
@@ -325,7 +352,7 @@ def summarize(ev, dpi_windows=(5, 10)):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--earnings", default="earnings_dates.csv")
+    ap.add_argument("--earnings", default="earnings_dates_edgar.csv")
     ap.add_argument("--cache-dir", default=N.DEFAULT_CACHE_DIR)
     ap.add_argument("--out-prefix", default="earnings_dpi")
     ap.add_argument("--month-sessions", type=int, default=21)
