@@ -4158,24 +4158,34 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
                     and base_latest is not None and base_latest >= target_session)
     nodata = set(cached.get("_nodata", [])) if synced_today else set()
 
-    def _fetch_start(sym):
+    def _is_current(sym):
+        # Up to date when the symbol's freshest cached close reaches the target session (or it
+        # produced no data today). Judged per-symbol against the target rather than a blanket
+        # "synced today" flag: the Yahoo cache is shared across universes (NDX/SPX/IWM), so once
+        # one universe advances it to today the flag flips True for all -- which must NOT cause
+        # another universe's still-behind symbols to be skipped and served a session stale.
+        if sym in nodata:
+            return True
         c = base["close"]
-        if synced_today and (sym in c.columns or sym in nodata):
+        if sym not in c.columns:
+            return False
+        s = c[sym].dropna()
+        return (not s.empty) and s.index.max() >= target_session
+
+    def _fetch_start(sym):
+        if _is_current(sym):
             return None
+        c = base["close"]
         if refresh or sym not in c.columns:
             return pd.Timestamp(start)
         s = c[sym].dropna()
-        if s.empty:
-            return pd.Timestamp(start)
-        if s.index.max() >= end_n:
-            return None
-        return s.index.max()
+        return pd.Timestamp(start) if s.empty else s.index.max()
 
     def _window(panels):
         win = [d for d in panels["close"].index if pd.Timestamp(start) <= d <= end_n]
         return {f: panels[f].reindex(index=win, columns=symbols) for f in fields}
 
-    if synced_today and all((s in base["close"].columns or s in nodata) for s in symbols):
+    if synced_today and all(_is_current(s) for s in symbols):
         print(f"Yahoo prices: reusing today's cache (all {len(symbols)} {label}s current); "
               f"pass --refresh to re-poll.", file=sys.stderr)
         return _window(base)
