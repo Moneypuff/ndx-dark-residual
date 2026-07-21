@@ -129,7 +129,13 @@ def anchor_to_reaction(ret, close_index, approx_pos, sigma,
     return approx_pos, False
 
 
-def build_events(earnings, panels, month_sessions=21, dpi_windows=(5, 10), anchor=False):
+# post-earnings horizons, in trading sessions after the base close T
+HORIZONS = {"next_day": 1, "w1": 5, "w2": 10, "m1": 21}
+HZ_LABEL = {"next_day": "NEXT-DAY (T->T+1)", "w1": "1-WEEK (T->T+5)",
+            "w2": "2-WEEK (T->T+10)", "m1": "1-MONTH (T->T+21)"}
+
+
+def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), anchor=False):
     """Build one row per earnings event, timing-aware.
 
     A = the announce session (first trading day on/after the report date). The
@@ -186,12 +192,12 @@ def build_events(earnings, panels, month_sessions=21, dpi_windows=(5, 10), ancho
             n_ok = int(seg.notna().sum())
             win[f"dpi{w}"] = float(seg.mean()) if n_ok >= max(3, w - 2) else np.nan
 
-        # --- post-earnings returns (split-adjusted) ---
+        # --- post-earnings returns (split-adjusted), one per horizon ---
         base = a.iloc[t_pos]
-        nd = a.iloc[t_pos + 1] if t_pos + 1 < len(a) else np.nan
-        mm = a.iloc[t_pos + month_sessions] if t_pos + month_sessions < len(a) else np.nan
-        next_day = (nd / base - 1) if np.isfinite(base) and np.isfinite(nd) else np.nan
-        m1 = (mm / base - 1) if np.isfinite(base) and np.isfinite(mm) else np.nan
+        rets = {}
+        for name, h in horizons.items():
+            v = a.iloc[t_pos + h] if t_pos + h < len(a) else np.nan
+            rets[f"{name}_ret"] = (v / base - 1) if np.isfinite(base) and np.isfinite(v) else np.nan
 
         rows.append({
             "ticker": tk,
@@ -200,10 +206,9 @@ def build_events(earnings, panels, month_sessions=21, dpi_windows=(5, 10), ancho
             "base_T": T.date().isoformat(),
             "anchored": int(anchored),
             **win,
-            "next_day_ret": next_day,
-            "m1_ret": m1,
+            **rets,
             "looks_reaction": looks_reaction,
-            "has_data": int(np.isfinite(next_day)),
+            "has_data": int(np.isfinite(rets["next_day_ret"])),
         })
     ev = pd.DataFrame(rows)
     # within-name DPI percentile ranks (0..1): "is this event's run-in DPI high
@@ -326,8 +331,10 @@ def summarize(ev, dpi_windows=(5, 10)):
                f"T+1 looks like a real earnings reaction: "
                f"{int(ev['looks_reaction'].sum())}/{len(ev)} "
                f"({100*ev['looks_reaction'].mean():.0f}%)")
-    for col, lbl in [("next_day_ret", "NEXT-DAY  (close T -> close T+1)"),
-                     ("m1_ret", "1-MONTH   (close T -> close T+~21 sessions)")]:
+    for hz in HORIZONS:
+        col, lbl = f"{hz}_ret", HZ_LABEL[hz]
+        if col not in ev.columns:
+            continue
         s = ev[col].dropna()
         out.append("")
         out.append(f"--- {lbl} ---   n={len(s)}")
@@ -350,7 +357,10 @@ def summarize(ev, dpi_windows=(5, 10)):
         hi = ev[p >= 2 / 3]
         lo = ev[p <= 1 / 3]
         out.append(f"  DPI{w}:  low-DPI n={len(lo)}   high-DPI n={len(hi)}")
-        for col, lbl in [("next_day_ret", "next-day"), ("m1_ret", "1-month")]:
+        for hz in HORIZONS:
+            col, lbl = f"{hz}_ret", hz
+            if col not in ev.columns:
+                continue
             hh = hi[col].to_numpy(); ll = lo[col].to_numpy()
             diff, t, pv, nh, nl = _welch(hh, ll)
             hm = np.nanmean(hh) if np.isfinite(hh).any() else np.nan
@@ -409,7 +419,8 @@ def main():
     if not args.no_merge_classes:
         panels, earn = merge_share_classes(panels, earn)
 
-    ev = build_events(earn, panels, month_sessions=args.month_sessions, anchor=args.anchor)
+    horizons = dict(HORIZONS); horizons["m1"] = args.month_sessions
+    ev = build_events(earn, panels, horizons=horizons, anchor=args.anchor)
     out_csv = f"{args.out_prefix}_events.csv"
     ev.to_csv(out_csv, index=False)
     print(f"wrote {out_csv} ({len(ev)} events)", file=sys.stderr)

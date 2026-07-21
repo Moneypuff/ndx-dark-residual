@@ -20,8 +20,9 @@ Visual report: `earnings_dpi_report.html`.
   session **before** the report — strictly pre-announcement (no look-ahead).
 - **T** = last clean pre-news close (timing-aware: report day for after-hours
   reporters, prior session for before-open reporters).
-- **Next-day** = adjClose(T+1)/adjClose(T) − 1 (the earnings reaction).
-- **1-month** = adjClose(T+21 sessions)/adjClose(T) − 1. Split-adjusted.
+- **Forward returns** = adjClose(T+h)/adjClose(T) − 1 at h = 1 (next-day
+  reaction), 5 (1-week), 10 (2-week) and 21 (1-month) trading sessions.
+  Split-adjusted.
 - **Within-name percentile**: each event's DPI ranked against that same name's
   own history, so "high DPI" means high for that stock.
 
@@ -32,22 +33,20 @@ next-day, and more clearly over the following month.** Direction is consistent
 with the conventional dark-pool reading (high short-volume share = market-makers
 shorting to fill buy orders = accumulation = bullish).
 
-| Signal | Horizon | Pearson r | p |
-|---|---|---:|---:|
-| DPI5  | next-day | +0.038 | 0.049 |
-| DPI10 | next-day | +0.049 | 0.012 |
-| DPI5  | 1-month | +0.063 | 0.001 |
-| DPI10 | 1-month | **+0.098** | **<0.001** |
+**The edge compounds with the holding period.** DPI10 vs. forward return, and
+the high-minus-low within-name tercile spread, at four horizons:
 
-**Tercile buckets** (by within-name DPI10 percentile):
-
-| Bucket | Next-day mean | % up | 1-month mean | % up |
+| Horizon | DPI10 Pearson r | p | High−low tercile spread | spread p |
 |---|---:|---:|---:|---:|
-| Low DPI  (n=849) | +0.48% | 51% | +1.13% | 50% |
-| High DPI (n=942) | **+1.26%** | 56% | **+3.96%** | 61% |
+| Next-day (T+1) | +0.049 | 0.012 | +0.78 pp | 0.026 |
+| 1-week (T+5)   | +0.071 | <0.001 | +1.08 pp | 0.017 |
+| 2-week (T+10)  | +0.068 | <0.001 | +1.31 pp | 0.013 |
+| 1-month (T+21) | **+0.098** | **<0.001** | **+2.83 pp** | **<0.001** |
 
-High−Low **1-month** spread = **+2.83 pp** (Welch t = +4.03, **p < 0.001**).
-High−Low next-day spread = +0.78 pp (t = +2.23, p = 0.026).
+The gap between high- and low-DPI events widens the longer you hold, and its
+significance tightens with it. At one month the high-DPI tercile averaged
+**+3.96%** (61% up) vs the low-DPI tercile's **+1.13%** (50% up). DPI5 tells the
+same story a touch weaker (next-day r=+0.038, 1-month r=+0.063).
 
 Next-day return by within-name DPI10 quintile (1 = lowest → 5 = highest) is
 roughly flat then up; the 1-month gradient is monotonically increasing.
