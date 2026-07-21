@@ -2,8 +2,8 @@
 
 Does an elevated dark-pool indicator (DPI) heading **into** an earnings report
 line up with how a stock performs **after** the report? Study of the NDX-100
-(94 names with 8-K earnings filings), **2,694 quarterly earnings events**,
-Aug 2018 – Jul 2026.
+(93 entities — Alphabet's GOOG folded into GOOGL), **2,663 quarterly earnings
+events**, Aug 2018 – Jul 2026.
 
 Reproduce:
 ```
@@ -32,23 +32,22 @@ next-day, and more clearly over the following month.** Direction is consistent
 with the conventional dark-pool reading (high short-volume share = market-makers
 shorting to fill buy orders = accumulation = bullish).
 
-| Signal | Horizon | Pearson r | p | Spearman r | within-name r |
-|---|---|---:|---:|---:|---:|
-| DPI5  | next-day | +0.039 | 0.042 | +0.036 | +0.046 |
-| DPI10 | next-day | +0.050 | 0.010 | +0.045 | +0.050 |
-| DPI5  | 1-month | +0.064 | 0.001 | +0.084 | +0.051 |
-| DPI10 | 1-month | **+0.099** | **<0.001** | +0.115 | +0.093 |
+| Signal | Horizon | Pearson r | p |
+|---|---|---:|---:|
+| DPI5  | next-day | +0.038 | 0.049 |
+| DPI10 | next-day | +0.049 | 0.012 |
+| DPI5  | 1-month | +0.063 | 0.001 |
+| DPI10 | 1-month | **+0.098** | **<0.001** |
 
 **Tercile buckets** (by within-name DPI10 percentile):
 
 | Bucket | Next-day mean | % up | 1-month mean | % up |
 |---|---:|---:|---:|---:|
-| Low DPI  (n=859) | +0.46% | 51% | +1.10% | 50% |
-| Mid DPI  (n=882) | +0.05% | — | +1.82% | — |
-| High DPI (n=953) | **+1.27%** | 56% | **+3.95%** | 61% |
+| Low DPI  (n=849) | +0.48% | 51% | +1.13% | 50% |
+| High DPI (n=942) | **+1.26%** | 56% | **+3.96%** | 61% |
 
-High−Low **1-month** spread = **+2.85 pp** (Welch t = +4.10, **p < 0.001**).
-High−Low next-day spread = +0.81 pp (t = +2.36, p = 0.018).
+High−Low **1-month** spread = **+2.83 pp** (Welch t = +4.03, **p < 0.001**).
+High−Low next-day spread = +0.78 pp (t = +2.23, p = 0.026).
 
 Next-day return by within-name DPI10 quintile (1 = lowest → 5 = highest) is
 roughly flat then up; the 1-month gradient is monotonically increasing.
@@ -62,7 +61,7 @@ roughly flat then up; the 1-month gradient is monotonically increasing.
   the rest (+0.06).
 - **By year:** absent in 2018–2019, builds from 2020 on; same sign in nearly
   every year thereafter. Stronger in 2022+ (r ≈ +0.07 next-day, +0.11 1-month).
-- **Per name:** 62 of 91 names show a positive DPI10→1-month correlation.
+- **Per name:** 61 of 90 names show a positive DPI10→1-month correlation.
 
 ## How to read it
 
@@ -75,8 +74,19 @@ roughly flat then up; the 1-month gradient is monotonically increasing.
 
 - Small effect sizes; single index; a mostly-bull 2018–2026 sample; DPI is a
   noisy daily series.
-- **94 of 100 names**: 6 foreign filers (ASML, ARM, PDD, CCEP, FER, NBIS/TRI)
-  file 6-K rather than 8-K and are omitted; SPCX/HONA had no matching filings.
+- **93 entities from 100 index members**: 6 foreign filers (ASML, ARM, PDD,
+  CCEP, FER, NBIS/TRI) file 6-K rather than 8-K and are omitted; SPCX/HONA had no
+  matching filings; and Alphabet's two share classes are merged (see below).
+- **Dual-class merge:** GOOG and GOOGL are the same company (same CIK → identical
+  report dates), so keeping both double-counts Alphabet. They are folded into one
+  entity: DPI is re-derived **volume-weighted** from the summed off-exchange
+  short/total across both classes — not an average of the two ratios, which would
+  over-weight the thinner, higher-DPI Class C (GOOG ≈ 40% of combined off-exchange
+  volume, and its DPI runs ~0.42 vs GOOGL's ~0.37) — and GOOGL's prices are used
+  for returns. Merged GOOGL corr(DPI10, 1-month) = +0.32, between the classes'
+  separate +0.14 / +0.41. Removing the double-count leaves the pooled headline
+  essentially unchanged (DPI10 1-month r held at +0.098). Pass
+  `--no-merge-classes` to keep them separate.
 - Earnings 8-Ks were isolated by matching Item 2.02 filings to each 10-Q/10-K,
   which drops non-earnings 2.02s (Tesla delivery numbers, monthly sales,
   guidance pre-announcements). AMC/BMO is inferred from the 8-K acceptance
