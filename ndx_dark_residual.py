@@ -1342,6 +1342,22 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
                  if len(dark.index) else None,
     }
 
+    sectors_payload = (build_sector_payload(sector_data["members"], sector_data["short"],
+                                            sector_data["total"], sector_data["close"],
+                                            sector_data["d"], keep)
+                       if sector_data else None)
+    # Decile source for the sector drill-down: pack raw-D + forward returns for just the names
+    # actually shown in the sector modals (top constituents by dark-dollar share), from the
+    # sector universe's own panels -- so every clickable constituent has the same decile view
+    # as the grid, without packing the full ~1,500-name sector union into the payload.
+    sector_rel = None
+    if sectors_payload and sector_data and sector_data.get("dpi") is not None:
+        shown = {n["t"] for it in sectors_payload["items"] for n in it["names"]}
+        dpi_s, adj_s = sector_data["dpi"], sector_data["adjclose"]
+        cols = [c for c in shown if c in dpi_s.columns and c in adj_s.columns]
+        if cols:
+            sector_rel = pack_name_rel(dpi_s[cols], adj_s[cols], plot_start=plot_start)
+
     payload = {
         "dates": dates,
         "data": data,
@@ -1354,10 +1370,11 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         "spx_grid": spx_grid,
         "spx_rel": spx_rel,
         "breadth": build_breadth_payload(breadth_px, keep),
-        "sectors": (build_sector_payload(sector_data["members"], sector_data["short"],
-                                         sector_data["total"], sector_data["close"],
-                                         sector_data["d"], keep)
-                    if sector_data else None),
+        "sectors": sectors_payload,
+        # Per-name raw-D -> forward-return deciles for the constituents shown in the sector
+        # drill-down modals, so an individual stock there opens the same 1/2/3-month decile
+        # view as the small-multiples grid. Restricted to the displayed names to bound size.
+        "sector_rel": sector_rel,
         "rel": rel,
         "spx": spx,
         "iwm": iwm,
@@ -1407,6 +1424,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .cell{background:var(--panel);border:1px solid var(--grid);border-radius:10px;padding:8px 9px 6px;cursor:pointer}
   .cell.hot{border-color:#3d2b2f}
   .cell:hover,.cell.hot:hover{border-color:var(--accent)}
+  .crow:hover .hit{fill:rgba(88,166,255,0.10)}
   .chead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
   .tkr{font-weight:700;font-size:13px;letter-spacing:.3px}
   .wt{color:var(--mut);font-weight:500;font-size:10px;margin-left:5px;font-variant-numeric:tabular-nums}
@@ -2027,10 +2045,10 @@ const overlay = document.getElementById('overlay');
 // the per-name raw-D source for the modal: S&P grid cells use P.spx_rel, NDX cells P.rel
 function modalRel(){ return (gridUniv === 'spx' && P.spx_rel) ? P.spx_rel : P.rel; }
 
-function renderModalDeciles(h, tkr){
+function renderModalDeciles(h, tkr, R){
   const bars = document.getElementById('mBars'+h);
   const stat = document.getElementById('mStat'+h);
-  const R = modalRel();
+  R = R || modalRel();
   const ds = (R.d||{})[tkr], rs = ((R['r'+h])||{})[tkr];
   if(!ds || !rs){ bars.innerHTML=''; stat.textContent='no per-name dark-ratio history for this name'; return; }
   const pts=[]; const n=Math.min(ds.length, rs.length);
@@ -3848,6 +3866,9 @@ document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeSectorModa
 document.getElementById('sectorGrid').addEventListener('click', e=>{
   const cell = e.target.closest('.cell'); if(cell && cell.dataset.etf) openSectorModal(cell.dataset.etf);
 });
+document.getElementById('secmBars').addEventListener('click', e=>{
+  const row = e.target.closest('.crow'); if(row && row.dataset.t) openSectorConstituent(row.dataset.t);
+});
 document.getElementById('sectorLevelSeg').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b || b.dataset.lvl === sectorLevel) return;
   sectorLevel = b.dataset.lvl;
@@ -3877,16 +3898,54 @@ function openSectorModal(etf){
     const col = acc ? 'var(--pos)' : dist ? 'var(--neg)' : 'var(--mut)';
     const bw = Math.max(1, xw(nm.w));
     const arrow = acc ? `▲${nm.dd.toFixed(3)}` : dist ? `▼${Math.abs(nm.dd).toFixed(3)}` : `·${nm.dd.toFixed(3)}`;
-    g += `<text x="${(padL-8).toFixed(1)}" y="${(y+3.5).toFixed(1)}" font-size="11" fill="var(--ink)" text-anchor="end" font-weight="600">${nm.t}</text>`
+    // Each row is a clickable group -> opens the name's forward-return-by-decile view. A
+    // transparent full-width rect makes the whole row a hit target (see .crow CSS + handler).
+    g += `<g class="crow" data-t="${nm.t}" style="cursor:pointer">`
+       + `<rect class="hit" x="0" y="${(y-rowH/2).toFixed(1)}" width="${W}" height="${rowH}" fill="transparent"/>`
+       + `<text x="${(padL-8).toFixed(1)}" y="${(y+3.5).toFixed(1)}" font-size="11" fill="var(--ink)" text-anchor="end" font-weight="600">${nm.t}</text>`
        + `<rect x="${padL}" y="${(y-rowH*0.34).toFixed(1)}" width="${bw.toFixed(1)}" height="${(rowH*0.68).toFixed(1)}" fill="${col}" opacity="0.8" rx="2"/>`
-       + `<text x="${(padL+bw+6).toFixed(1)}" y="${(y+3.5).toFixed(1)}" font-size="10" fill="var(--mut)">${nm.w.toFixed(1)}% · D ${nm.d.toFixed(2)} <tspan fill="${col}">${arrow}</tspan></text>`;
+       + `<text x="${(padL+bw+6).toFixed(1)}" y="${(y+3.5).toFixed(1)}" font-size="10" fill="var(--mut)">${nm.w.toFixed(1)}% · D ${nm.d.toFixed(2)} <tspan fill="${col}">${arrow}</tspan></text>`
+       + `</g>`;
   });
   svg.innerHTML = g;
   document.getElementById('secmNote').innerHTML =
-    'Bar length = the name\'s share of the sector\'s off-exchange short <b>dollar</b> volume (the dark-accumulation flow, recent avg). '
+    '<b>Click a name</b> for its forward return by dark-ratio decile (1 / 2 / 3-month), the same view as the small-multiples grid. '
+    + 'Bar length = the name\'s share of the sector\'s off-exchange short <b>dollar</b> volume (the dark-accumulation flow, recent avg). '
     + 'Colour / arrow = 20-session change in that name\'s dark ratio D: <span style="color:var(--pos)">▲ accumulating</span>, '
     + '<span style="color:var(--neg)">▼ distributing</span>. D = current 5-day-MA dark ratio (share of the name\'s volume that trades dark).';
   sectorOverlay.classList.add('on');
+}
+
+// Sector constituent -> per-name decile view. Reuses the cell-detail modal (#overlay) to show
+// the clicked stock's forward return by decile of its raw D (1/2/3-month) -- the same view the
+// small-multiples grid gives -- sourced from P.sector_rel (packed for the displayed names).
+function openSectorConstituent(tkr){
+  const R = P.sector_rel || null;
+  let key = tkr;
+  if(R && !((R.d||{})[key]) && key === 'GOOG' && (R.d||{}).GOOGL) key = 'GOOGL';
+  const dser = R ? (R.d||{})[key] : null;
+  document.getElementById('mTkr').textContent = tkr;
+  const mVal = document.getElementById('mVal');
+  const todayD = dser ? lastNonNull(dser) : null;
+  mVal.textContent = todayD == null ? '' : ('D ' + todayD.toFixed(3));
+  mVal.className = 'val';
+  const spEl = document.getElementById('mSpark'), relBox = document.getElementById('mRel');
+  if(!dser){
+    document.getElementById('mSub').innerHTML =
+      `<span>no per-name dark-ratio history for ${tkr}</span><span></span>`;
+    spEl.innerHTML = ''; relBox.style.display = 'none';
+    overlay.classList.add('on'); return;
+  }
+  document.getElementById('mSub').innerHTML =
+    `<span>forward return by decile of this name's raw dark ratio D</span><span></span>`;
+  let mn=Infinity, mx=-Infinity;
+  for(const v of dser){ if(v!=null){ if(v<mn)mn=v; if(v>mx)mx=v; } }
+  if(mn===Infinity){ mn=0; mx=1; }
+  const pad=(mx-mn)*0.1||0.02;
+  spEl.innerHTML = spark(dser, Math.max(0,mn-pad), mx+pad, 'raw', 860, 140, 10);
+  relBox.style.display = '';
+  renderModalDeciles('21', key, R); renderModalDeciles('42', key, R); renderModalDeciles('63', key, R);
+  overlay.classList.add('on');
 }
 
 // -------------------------------------------------------------------------
@@ -4729,7 +4788,8 @@ def main():
                                         cache_dir=cache_dir, ns="sector", refresh=args.refresh,
                                         label="sector")
             sector_data = {"members": sec_members, "short": SEC["short"],
-                           "total": SEC["total"], "close": SEC["close"], "d": SEC["d"]}
+                           "total": SEC["total"], "close": SEC["close"], "d": SEC["d"],
+                           "dpi": SEC["dpi"], "adjclose": SEC["adjclose"]}
 
     if BENCH not in panel.columns or panel.shape[1] < 3:
         sys.exit(f"Insufficient data (got {panel.shape[1]} names incl. bench).")
