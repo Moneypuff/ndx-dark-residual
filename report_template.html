@@ -31,6 +31,11 @@
   .kpi .note{font-size:.8rem;color:var(--text-secondary);margin-top:3px;}
   .pos{color:var(--up);} .neg{color:var(--down);}
   .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem;color:var(--text-secondary);margin:2px 0 8px;}
+  .fbtns{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 8px;}
+  .fbtn{display:inline-flex;align-items:center;gap:5px;font-size:.8rem;padding:3px 11px;border:1px solid var(--border);border-radius:999px;background:var(--surface-1);color:var(--text-secondary);cursor:pointer;user-select:none;}
+  .fbtn:hover{color:var(--text-primary);}
+  .fbtn.active{border-color:var(--accent);color:var(--text-primary);font-weight:600;}
+  .fbtn .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
   .legend span{display:inline-flex;align-items:center;gap:6px;}
   .sw{width:11px;height:11px;border-radius:3px;display:inline-block;}
   .chart-wrap{overflow-x:auto;}
@@ -98,8 +103,9 @@
   <div class="card"><div class="chart-wrap"><svg id="pername"></svg></div></div>
 
   <h2>Post-earnings price paths: <span id="pathTk" style="color:var(--accent)">—</span></h2>
-  <p><b class="k">Click any name above</b> to load it here. Each faint line is one earnings event — cumulative return over the 21 sessions after the report, colored by whether DPI ran <span style="color:var(--up)">high</span> or <span style="color:var(--down)">low</span> into that print. Bold line = median path, dashed = mean path; the heavier blue/red lines are the high-/low-DPI mean paths.</p>
+  <p><b class="k">Click any name above</b> to load it here. Each faint line is one earnings event — cumulative return over the 21 sessions after the report, colored by whether DPI ran <span style="color:var(--up)">high</span> or <span style="color:var(--down)">low</span> into that print. Bold line = median path, dashed = mean path; the heavier blue/red lines are the high-/low-DPI mean paths. Use the <b class="k">All / High-DPI / Low-DPI / Mid</b> buttons to isolate one group's events and its mean.</p>
   <div class="card">
+    <div class="fbtns" id="pathFilter"></div>
     <div class="legend" id="pathLegend"></div>
     <div class="foot" id="pathStat" style="margin:0 0 8px"></div>
     <div class="chart-wrap"><svg id="paths"></svg></div>
@@ -295,8 +301,15 @@ $("pathLegend").innerHTML=`<span><span class="sw" style="background:var(--up)"><
   <span><span class="sw" style="background:var(--accent);height:3px;width:16px;border-radius:2px"></span>median</span>
   <span><span style="display:inline-block;width:16px;border-top:2px dashed var(--text-primary)"></span>&nbsp;mean</span>`;
 function fmtpc(bp){const v=bp/100;return (v>=0?"+":"")+v.toFixed(1)+"%";}
+let PATH_FILTER="all", CUR_TK=null;
+const FILT=[["all","All",""],["hi","High-DPI","var(--up)"],["lo","Low-DPI","var(--down)"],["mid","Mid","var(--muted)"]];
+function buildFilterButtons(){
+  $("pathFilter").innerHTML=FILT.map(([k,l,c])=>
+    `<span class="fbtn${k===PATH_FILTER?" active":""}" data-f="${k}">${c?`<span class="dot" style="background:${c}"></span>`:""}${l}</span>`).join("");
+  $("pathFilter").querySelectorAll(".fbtn").forEach(b=>b.addEventListener("click",()=>{PATH_FILTER=b.dataset.f;buildFilterButtons();if(CUR_TK)renderPaths(CUR_TK);}));
+}
 function renderPaths(tk){
-  const P=PATHS[tk],s=$("paths");while(s.firstChild)s.removeChild(s.firstChild);
+  CUR_TK=tk;const P=PATHS[tk],s=$("paths");while(s.firstChild)s.removeChild(s.firstChild);
   $("pathTk").textContent=tk;
   if(!P){$("pathStat").textContent="no path data";return;}
   const H=21,W=Math.max(640,Math.min(940,innerWidth-60)),ht=430,m={l:52,r:64,t:14,b:34},iw=W-m.l-m.r,ih=ht-m.t-m.b;
@@ -313,17 +326,28 @@ function renderPaths(tk){
     const t=el("text",{x:X(h)+3,y:m.t+10,class:"tick","font-size":"9px"});t.textContent=lb;s.appendChild(t);});
   const line=arr=>{let dd="";arr.forEach((v,h)=>dd+=(h?"L":"M")+X(h)+" "+Y(v/100));return dd;};
   const col={hi:"var(--up)",lo:"var(--down)",mid:"var(--muted)"};
-  P.events.forEach(e=>{const pe=el("path",{d:line(e.p),fill:"none",stroke:col[e.cls],"stroke-width":1,"stroke-opacity":0.20});
+  const emph=PATH_FILTER!=="all";
+  P.events.forEach(e=>{const on=!emph||e.cls===PATH_FILTER;const baseOp=emph?(on?0.42:0.035):0.20;
+    const pe=el("path",{d:line(e.p),fill:"none",stroke:col[e.cls],"stroke-width":1,"stroke-opacity":baseOp});
     pe.addEventListener("mousemove",ev=>{pe.setAttribute("stroke-opacity",0.95);pe.setAttribute("stroke-width",2);
       showTip(`<b>${tk}</b> ${e.d}<br>DPI ${e.cls==='hi'?'high':e.cls==='lo'?'low':'mid'} into print<br>+21d ${fmtpc(e.p[21])}`,ev);});
-    pe.addEventListener("mouseleave",()=>{pe.setAttribute("stroke-opacity",0.20);pe.setAttribute("stroke-width",1);hideTip();});s.appendChild(pe);});
-  if(P.hi_mean)s.appendChild(el("path",{d:line(P.hi_mean),fill:"none",stroke:"var(--up)","stroke-width":2,"stroke-opacity":0.9}));
-  if(P.lo_mean)s.appendChild(el("path",{d:line(P.lo_mean),fill:"none",stroke:"var(--down)","stroke-width":2,"stroke-opacity":0.9}));
-  s.appendChild(el("path",{d:line(P.mean),fill:"none",stroke:"var(--text-primary)","stroke-width":2,"stroke-dasharray":"5 4"}));
-  s.appendChild(el("path",{d:line(P.median),fill:"none",stroke:"var(--accent)","stroke-width":3,"stroke-linecap":"round","stroke-linejoin":"round"}));
-  const ml=el("text",{x:X(H)+6,y:Y(P.median[H]/100)+4,class:"vlab",fill:"var(--accent)"});ml.textContent="med";s.appendChild(ml);
-  $("pathStat").textContent=`${P.n} earnings events · median +21d ${fmtpc(P.final_med)} · mean ${fmtpc(P.final_mean)} · ${Math.round(100*P.pos/P.tot)}% up after a month`;
+    pe.addEventListener("mouseleave",()=>{pe.setAttribute("stroke-opacity",baseOp);pe.setAttribute("stroke-width",1);hideTip();});s.appendChild(pe);});
+  const showHi=PATH_FILTER==="all"||PATH_FILTER==="hi", showLo=PATH_FILTER==="all"||PATH_FILTER==="lo";
+  if(P.hi_mean&&showHi)s.appendChild(el("path",{d:line(P.hi_mean),fill:"none",stroke:"var(--up)","stroke-width":PATH_FILTER==="hi"?3:2,"stroke-opacity":0.92,"stroke-linecap":"round"}));
+  if(P.lo_mean&&showLo)s.appendChild(el("path",{d:line(P.lo_mean),fill:"none",stroke:"var(--down)","stroke-width":PATH_FILTER==="lo"?3:2,"stroke-opacity":0.92,"stroke-linecap":"round"}));
+  if(PATH_FILTER==="all")s.appendChild(el("path",{d:line(P.mean),fill:"none",stroke:"var(--text-primary)","stroke-width":2,"stroke-dasharray":"5 4"}));
+  s.appendChild(el("path",{d:line(P.median),fill:"none",stroke:"var(--accent)","stroke-width":3,"stroke-opacity":emph?0.55:1,"stroke-linecap":"round","stroke-linejoin":"round"}));
+  const ml=el("text",{x:X(H)+6,y:Y(P.median[H]/100)+4,class:"vlab",fill:"var(--accent)","fill-opacity":emph?0.55:1});ml.textContent="med";s.appendChild(ml);
+  const cnt={hi:0,lo:0,mid:0};P.events.forEach(e=>cnt[e.cls]++);
+  if(PATH_FILTER==="all"){
+    $("pathStat").textContent=`${P.n} earnings events · median +21d ${fmtpc(P.final_med)} · mean ${fmtpc(P.final_mean)} · ${Math.round(100*P.pos/P.tot)}% up after a month`;
+  }else{
+    const gm=PATH_FILTER==="hi"?P.hi_mean:PATH_FILTER==="lo"?P.lo_mean:null;
+    const lbl=PATH_FILTER==="hi"?"High-DPI":PATH_FILTER==="lo"?"Low-DPI":"Mid";
+    $("pathStat").textContent=`${lbl}: ${cnt[PATH_FILTER]} of ${P.n} events`+(gm?` · group mean +21d ${fmtpc(gm[H])}`:` · too few for a group mean`);
+  }
 }
 window.selectTicker=tk=>{renderPaths(tk);if(window.__pnHighlight)window.__pnHighlight(tk);};
+buildFilterButtons();
 window.selectTicker(PATHS["NVDA"]?"NVDA":Object.keys(PATHS)[0]);
 </script>
