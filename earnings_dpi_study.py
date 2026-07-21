@@ -64,6 +64,38 @@ def load_earnings(path):
     return df.sort_values(["ticker", "report_date"]).reset_index(drop=True)
 
 
+# Dual-class duplicates in the index: fold the secondary share class into the
+# primary so a company isn't counted twice. DPI is re-derived volume-weighted
+# from the SUMMED off-exchange short/total across classes (not an average of the
+# two ratios); the primary's prices/returns are kept. GOOG/GOOGL is the NDX-100's
+# only such pair -- both are Alphabet (same CIK -> same report dates).
+SHARE_CLASS_MERGES = {"GOOGL": ["GOOG"]}   # primary <- [secondaries]
+
+
+def merge_share_classes(panels, earnings, merges=SHARE_CLASS_MERGES):
+    """Collapse dual-class tickers in-place. Returns (panels, earnings) with the
+    secondary classes removed and the primary's DPI recomputed volume-weighted."""
+    short, total = panels["short"], panels["total"]
+    drop = []
+    for primary, secs in merges.items():
+        secs = [s for s in secs if s in total.columns]
+        if primary not in total.columns or not secs:
+            continue
+        for s in secs:
+            short[primary] = short[primary].add(short[s], fill_value=0)
+            total[primary] = total[primary].add(total[s], fill_value=0)
+            drop.append(s)
+        dpi, d = N.finra_dpi_to_d(short[[primary]], total[[primary]])
+        panels["dpi"][primary] = dpi[primary]
+        panels["d"][primary] = d[primary]
+    if drop:
+        for k in ("short", "total", "dpi", "d", "close", "adjclose", "volume"):
+            if k in panels:
+                panels[k] = panels[k].drop(columns=[c for c in drop if c in panels[k].columns])
+        earnings = earnings[~earnings["ticker"].isin(drop)].reset_index(drop=True)
+    return panels, earnings
+
+
 def _pos_at_or_after(index, ts):
     """Index position of the first trading day >= ts (or None)."""
     pos = index.searchsorted(pd.Timestamp(ts), side="left")
@@ -360,6 +392,8 @@ def main():
     ap.add_argument("--refresh", action="store_true", default=False)
     ap.add_argument("--anchor", action="store_true", default=False,
                     help="snap dates to nearest price reaction (diagnostic; biased -- off by default)")
+    ap.add_argument("--no-merge-classes", action="store_true", default=False,
+                    help="keep dual-class tickers (GOOG & GOOGL) separate instead of merging")
     args = ap.parse_args()
 
     earn = load_earnings(args.earnings)
@@ -372,6 +406,8 @@ def main():
     panels = N.build_universe_panels(syms, start, end, workers=args.workers,
                                      cache_dir=args.cache_dir or None, ns="earn",
                                      refresh=args.refresh, label="EARN")
+    if not args.no_merge_classes:
+        panels, earn = merge_share_classes(panels, earn)
 
     ev = build_events(earn, panels, month_sessions=args.month_sessions, anchor=args.anchor)
     out_csv = f"{args.out_prefix}_events.csv"

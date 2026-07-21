@@ -146,6 +146,7 @@ def main():
     end = (earn.report_date.max() + pd.Timedelta(days=70)).strftime("%Y-%m-%d")
     panels = N.build_universe_panels(syms, start, end, workers=10,
                                      cache_dir=args.cache_dir or None, ns="earn", label="EARN")
+    panels, earn = E.merge_share_classes(panels, earn)  # match the study's universe
 
     payload = build_payload(ev)
     paths = build_paths(ev, panels["adjclose"])
