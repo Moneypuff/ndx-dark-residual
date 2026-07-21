@@ -1405,8 +1405,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .dot{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin-right:4px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:16px 22px 60px}
   .cell{background:var(--panel);border:1px solid var(--grid);border-radius:10px;padding:8px 9px 6px;cursor:pointer}
-  .cell:hover{border-color:var(--accent)}
   .cell.hot{border-color:#3d2b2f}
+  .cell:hover,.cell.hot:hover{border-color:var(--accent)}
   .chead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px}
   .tkr{font-weight:700;font-size:13px;letter-spacing:.3px}
   .wt{color:var(--mut);font-weight:500;font-size:10px;margin-left:5px;font-variant-numeric:tabular-nums}
@@ -4056,6 +4056,9 @@ ISHARES_DOC_TMPL = ("https://www.blackrock.com/varnish-api/blk-one01-product-dat
 IVV_PORTFOLIO_ID = "239726"   # iShares Core S&P 500 ETF
 IWM_PORTFOLIO_ID = "239710"   # iShares Russell 2000 ETF
 SOXX_PORTFOLIO_ID = "239705"  # iShares Semiconductor ETF
+IGV_PORTFOLIO_ID = "239771"   # iShares Expanded Tech-Software Sector ETF
+# iShares sector funds resolve holdings by BlackRock portfolioId (SSGA funds fetch by ticker).
+ISHARES_SECTOR_PIDS = {"SOXX": SOXX_PORTFOLIO_ID, "IGV": IGV_PORTFOLIO_ID}
 
 # SSGA SPDR Select Sector daily-holdings .xlsx (State Street); {tkr} is the lowercase ETF symbol
 SSGA_HOLDINGS_TMPL = ("https://www.ssga.com/us/en/intermediary/library-content/products/"
@@ -4069,6 +4072,7 @@ SECTOR_ETFS = [
     ("XLE", "Energy", "ssga"), ("XLU", "Utilities", "ssga"),
     ("SOXX", "Semiconductors", "ishares"), ("XBI", "Biotech", "ssga"),
     ("XLB", "Materials", "ssga"), ("XLC", "Comm. Services", "ssga"),
+    ("IGV", "Software", "ishares"),
 ]
 
 # SPDR S&P *industry* funds -- one granularity finer than the broad Select-Sector funds
@@ -4704,7 +4708,7 @@ def main():
                     time.sleep(3.0)  # stagger requests -- SSGA bot-gates fast back-to-back hits
                 syms = (fetch_ssga_holdings(etf, label=etf, session=sec_session)
                         if source == "ssga"
-                        else fetch_ishares_holdings(SOXX_PORTFOLIO_ID, label=etf))
+                        else fetch_ishares_holdings(ISHARES_SECTOR_PIDS[etf], label=etf))
                 if syms:
                     hcache[key] = {"date": today_str, "tickers": syms}
                 elif cached_entry:
