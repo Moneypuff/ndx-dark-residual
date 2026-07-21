@@ -53,14 +53,23 @@ def build_payload(ev):
                   "pos": float((ev.m1_ret > 0).mean())},
            "corr": {}, "tercile": {}, "quintile": {}, "period": [], "subgroup": {},
            "pername": [], "scatter": []}
+    HZS = [("next_day", "Next day", "next_day_ret"), ("w1", "1 week", "w1_ret"),
+           ("w2", "2 weeks", "w2_ret"), ("m1", "1 month", "m1_ret")]
     for w in (5, 10):
-        for hz, col in [("next_day", "next_day_ret"), ("m1", "m1_ret")]:
+        for hz, _, col in HZS:
             pr, pp, pn = E._pearson(ev[f"dpi{w}"], ev[col]); sr, sp, _ = E._spearman(ev[f"dpi{w}"], ev[col])
             wr, wp, _ = E._pearson(ev[f"dpi{w}_pct"], ev[col])
             pay["corr"][f"dpi{w}_{hz}"] = dict(pearson=pr, pearson_p=pp, spearman=sr,
                                                spearman_p=sp, within=wr, within_p=wp, n=pn)
-    pay["tercile"]["next"] = _terc(ev, "dpi10_pct", "next_day_ret")
-    pay["tercile"]["m1"] = _terc(ev, "dpi10_pct", "m1_ret")
+    for hz, _, col in HZS:
+        pay["tercile"][hz] = _terc(ev, "dpi10_pct", col)
+    pay["tercile"]["next"] = pay["tercile"]["next_day"]   # back-compat alias for template
+    pay["byhorizon"] = []
+    for hz, label, col in HZS:
+        t = pay["tercile"][hz]; c = pay["corr"][f"dpi10_{hz}"]
+        pay["byhorizon"].append(dict(key=hz, label=label, r=c["pearson"], p=c["pearson_p"],
+                                     hi=t["hi"], lo=t["lo"], spread=t["diff"], spread_t=t["t"],
+                                     spread_p=t["p"], hi_up=t["hi_up"], lo_up=t["lo_up"]))
     ev["q"] = pd.qcut(ev.dpi10_pct, 5, labels=[1, 2, 3, 4, 5])
     for hz, col in [("next_day", "next_day_ret"), ("m1", "m1_ret")]:
         gg = ev.groupby("q", observed=True)[col].mean()

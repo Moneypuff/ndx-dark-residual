@@ -54,10 +54,17 @@
   <div class="note-card" id="headline"></div>
 
   <h2>Sort events by DPI into the report → forward return climbs</h2>
-  <p>Events split into terciles by each name's <em>own</em> DPI history (so "high" means high for that stock). Bars are the average return in each bucket — the immediate reaction and one month out.</p>
+  <p>Events split into terciles by each name's <em>own</em> DPI history (so "high" means high for that stock). Bars are the average return in each bucket, at four holding periods after the report.</p>
   <div class="card">
-    <div class="legend"><span>Within-name DPI10 terciles · solid = next-day reaction · faded = ~1 month later</span></div>
+    <div class="legend" id="bucketLegend"></div>
     <div class="chart-wrap"><svg id="buckets"></svg></div>
+  </div>
+
+  <h2>The edge compounds with the holding period</h2>
+  <p>How far the high-DPI tercile beats the low-DPI tercile (percentage points), from the next-day reaction out to a month. The gap widens the longer you hold — and its statistical significance with it.</p>
+  <div class="card">
+    <div class="legend"><span>High-DPI minus low-DPI average return · labels show the two-sided p-value</span></div>
+    <div class="chart-wrap"><svg id="horizon"></svg></div>
   </div>
 
   <h2>The gradient is monotonic, and it grows over the month</h2>
@@ -150,23 +157,43 @@ const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed
    <span class="pos">${pct(t.diff*100)}</span> spread (t=${t.t.toFixed(1)}, p&lt;0.001), and ${(t.hi_up*100).toFixed(0)}% of high-DPI events were up vs ${(t.lo_up*100).toFixed(0)}% of low-DPI ones.</p>`;
 })();
 
-/* Tercile buckets */
+/* Tercile buckets across 4 horizons */
 (function(){
-  const T=DATA.tercile, rows=[["Low DPI",T.next.lo,T.m1.lo],["Mid DPI",T.next.mid,T.m1.mid],["High DPI",T.next.hi,T.m1.hi]];
-  const W=Math.max(560,Math.min(880,innerWidth-60)),H=340,m={l:52,r:16,t:16,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const T=DATA.tercile;
+  const HZ=[["next_day","next-day",0.32],["w1","1-week",0.52],["w2","2-week",0.74],["m1","1-month",0.96]];
+  $("bucketLegend").innerHTML=HZ.map(([k,l,o])=>`<span><span class="sw" style="background:var(--up);opacity:${o}"></span>${l}</span>`).join("")+`<span>· within-name DPI10 terciles · hover for values</span>`;
+  const buckets=[["Low DPI","lo"],["Mid DPI","mid"],["High DPI","hi"]];
+  const W=Math.max(560,Math.min(880,innerWidth-60)),H=360,m={l:52,r:16,t:16,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
   const s=$("buckets");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
-  const vals=rows.flatMap(r=>[r[1]*100,r[2]*100]); const lim=Math.max(4,Math.ceil(Math.max(...vals.map(Math.abs))/1)*1);
+  let vals=[];buckets.forEach(([_,bk])=>HZ.forEach(([k])=>vals.push(T[k][bk]*100)));
+  const lim=Math.max(4,Math.ceil(Math.max(...vals.map(Math.abs))));const step=lim<=6?1:2;
   const Y=v=>m.t+(lim-v)/(2*lim)*ih;
-  for(let v=-lim;v<=lim;v++){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
+  for(let v=-lim;v<=lim+1e-9;v+=step){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":Math.abs(v)<1e-9?1.5:1}));
     const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v+"%";s.appendChild(tk);}
-  const gw=iw/rows.length, bw=Math.min(46,gw/3.1);
-  rows.forEach((r,i)=>{const cx=m.l+gw*i+gw/2;
-    [["next-day",r[1],-bw*0.62],["1-month",r[2],bw*0.62]].forEach(([lbl,val,off])=>{
-      const v=val*100,y0=Y(0),y=Y(v),x=cx+off-bw/2,top=Math.min(y0,y),h=Math.abs(y-y0);
-      const rect=el("rect",{x,y:top,width:bw,height:Math.max(1,h),rx:4,fill:v>=0?"var(--up)":"var(--down)","fill-opacity":lbl==="1-month"?.5:.92});
-      rect.addEventListener("mousemove",e=>showTip(`<b>${r[0]}</b> · ${lbl}<br>mean ${pct(v)}`,e));rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
-      const vl=el("text",{x:x+bw/2,y:(v>=0?top-5:top+h+13),"text-anchor":"middle",class:"vlab"});vl.textContent=pct(v);s.appendChild(vl);});
-    const lb=el("text",{x:cx,y:H-6,"text-anchor":"middle",class:"axlab"});lb.textContent=r[0];s.appendChild(lb);});
+  const gw=iw/buckets.length, bw=Math.min(22,(gw*0.72)/HZ.length);
+  buckets.forEach(([label,bk],i)=>{const cx=m.l+gw*i+gw/2, x0=cx-(bw*HZ.length)/2;
+    HZ.forEach(([k,l,o],j)=>{const v=T[k][bk]*100,y0=Y(0),y=Y(v),x=x0+j*bw,top=Math.min(y0,y),h=Math.abs(y-y0);
+      const rect=el("rect",{x:x+1,y:top,width:bw-2,height:Math.max(1,h),rx:2.5,fill:v>=0?"var(--up)":"var(--down)","fill-opacity":o});
+      rect.addEventListener("mousemove",e=>showTip(`<b>${label}</b> · ${l}<br>mean ${pct(v)}`,e));rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);});
+    const lb=el("text",{x:cx,y:H-6,"text-anchor":"middle",class:"axlab"});lb.textContent=label;s.appendChild(lb);});
+})();
+
+/* Edge (high-low spread) vs holding period */
+(function(){
+  const d=DATA.byhorizon;
+  const W=Math.max(520,Math.min(760,innerWidth-60)),H=300,m={l:52,r:16,t:22,b:40},iw=W-m.l-m.r,ih=H-m.t-m.b;
+  const s=$("horizon");s.setAttribute("viewBox",`0 0 ${W} ${H}`);s.setAttribute("width",W);s.setAttribute("height",H);
+  const lim=Math.max(1,Math.ceil(Math.max(...d.map(x=>x.spread*100)))+0.5);
+  const Y=v=>m.t+(lim-v)/lim*ih;
+  for(let v=0;v<=lim+1e-9;v+=1){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent="+"+v+"pp";s.appendChild(tk);}
+  const gw=iw/d.length, bw=Math.min(64,gw*0.5);
+  d.forEach((r,i)=>{const cx=m.l+gw*i+gw/2,v=r.spread*100,y=Y(v),top=Math.min(Y(0),y),h=Math.abs(y-Y(0));
+    const rect=el("rect",{x:cx-bw/2,y:top,width:bw,height:Math.max(1,h),rx:3,fill:"var(--up)","fill-opacity":.9});
+    rect.addEventListener("mousemove",e=>showTip(`<b>${r.label}</b><br>high−low ${(v>=0?"+":"")+v.toFixed(2)}pp<br>t=${r.spread_t.toFixed(2)} · p=${r.spread_p<0.001?"<0.001":r.spread_p.toFixed(3)}`,e));rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
+    const vl=el("text",{x:cx,y:top-7,"text-anchor":"middle",class:"vlab"});vl.textContent="+"+v.toFixed(2);s.appendChild(vl);
+    const pl=el("text",{x:cx,y:top-19,"text-anchor":"middle",class:"tick","font-size":"9px"});pl.textContent=r.spread_p<0.001?"p<.001":"p="+r.spread_p.toFixed(3);s.appendChild(pl);
+    const lb=el("text",{x:cx,y:H-6,"text-anchor":"middle",class:"axlab"});lb.textContent=r.label;s.appendChild(lb);});
 })();
 
 /* Quintile lines */
@@ -255,9 +282,9 @@ const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed
 /* Readout */
 (function(){
   const cm=DATA.corr.dpi10_m1,cn=DATA.corr.dpi10_next_day,t=DATA.tercile.m1,pos=DATA.pername.filter(p=>p.r>=0).length;
-  $("readout").innerHTML=`<p style="margin-top:0"><b class="k">Yes — a modest, positive tilt that shows up most at the one-month horizon.</b>
-   Pooled, DPI10 correlates ${r3(cm.pearson)} with the 1-month return (p&lt;0.001) and ${r3(cn.pearson)} with the next-day move (p=${cn.pearson_p.toFixed(3)}).
-   The high-DPI tercile beat the low-DPI tercile by ${pct(t.diff*100)} over the month.</p>
+  const bh=DATA.byhorizon;
+  $("readout").innerHTML=`<p style="margin-top:0"><b class="k">Yes — a modest, positive tilt that compounds the longer you hold.</b>
+   The high-DPI tercile beats the low-DPI tercile by ${pct(bh[0].spread*100)}pp the next day, ${pct(bh[1].spread*100)}pp after a week, ${pct(bh[2].spread*100)}pp after two, and ${pct(bh[3].spread*100)}pp after a month — and the significance grows with it (p ${bh[0].spread_p.toFixed(3)} → &lt;0.001). Pooled, DPI10 correlates ${r3(cm.pearson)} with the 1-month return.</p>
    <p><b class="k">It's broad and reasonably stable.</b> Same sign for after-hours and before-open reporters, for mega-caps and the rest, and in ${pos} of ${DATA.pername.length} names individually. By year it's absent in 2018–2019 and builds from 2020 on.</p>
    <p><b class="k">But small.</b> r≈0.1 explains ~1% of the variance in monthly post-earnings returns — a genuine edge in the aggregate, not a signal to trade a single name on. Read it as: elevated dark-pool accumulation into a print skews the odds modestly bullish for the month that follows.</p>`;
 })();
@@ -282,6 +309,8 @@ function renderPaths(tk){
     const t=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});t.textContent=(v>0?"+":"")+v+"%";s.appendChild(t);}
   [0,5,10,15,21].forEach(h=>{const t=el("text",{x:X(h),y:m.t+ih+18,"text-anchor":"middle",class:"tick"});t.textContent=h;s.appendChild(t);});
   const xl=el("text",{x:m.l+iw/2,y:ht-3,"text-anchor":"middle",class:"axlab"});xl.textContent="trading sessions after report";s.appendChild(xl);
+  [[5,"1wk"],[10,"2wk"]].forEach(([h,lb])=>{s.appendChild(el("line",{x1:X(h),x2:X(h),y1:m.t,y2:m.t+ih,stroke:"var(--muted)","stroke-width":1,"stroke-dasharray":"2 3","stroke-opacity":.6}));
+    const t=el("text",{x:X(h)+3,y:m.t+10,class:"tick","font-size":"9px"});t.textContent=lb;s.appendChild(t);});
   const line=arr=>{let dd="";arr.forEach((v,h)=>dd+=(h?"L":"M")+X(h)+" "+Y(v/100));return dd;};
   const col={hi:"var(--up)",lo:"var(--down)",mid:"var(--muted)"};
   P.events.forEach(e=>{const pe=el("path",{d:line(e.p),fill:"none",stroke:col[e.cls],"stroke-width":1,"stroke-opacity":0.20});
