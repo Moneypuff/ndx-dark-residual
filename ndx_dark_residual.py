@@ -1369,7 +1369,6 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         "sector_map": ndx_sector_map,
         "spx_grid": spx_grid,
         "spx_rel": spx_rel,
-        "breadth": build_breadth_payload(breadth_px, keep),
         "sectors": sectors_payload,
         # Per-name raw-D -> forward-return deciles for the constituents shown in the sector
         # drill-down modals, so an individual stock there opens the same 1/2/3-month decile
@@ -1523,12 +1522,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div class="tabs" id="tabs">
     <button data-t="grid" class="on">Small multiples</button>
     <button data-t="rel">D vs forward return</button>
-    <button data-t="spx">SPX D vs Return</button>
-    <button data-t="ndx">NDX-100 D vs Return</button>
-    <button data-t="iwm">IWM D vs Return</button>
+    <button data-t="idx">DIX vs Return</button>
     <button data-t="xs">Cross-sectional L/S</button>
     <button data-t="ev">D-streak events</button>
-    <button data-t="breadth">Breadth</button>
     <button data-t="sectors">Sector DIX</button>
     <button data-t="spxtbl">SP500 decile table</button>
   </div>
@@ -1563,8 +1559,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <label class="chk" title="use the median forward return per decile instead of the mean (robust to outliers)"><input type="checkbox" id="median"/> median</label>
     <div class="legend"><span id="relLegend"></span></div>
   </div>
+  <div class="controls" id="ctl-idx" style="display:none">
+    <div class="seg" id="idxSel" title="which index DIX-vs-return views to show -- toggle any combination (one or several)">
+      <button data-i="ndx" class="on">NDX-100</button>
+      <button data-i="spx">S&amp;P 500</button>
+      <button data-i="iwm">IWM</button>
+    </div>
+    <span class="sub" style="align-self:center">toggle one or several indices to compare</span>
+  </div>
   <div class="controls" id="ctl-spx" style="display:none">
-    <label class="chk" title="force all three horizon panels onto one shared y-axis (and scatter x/y range) so the magnitude of the effect is directly comparable across 1mo / 2mo / 3mo"><input type="checkbox" id="spxShared"/> shared axis across panels</label>
+    <label class="chk" title="force all three horizon panels onto one shared y-axis (and scatter x/y range) so the magnitude of the effect is directly comparable across 1mo / 2mo / 3mo"><input type="checkbox" id="spxShared"/> shared axis · SPX panels</label>
   </div>
   <div class="controls" id="ctl-ndx" style="display:none">
     <div class="seg" id="ndxModeSeg" title="how the index-level dark ratio is built each day">
@@ -1572,10 +1576,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button data-m="agg" title="sum of all constituents' off-exchange volume divided by the sum of their total consolidated volume -- volume-weighted dark SHARE (different numerator than DIX)">&Sigma; dark vol &divide; &Sigma; total vol</button>
       <button data-m="mean" title="equal-weight average of the ~100 per-name ratios -- every name counts the same regardless of its volume">Equal-weight mean of ratios</button>
     </div>
-    <label class="chk" title="force all three horizon panels onto one shared y-axis (and scatter x/y range) so the magnitude of the effect is directly comparable across 1mo / 2mo / 3mo"><input type="checkbox" id="ndxShared"/> shared axis across panels</label>
+    <label class="chk" title="force all three horizon panels onto one shared y-axis (and scatter x/y range) so the magnitude of the effect is directly comparable across 1mo / 2mo / 3mo"><input type="checkbox" id="ndxShared"/> shared axis · NDX panels</label>
   </div>
   <div class="controls" id="ctl-iwm" style="display:none">
-    <label class="chk" title="force all three horizon panels onto one shared y-axis (and scatter x/y range) so the magnitude of the effect is directly comparable across 1mo / 2mo / 3mo"><input type="checkbox" id="iwmShared"/> shared axis across panels</label>
+    <label class="chk" title="force all three horizon panels onto one shared y-axis (and scatter x/y range) so the magnitude of the effect is directly comparable across 1mo / 2mo / 3mo"><input type="checkbox" id="iwmShared"/> shared axis · IWM panels</label>
   </div>
   <div class="controls" id="ctl-xs" style="display:none">
     <div class="seg" id="xsHorizonSeg" title="forward-return horizon">
@@ -1771,21 +1775,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div style="overflow-x:auto;max-height:560px;overflow-y:auto"><table id="evTable" class="ev-table"></table></div>
   </div>
   <div class="sub" id="evNote" style="margin:12px 22px 0;font-size:11px;line-height:1.55"></div>
-</div>
-<div class="rel-wrap" id="breadthWrap" style="display:none">
-  <div class="sub" id="breadthSub" style="margin:0 22px 4px"></div>
-  <div class="rel-card" style="margin:0 22px">
-    <h2>Average stock vs mega-cap &middot; cumulative return relative to QQQ (rebased 100)</h2>
-    <svg id="breadthChart" class="scatter" viewBox="0 0 900 360" preserveAspectRatio="none" style="height:360px"></svg>
-    <div class="panel-stats" id="breadthStats" style="margin-top:8px"></div>
-    <div class="sub" style="margin-top:8px;font-size:11px;line-height:1.55">
-      Each line is that ETF's cumulative total return divided by QQQ's, rebased to 100 at the window
-      start &mdash; 100 = kept pace with the mega-caps, below 100 = lagged them. RSP (S&amp;P 500
-      equal-weight) and IWM (Russell 2000) are both "average-stock" exposure; when they fall together
-      the tape is narrowing to a few mega-caps. AVG = (RSP+IWM)/2, the breadth gauge. This is a
-      price factor &mdash; the dark-flow tabs and this one don't inform each other (tested: ~0 corr).
-    </div>
-  </div>
 </div>
 <div class="rel-wrap" id="sectorsWrap" style="display:none">
   <div style="margin:0 22px 8px">
@@ -3731,65 +3720,6 @@ document.getElementById('evHi').addEventListener('change', e=>{ evHi=+e.target.v
 document.getElementById('evBasisSeg').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return; evBasis=b.dataset.b; [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b)); renderEvents(); });
 document.getElementById('evExcess').addEventListener('change', e=>{ evExcess=e.target.checked; renderEvents(); });
 
-// -------------------------------------------------------------------------
-// Tab: Breadth -- RSP / IWM / SPY cumulative return relative to QQQ (mega-cap),
-// rebased to 100. RSP and IWM are the 'average stock'; both below 100 = narrowing.
-// -------------------------------------------------------------------------
-function renderBreadth(){
-  const B = P.breadth, svg = document.getElementById('breadthChart');
-  if(!B || !B.dates || !B.dates.length){
-    document.getElementById('breadthSub').textContent = 'breadth data unavailable (live builds only)';
-    svg.innerHTML = '<text x="450" y="180" font-size="12" fill="var(--mut)" text-anchor="middle">No breadth data (run a live build).</text>';
-    document.getElementById('breadthStats').innerHTML = '';
-    return;
-  }
-  const dates = B.dates, n = dates.length;
-  const lines = [
-    {k:'AVG', label:'AVG (RSP+IWM)/2', col:'var(--accent)', w:2.4},
-    {k:'RSP', label:'RSP equal-wt',     col:'#e3b341',       w:1.5},
-    {k:'IWM', label:'IWM Russell 2000',  col:'#a371f7',      w:1.5},
-    {k:'SPY', label:'SPY cap-wt',        col:'var(--mut)',   w:1.3},
-  ].filter(L => B.series[L.k]);
-  let lo=Infinity, hi=-Infinity;
-  for(const L of lines){ for(const v of B.series[L.k]){ if(v==null)continue; if(v<lo)lo=v; if(v>hi)hi=v; } }
-  if(lo===Infinity){ lo=90; hi=110; }
-  lo=Math.min(lo,100); hi=Math.max(hi,100);
-  const pad=(hi-lo)*0.06||2; lo-=pad; hi+=pad;
-  const W=900,H=360,padL=48,padR=132,padT=14,padB=28;
-  const xs = i => padL + (W-padL-padR)*(n<=1?0:i/(n-1));
-  const ys = v => padT + (H-padT-padB)*(1-(v-lo)/(hi-lo));
-  let grid='';
-  for(const t of niceTicks(lo,hi,5)){
-    const y=ys(t), base=Math.abs(t-100)<1e-9;
-    grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="${base?'var(--zero)':'var(--grid)'}" stroke-width="1"${base?'':' stroke-dasharray="2,3"'}/>`
-          + `<text x="${padL-6}" y="${(y+3).toFixed(1)}" font-size="9.5" fill="var(--mut)" text-anchor="end">${t.toFixed(0)}</text>`;
-  }
-  let xlab='';
-  for(const i of [0, Math.floor(n/2), n-1]){
-    xlab += `<text x="${xs(i).toFixed(1)}" y="${(H-8).toFixed(1)}" font-size="9.5" fill="var(--mut)" text-anchor="${i===0?'start':i===n-1?'end':'middle'}">${dates[i]}</text>`;
-  }
-  let paths='', dots='', legend='';
-  lines.forEach((L,li)=>{
-    const vals=B.series[L.k]; let d='',started=false;
-    for(let i=0;i<n;i++){ const v=vals[i]; if(v==null){started=false;continue;} d+=(started?'L':'M')+xs(i).toFixed(1)+','+ys(v).toFixed(1)+' '; started=true; }
-    paths += `<path d="${d}" fill="none" stroke="${L.col}" stroke-width="${L.w}" stroke-linejoin="round"/>`;
-    const last=[...vals].reverse().find(v=>v!=null);
-    if(last!=null) dots += `<circle cx="${xs(n-1).toFixed(1)}" cy="${ys(last).toFixed(1)}" r="2.6" fill="${L.col}"/>`;
-    const ly=padT+16+li*18;
-    legend += `<line x1="${(W-padR+8).toFixed(1)}" y1="${ly}" x2="${(W-padR+24).toFixed(1)}" y2="${ly}" stroke="${L.col}" stroke-width="2.5"/>`
-            + `<text x="${(W-padR+28).toFixed(1)}" y="${(ly+3.5).toFixed(1)}" font-size="10.5" fill="var(--ink)">${L.label} <tspan fill="var(--mut)">${last!=null?last.toFixed(1):''}</tspan></text>`;
-  });
-  svg.innerHTML = grid+xlab+paths+dots+legend;
-  const lastOf = k => { const a=B.series[k]||[]; return [...a].reverse().find(v=>v!=null); };
-  const avg=lastOf('AVG'), lr=lastOf('RSP'), li2=lastOf('IWM');
-  document.getElementById('breadthSub').textContent =
-    `RSP / IWM cumulative return vs QQQ (mega-cap) · ${n.toLocaleString()} days` + (B.range?` · ${B.range[0]} → ${B.range[1]}`:'');
-  const narrow = (lr!=null&&lr<100)&&(li2!=null&&li2<100);
-  document.getElementById('breadthStats').innerHTML =
-    `<span>breadth (AVG) = <b>${avg!=null?avg.toFixed(1):'--'}</b> vs 100</span>`
-    + `<span>RSP <b>${lr!=null?lr.toFixed(1):'--'}</b> · IWM <b>${li2!=null?li2.toFixed(1):'--'}</b></span>`
-    + `<span style="color:${narrow?'var(--neg)':'var(--pos)'}">${narrow?'▼ narrow — both lagging mega-cap':'▲ broad — average stock keeping pace'}</span>`;
-}
 
 // -------------------------------------------------------------------------
 // Tab: Sector DIX -- reconstructed dollar-DIX per sector ETF, a ranking bar (1y percentile
@@ -4017,43 +3947,58 @@ document.getElementById('spxtblFilter').addEventListener('input', renderSpxTable
 // -------------------------------------------------------------------------
 // Top-level tab switching
 // -------------------------------------------------------------------------
-let spxRendered = false, ndxRendered = false, iwmRendered = false, breadthRendered = false, sectorsRendered = false;
+let spxRendered = false, ndxRendered = false, iwmRendered = false, sectorsRendered = false;
+// Unified "DIX vs Return" tab: a multi-toggle selects any combination of the
+// NDX / SPX / IWM reconstructed-DIX views, each keeping its own wrap, controls
+// and render function untouched.
+function updateIdx(){
+  const active = [...document.querySelectorAll('#idxSel button')]
+    .filter(x => x.classList.contains('on')).map(x => x.dataset.i);
+  [['ndx','ndxWrap','ctl-ndx'],['spx','spxWrap','ctl-spx'],['iwm','iwmWrap','ctl-iwm']].forEach(([i,w,c])=>{
+    const on = active.includes(i);
+    document.getElementById(w).style.display = on ? '' : 'none';
+    document.getElementById(c).style.display = on ? '' : 'none';
+    if(on){
+      if(i==='ndx' && !ndxRendered){ renderNdx(); ndxRendered = true; }
+      if(i==='spx' && !spxRendered){ renderSpx(); spxRendered = true; }
+      if(i==='iwm' && !iwmRendered){ renderIwm(); iwmRendered = true; }
+    }
+  });
+}
+document.getElementById('idxSel').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  const on = document.querySelectorAll('#idxSel button.on');
+  if(b.classList.contains('on') && on.length === 1) return;   // keep at least one
+  b.classList.toggle('on');
+  updateIdx();
+});
 document.getElementById('tabs').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
   const t = b.dataset.t;
   [...e.currentTarget.children].forEach(x=>x.classList.toggle('on', x===b));
   document.getElementById('ctl-grid').style.display = t==='grid' ? '' : 'none';
   document.getElementById('ctl-rel').style.display = t==='rel' ? '' : 'none';
-  document.getElementById('ctl-spx').style.display = t==='spx' ? '' : 'none';
-  document.getElementById('ctl-ndx').style.display = t==='ndx' ? '' : 'none';
-  document.getElementById('ctl-iwm').style.display = t==='iwm' ? '' : 'none';
+  document.getElementById('ctl-idx').style.display = t==='idx' ? '' : 'none';
   document.getElementById('ctl-xs').style.display = t==='xs' ? '' : 'none';
   document.getElementById('ctl-ev').style.display = t==='ev' ? '' : 'none';
   document.getElementById('relStats').style.display = t==='rel' ? '' : 'none';
   document.getElementById('grid').style.display = t==='grid' ? '' : 'none';
   document.getElementById('relWrap').style.display = t==='rel' ? '' : 'none';
-  document.getElementById('spxWrap').style.display = t==='spx' ? '' : 'none';
-  document.getElementById('ndxWrap').style.display = t==='ndx' ? '' : 'none';
-  document.getElementById('iwmWrap').style.display = t==='iwm' ? '' : 'none';
+  // index wraps + their controls are governed by the idx multi-toggle; hide them off-tab
+  if(t!=='idx'){ ['spxWrap','ndxWrap','iwmWrap','ctl-spx','ctl-ndx','ctl-iwm']
+    .forEach(id=>document.getElementById(id).style.display='none'); }
   document.getElementById('xsWrap').style.display = t==='xs' ? '' : 'none';
   document.getElementById('evWrap').style.display = t==='ev' ? '' : 'none';
-  document.getElementById('breadthWrap').style.display = t==='breadth' ? '' : 'none';
   document.getElementById('sectorsWrap').style.display = t==='sectors' ? '' : 'none';
   document.getElementById('spxtblWrap').style.display = t==='spxtbl' ? '' : 'none';
   document.getElementById('footHint').textContent = t==='rel'
     ? 'whiskers = ±1 SE on the overlap-adjusted (effective-N) mean; r CI via block bootstrap; overlapping daily returns → n far exceeds independent obs'
-    : t==='spx'
-    ? 'SPX DIX = dollar-weighted DPI reconstructed from the S&P 500 (iShares IVV) constituents\' FINRA volumes -- a different universe than the NDX-100 panel above'
-    : t==='ndx'
-    ? 'index dark gauge built from the constituents\' FINRA volumes; default mode is the dollar-weighted DIX construction on the NDX-100 universe'
-    : t==='iwm'
-    ? 'IWM tab = dollar-weighted DPI reconstructed from the Russell 2000 (iShares IWM) constituents\' FINRA volumes'
+    : t==='idx'
+    ? 'reconstructed dollar-weighted DIX per index (NDX-100 / S&P 500 / Russell 2000) vs that index\'s own forward return -- toggle any combination of indices to compare'
     : t==='xs'
     ? 'cross-sectional rank of every name each day → deciles → forward excess return; long-short D10-D1 is market-neutral'
     : t==='ev'
     ? 'streak events: N days in a row inside a decile band → one event on the Nth day → forward return vs an always-invested baseline'
-    : t==='breadth'
-    ? 'RSP & IWM cumulative return relative to QQQ; both below 100 = market narrowing to mega-caps. A price factor -- independent of the dark-flow tabs'
     : t==='sectors'
     ? 'reconstructed dollar-DIX per sector ETF, ranked by 1-year percentile of dark accumulation. Constituents from SPDR Select Sector funds + iShares SOXX'
     : t==='spxtbl'
@@ -4062,12 +4007,9 @@ document.getElementById('tabs').addEventListener('click', e=>{
        : mode==='raw' ? 'ordered by highest raw D'
        : 'ordered by latest divergence (accumulating, then distributing)') + ' · toggle Weight/Divergence to reorder · hover a panel for date/value';
   if(t==='rel') renderRel();
-  if(t==='spx' && !spxRendered){ renderSpx(); spxRendered = true; }
-  if(t==='ndx' && !ndxRendered){ renderNdx(); ndxRendered = true; }
-  if(t==='iwm' && !iwmRendered){ renderIwm(); iwmRendered = true; }
+  if(t==='idx') updateIdx();
   if(t==='xs') renderXs();
   if(t==='ev') renderEvents();
-  if(t==='breadth' && !breadthRendered){ renderBreadth(); breadthRendered = true; }
   if(t==='sectors' && !sectorsRendered){ renderSectors(); sectorsRendered = true; }
   if(t==='spxtbl') renderSpxTable();
 });
