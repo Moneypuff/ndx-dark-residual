@@ -145,6 +145,8 @@ def main():
     ap.add_argument("--earnings", default="earnings_dates_edgar.csv")
     ap.add_argument("--template", default="report_template.html")
     ap.add_argument("--out", default="earnings_dpi_report.html")
+    ap.add_argument("--docs-out", default="",
+                    help="also write a standalone, full-document copy for GitHub Pages")
     ap.add_argument("--cache-dir", default=N.DEFAULT_CACHE_DIR)
     args = ap.parse_args()
 
@@ -164,6 +166,17 @@ def main():
             .replace("/*__PATHS__*/", json.dumps(paths)))
     Path(args.out).write_text(html)
     print(f"wrote {args.out}  ({len(html)//1024} KB, {len(paths)} names with paths)")
+
+    # The template is body content designed for the Artifact host (no <html>/<head>
+    # wrapper). For GitHub Pages we emit a standalone document around it.
+    if args.docs_out:
+        doc = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+               '<meta name="viewport" content="width=device-width,initial-scale=1">'
+               '<title>DPI into Earnings vs Post-Earnings Performance</title></head>'
+               '<body>\n' + html + '\n</body></html>\n')
+        Path(args.docs_out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.docs_out).write_text(doc)
+        print(f"wrote {args.docs_out} (standalone for Pages)")
 
 
 if __name__ == "__main__":
