@@ -12,10 +12,10 @@ on:
   # Delete this block if you only want the manual button.
   schedule:
     # FINRA publishes the day's consolidated short-volume file after ~5pm ET (occasionally
-    # later). Run at 23:00 UTC = 6:00pm EST / 7:00pm EDT to give it a buffer. If a day is still
-    # delayed past this, the build self-heals: the next run re-checks recent empty day-rows and
+    # later). Run at 00:00 UTC = 7:00pm EST to give it a buffer. If a day is still delayed
+    # past this, the build self-heals: the next run re-checks recent empty day-rows and
     # fills them once FINRA posts (see FINRA_RECENT_REFETCH_DAYS in ndx_dark_residual.py).
-    - cron: "0 23 * * 1-5"   # 23:00 UTC = 6:00pm EST / 7:00pm EDT, Mon-Fri
+    - cron: "0 0 * * 2-6"   # 00:00 UTC = 7:00pm EST, Mon-Fri sessions (Tue-Sat in UTC)
 
 permissions:
   contents: write
