@@ -1493,6 +1493,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;
            align-items:flex-start;justify-content:center;z-index:50;padding:5vh 20px;overflow:auto}
   .overlay.on{display:flex}
+  /* the per-name detail modal must sit ABOVE the sector drill-down it can open over,
+     so the performance plane is on top for viewing and exiting (both are .overlay = z50,
+     and #sectorOverlay is later in the DOM, so it would otherwise paint on top) */
+  #overlay{z-index:60}
   .modal{background:var(--panel);border:1px solid var(--grid);border-radius:12px;
          max-width:1280px;width:100%;padding:18px 22px 22px}
   .modal-head{display:flex;justify-content:space-between;align-items:baseline}
@@ -2097,7 +2101,11 @@ function openCellModal(tkr){
 function closeModal(){ overlay.classList.remove('on'); }
 document.getElementById('mClose').addEventListener('click', closeModal);
 overlay.addEventListener('click', e=>{ if(e.target === overlay) closeModal(); });
-document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeModal(); });
+// When this modal is open, Escape closes it and stops here, so a modal stacked under it
+// (the sector drill-down) is not also closed by the same keypress -- one level per Escape.
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape' && overlay.classList.contains('on')){ closeModal(); e.stopImmediatePropagation(); }
+});
 grid.addEventListener('click', e=>{
   const cell = e.target.closest('.cell');
   if(!cell) return;
@@ -3862,7 +3870,11 @@ const sectorOverlay = document.getElementById('sectorOverlay');
 function closeSectorModal(){ sectorOverlay.classList.remove('on'); }
 document.getElementById('secmClose').addEventListener('click', closeSectorModal);
 sectorOverlay.addEventListener('click', e=>{ if(e.target === sectorOverlay) closeSectorModal(); });
-document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeSectorModal(); });
+// Escape closes the constituent performance plane FIRST (it sits on top); a second Escape
+// then closes the sector modal underneath -- so nested modals unwind one level at a time.
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape' && !overlay.classList.contains('on')) closeSectorModal();
+});
 document.getElementById('sectorGrid').addEventListener('click', e=>{
   const cell = e.target.closest('.cell'); if(cell && cell.dataset.etf) openSectorModal(cell.dataset.etf);
 });
