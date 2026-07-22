@@ -156,6 +156,7 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
     dpi = panels["dpi"]
     adj = panels["adjclose"]
     ret = adj.pct_change()
+    lret = np.log(adj).diff()          # daily log returns, for realized vol
     idx = adj.index
     rows = []
     for _, e in earnings.iterrows():
@@ -199,6 +200,15 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
             v = a.iloc[t_pos + h] if t_pos + h < len(a) else np.nan
             rets[f"{name}_ret"] = (v / base - 1) if np.isfinite(base) and np.isfinite(v) else np.nan
 
+        # --- realized volatility over each post-earnings window (annualized %) ---
+        # RV_h = sqrt(252/h * sum_{i=1..h} r_i^2), r_i = daily log return on session T+i.
+        lr = lret[tk]
+        rvol = {}
+        for name, h in horizons.items():
+            seg = lr.iloc[t_pos + 1:t_pos + h + 1]
+            rvol[f"{name}_rvol"] = (float(np.sqrt((seg ** 2).sum() * 252.0 / h) * 100)
+                                    if int(seg.notna().sum()) == h else np.nan)
+
         rows.append({
             "ticker": tk,
             "report_date": A.date().isoformat(),
@@ -207,6 +217,7 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
             "anchored": int(anchored),
             **win,
             **rets,
+            **rvol,
             "looks_reaction": looks_reaction,
             "has_data": int(np.isfinite(rets["next_day_ret"])),
         })
@@ -370,6 +381,23 @@ def summarize(ev, dpi_windows=(5, 10)):
             out.append(f"     {lbl:8s}: high {hm*100:+.2f}% ({hpos:.0f}% up)   "
                        f"low {lm*100:+.2f}% ({lpos:.0f}% up)   "
                        f"high-low {diff*100:+.2f}pp (t={t:+.2f}, p={pv:.3f})")
+
+    # realized volatility over each post-earnings window (annualized), and whether
+    # pre-earnings DPI relates to how much the stock actually moves afterwards
+    if "m1_rvol" in ev.columns:
+        out.append("")
+        out.append("--- REALIZED VOLATILITY (annualized) over each post-earnings window ---")
+        for hz in HORIZONS:
+            col = f"{hz}_rvol"
+            if col not in ev.columns:
+                continue
+            s = ev[col].dropna()
+            p = ev["dpi10_pct"]
+            hi = ev[p >= 2 / 3][col]; lo = ev[p <= 1 / 3][col]
+            pr, pp, _ = _pearson(ev["dpi10"], ev[col])
+            out.append(f"  {HZ_LABEL[hz]:20s} mean {s.mean():5.1f}%  median {s.median():5.1f}%   "
+                       f"DPI10 corr r={pr:+.3f} (p={pp:.3f})   "
+                       f"high-DPI {hi.mean():.1f}% vs low-DPI {lo.mean():.1f}%")
 
     # robustness: does DPI10 vs next-day hold across timing and sub-periods?
     def _cut(mask, name):
