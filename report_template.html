@@ -36,6 +36,11 @@
   .fbtn:hover{color:var(--text-primary);}
   .fbtn.active{border-color:var(--accent);color:var(--text-primary);font-weight:600;}
   .fbtn .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .rvrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center;}
+  .rvcap{font-size:.78rem;color:var(--text-secondary);margin-right:2px;}
+  .rvtile{border:1px solid var(--border);border-radius:8px;padding:5px 11px;background:var(--surface-1);min-width:66px;}
+  .rvtile .h{font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;}
+  .rvtile .v{font-size:1.0rem;font-weight:640;font-variant-numeric:tabular-nums;margin-top:1px;}
   .legend span{display:inline-flex;align-items:center;gap:6px;}
   .sw{width:11px;height:11px;border-radius:3px;display:inline-block;}
   .chart-wrap{overflow-x:auto;}
@@ -109,6 +114,7 @@
     <div class="legend" id="pathLegend"></div>
     <div class="foot" id="pathStat" style="margin:0 0 8px"></div>
     <div class="chart-wrap"><svg id="paths"></svg></div>
+    <div class="rvrow" id="pathRvol"></div>
   </div>
 
   <h2>Read-out</h2>
@@ -346,6 +352,14 @@ function renderPaths(tk){
     const lbl=PATH_FILTER==="hi"?"High-DPI":PATH_FILTER==="lo"?"Low-DPI":"Mid";
     $("pathStat").textContent=`${lbl}: ${cnt[PATH_FILTER]} of ${P.n} events`+(gm?` · group mean +21d ${fmtpc(gm[H])}`:` · too few for a group mean`);
   }
+  // realized volatility (annualized) for the displayed stock, tracking the filter
+  let rvSel,rvCap;
+  if(PATH_FILTER==="hi"&&P.rvol_hi){rvSel=P.rvol_hi;rvCap="High-DPI realized vol (annualized)";}
+  else if(PATH_FILTER==="lo"&&P.rvol_lo){rvSel=P.rvol_lo;rvCap="Low-DPI realized vol (annualized)";}
+  else{rvSel=P.rvol;rvCap="Realized vol (annualized)";}
+  const rvLbl=["1-day","1-week","2-week","1-month"];
+  $("pathRvol").innerHTML=rvSel?`<span class="rvcap">${rvCap}</span>`+
+    rvLbl.map((l,i)=>`<span class="rvtile"><span class="h">${l}</span><br><span class="v">${rvSel[i]!=null?Math.round(rvSel[i])+"%":"—"}</span></span>`).join(""):"";
 }
 window.selectTicker=tk=>{renderPaths(tk);if(window.__pnHighlight)window.__pnHighlight(tk);};
 buildFilterButtons();
