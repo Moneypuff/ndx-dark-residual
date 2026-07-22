@@ -8,11 +8,11 @@ on:
         description: "Force re-download of cached FINRA/Yahoo data (slower, fully fresh)"
         type: boolean
         default: false
-  # Nightly at 2:00am EST (07:00 UTC, EST = UTC-5), matching this repo's
-  # UTC-cron convention. Runs after the prior session's FINRA file has posted;
+  # Nightly at 7:00pm EST (00:00 UTC, EST = UTC-5), matching this repo's
+  # UTC-cron convention. Runs after the session's FINRA file has posted;
   # the commit step is a no-op on days with no new data.
   schedule:
-    - cron: "0 7 * * *"   # 07:00 UTC = 2:00am EST
+    - cron: "0 0 * * *"   # 00:00 UTC = 7:00pm EST
 
 permissions:
   contents: write
