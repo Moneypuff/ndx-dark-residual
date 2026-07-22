@@ -1,0 +1,69 @@
+name: Refresh Earnings-DPI Study
+
+on:
+  # Manual "Run workflow" button on the Actions tab
+  workflow_dispatch:
+    inputs:
+      refresh:
+        description: "Force re-download of cached FINRA/Yahoo data (slower, fully fresh)"
+        type: boolean
+        default: false
+  # Nightly at 2:00am EST (07:00 UTC, EST = UTC-5), matching this repo's
+  # UTC-cron convention. Runs after the prior session's FINRA file has posted;
+  # the commit step is a no-op on days with no new data.
+  schedule:
+    - cron: "0 7 * * *"   # 07:00 UTC = 2:00am EST
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-earnings
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Persist FINRA/Yahoo cache between runs so each refresh only fetches new
+      # days (same incremental design as the dashboard job, separate cache key).
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: .ndx_dark_cache
+          key: ndx-earn-cache-${{ github.run_id }}
+          restore-keys: |
+            ndx-earn-cache-
+
+      - name: Refresh earnings dates from SEC EDGAR
+        run: python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
+
+      - name: Run DPI-into-earnings study
+        run: >
+          python earnings_dpi_study.py
+          --earnings earnings_dates_edgar.csv
+          --cache-dir .ndx_dark_cache
+          --out-prefix earnings_dpi
+          ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
+
+      - name: Rebuild interactive report
+        run: python build_report.py --cache-dir .ndx_dark_cache
+
+      - name: Commit and push refreshed outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add earnings_dates_edgar.csv earnings_dpi_events.csv earnings_dpi_report.html
+          git diff --staged --quiet && echo "No changes to commit" || git commit -m "Refresh earnings-DPI study $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
