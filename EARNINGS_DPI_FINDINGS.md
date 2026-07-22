@@ -51,6 +51,24 @@ same story a touch weaker (next-day r=+0.038, 1-month r=+0.063).
 Next-day return by within-name DPI10 quintile (1 = lowest → 5 = highest) is
 roughly flat then up; the 1-month gradient is monotonically increasing.
 
+## Realized volatility
+
+Annualized realized volatility over each post-earnings window,
+RV_h = sqrt(252/h · Σ_{i=1..h} r_i²) with r_i the daily log return on session
+T+i (columns `next_day_rvol` … `m1_rvol`):
+
+| Window | mean RV | median | DPI10 corr | high-DPI vs low-DPI |
+|---|---:|---:|---:|---:|
+| Next-day (T+1) | 84.5% | 62.8% | +0.049 | 83.9% vs 83.5% |
+| 1-week (T+5)   | 53.7% | 44.0% | +0.079 | 54.0% vs 52.9% |
+| 2-week (T+10)  | 45.6% | 38.2% | +0.087 | 45.6% vs 45.0% |
+| 1-month (T+21) | 40.3% | 34.4% | +0.081 | 39.7% vs 40.4% |
+
+RV is highest the day after the report (the earnings gap, annualized) and decays
+as the spike averages into calmer sessions. DPI barely moves it — high- and
+low-DPI events realize almost identical volatility — so the directional DPI edge
+above is **drift, not a volatility effect**.
+
 ## Robustness
 
 - **Timing:** 1-month effect positive for both after-hours (r ≈ +0.11) and
