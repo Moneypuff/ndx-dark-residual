@@ -105,7 +105,9 @@ def build_paths(ev, adj):
     for tk, g in ev.groupby("ticker"):
         if tk not in adj.columns:
             continue
-        a = adj[tk]; events = []; mat = []
+        a = adj[tk]; events = []; mat = []; rv_list = []
+        rvcols = ["next_day_rvol", "w1_rvol", "w2_rvol", "m1_rvol"]
+        have_rv = all(c in g.columns for c in rvcols)
         d10 = g.dpi10.dropna()
         lo_th, hi_th = (d10.quantile(1/3), d10.quantile(2/3)) if len(d10) >= 6 else (np.nan, np.nan)
         for _, r in g.iterrows():
@@ -122,6 +124,8 @@ def build_paths(ev, adj):
             if np.isfinite(hi_th):
                 cls = "hi" if r.dpi10 >= hi_th else ("lo" if r.dpi10 <= lo_th else "mid")
             events.append({"d": r.report_date, "cls": cls, "p": p}); mat.append(p)
+            if have_rv:
+                rv_list.append((cls, [float(r[c]) if pd.notna(r[c]) else np.nan for c in rvcols]))
         if len(mat) < 5:
             continue
         M = np.array(mat)
@@ -131,10 +135,21 @@ def build_paths(ev, adj):
         def cmean(cl):
             sub = np.array([e["p"] for e in events if e["cls"] == cl])
             return [int(round(sub[:, h].mean())) for h in range(H + 1)] if len(sub) >= 3 else None
+
+        # mean annualized realized vol per horizon [1d, 1wk, 2wk, 1mo], overall & by DPI tercile
+        def rvmean(sel):
+            arr = np.array([rv for cl, rv in rv_list if sel(cl)], dtype=float)
+            if arr.size == 0:
+                return None
+            m = np.nanmean(arr, axis=0)
+            return [round(float(x), 1) if np.isfinite(x) else None for x in m]
         out[tk] = {"n": len(mat), "events": events, "median": med, "mean": mean,
                    "hi_mean": cmean("hi"), "lo_mean": cmean("lo"),
                    "final_med": med[-1], "final_mean": mean[-1],
-                   "pos": int((M[:, -1] > 0).sum()), "tot": len(mat)}
+                   "pos": int((M[:, -1] > 0).sum()), "tot": len(mat),
+                   "rvol": rvmean(lambda c: True) if have_rv else None,
+                   "rvol_hi": rvmean(lambda c: c == "hi") if have_rv else None,
+                   "rvol_lo": rvmean(lambda c: c == "lo") if have_rv else None}
     return out
 
 
