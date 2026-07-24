@@ -38,13 +38,16 @@ jobs:
 
       # Persist FINRA/Yahoo cache between runs so each refresh only fetches new
       # days (same incremental design as the dashboard job, separate cache key).
+      # Cache-key prefix bumped to v2 to abandon a stale cache whose FINRA
+      # document was missing 2026 short/total volumes (the FINRA fetch is
+      # incremental with no force-refetch, so a fresh cache is the fix).
       - name: Restore data cache
         uses: actions/cache@v4
         with:
           path: .ndx_dark_cache
-          key: ndx-earn-cache-${{ github.run_id }}
+          key: ndx-earn-cache-v2-${{ github.run_id }}
           restore-keys: |
-            ndx-earn-cache-
+            ndx-earn-cache-v2-
 
       - name: Refresh earnings dates from SEC EDGAR
         run: python fetch_earnings_edgar.py --out earnings_dates_edgar.csv

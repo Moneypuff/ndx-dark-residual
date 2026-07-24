@@ -251,7 +251,7 @@ const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed
   for(let v=-0.2;v<=0.2;v+=0.1){const y=Y(v);s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":Math.abs(v)<1e-9?1.5:1}));
     const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=v.toFixed(1);s.appendChild(tk);}
   const gw=iw/d.length,bw=Math.min(46,gw*0.6);
-  d.forEach((r,i)=>{const cx=m.l+gw*i+gw/2,y0=Y(0),y=Y(r.m1_r),top=Math.min(y0,y),h=Math.abs(y-y0);
+  d.forEach((r,i)=>{if(!Number.isFinite(r.m1_r))return;const cx=m.l+gw*i+gw/2,y0=Y(0),y=Y(r.m1_r),top=Math.min(y0,y),h=Math.abs(y-y0);
     const rect=el("rect",{x:cx-bw/2,y:top,width:bw,height:Math.max(1,h),rx:3,fill:r.m1_r>=0?"var(--up)":"var(--down)","fill-opacity":.9});
     rect.addEventListener("mousemove",e=>showTip(`<b>${r.year}</b><br>corr(DPI10,1-mo)=${r3(r.m1_r)}<br>p=${r.m1_p.toFixed(3)} · n=${r.n}`,e));rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
     const lb=el("text",{x:cx,y:H-6,"text-anchor":"middle",class:"tick"});lb.textContent=r.year;s.appendChild(lb);});
