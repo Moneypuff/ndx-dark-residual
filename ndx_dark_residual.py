@@ -793,6 +793,90 @@ def compute_dollar_dix(short_panel, offexch_panel, close_panel, exclude=(), min_
     return dix.clip(lower=0, upper=1)
 
 
+def build_contributors_payload(short_panel, offexch_panel, close_panel, exclude=(),
+                               weight_map=None, window=25, top=40, min_names=20):
+    """Rank the constituents by how much each one contributes to the index dollar-DIX.
+
+    The dollar-DIX is Sum($ short) / Sum($ off-exch total) across the universe, so it is
+    exactly the dark-dollar-weighted average of the per-name DPI. Each name therefore owns a
+    slice of the index level equal to its own dark-dollar SHORT over the universe's total
+    dark-dollar volume -- and those slices sum back to the DIX. That slice is the natural
+    "contribution": who is actually moving the index's dark-buying gauge.
+
+    To defuse single-day FINRA reporting sparsity (a name can be blank on any given file), the
+    $ short and $ dark are each averaged over the trailing `window` sessions before ranking --
+    the same robustness trick the sector breakdown uses. Returns None when the universe is too
+    thin to be representative, so the front end can render an empty state.
+
+    Per name the payload carries:
+      t     ticker
+      contr contribution to the DIX level (Sum over names of `contr` == `dix`)
+      w     share of the universe's total dark-dollar volume, %  (contr = w/100 * dpi)
+      dpi   the name's own dark ratio, $ short / $ dark
+      iw    the name's index weight %, when a weight map is supplied (else None)
+    """
+    cols = [c for c in short_panel.columns
+            if c in offexch_panel.columns and c in close_panel.columns and c not in exclude]
+    if len(cols) < min_names:
+        return None
+    sh = short_panel[cols]
+    tv = offexch_panel[cols]
+    px = close_panel.reindex(sh.index)[cols]
+    mask = sh.notna() & tv.notna() & px.notna()
+    dshort = (sh * px).where(mask)   # $ short volume per name
+    ddark = (tv * px).where(mask)    # $ off-exchange (dark) total volume per name
+    # trailing-window mean per name -- robust to daily FINRA gaps
+    ns = dshort.tail(window).mean()
+    dn = ddark.tail(window).mean()
+    tot_dark = float(dn.sum())
+    if not np.isfinite(tot_dark) or tot_dark <= 0:
+        return None
+    dix = float(ns.sum()) / tot_dark
+    wmap = weight_map or {}
+    names = []
+    for c in cols:
+        d_i = float(dn.get(c, np.nan))
+        s_i = float(ns.get(c, np.nan))
+        if not np.isfinite(d_i) or not np.isfinite(s_i) or d_i <= 0:
+            continue
+        iw = wmap.get(c)
+        names.append({
+            "t": c,
+            "contr": round(s_i / tot_dark, 5),
+            "w": round(100.0 * d_i / tot_dark, 3),
+            "dpi": round(s_i / d_i, 4),
+            "iw": (round(float(iw), 3) if iw is not None else None),
+        })
+    if not names:
+        return None
+    names.sort(key=lambda x: x["contr"], reverse=True)
+    valid = mask.index[mask.any(axis=1)]
+    asof = valid[-1].strftime("%Y-%m-%d") if len(valid) else None
+    return {"dix": round(dix, 4), "n": len(names), "window": int(window),
+            "asof": asof, "names": names[:top]}
+
+
+def demo_contributors(weight_pairs, seed=0, window=25, top=40):
+    """Synthetic top-contributors payload for --demo (no per-name FINRA panels for the SPX/IWM
+    reconstructions in demo mode). Mirrors `build_contributors_payload`'s shape: a dark-dollar
+    weight roughly tracking the index weight, a per-name DPI around ~0.45, and the resulting
+    contribution slices that sum to the DIX."""
+    rng = np.random.default_rng(seed)
+    rows, tot_dark = [], 0.0
+    for t, iw in weight_pairs:
+        dark = float(iw) * rng.uniform(0.55, 1.7) + rng.uniform(0.02, 0.4)   # $ dark proxy
+        dpi = float(np.clip(rng.normal(0.45, 0.06), 0.24, 0.63))
+        rows.append((t, dark, dpi, iw)); tot_dark += dark
+    names = []
+    for t, dark, dpi, iw in rows:
+        w = 100.0 * dark / tot_dark
+        names.append({"t": t, "contr": round((w / 100.0) * dpi, 5),
+                      "w": round(w, 3), "dpi": round(dpi, 4), "iw": round(float(iw), 3)})
+    names.sort(key=lambda x: x["contr"], reverse=True)
+    dix = round(sum(n["contr"] for n in names), 4)
+    return {"dix": dix, "n": len(names), "window": int(window),
+            "asof": "demo", "names": names[:top]}
+
 
 
 # --------------------------------------------------------------------------
@@ -1235,7 +1319,7 @@ def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, wee
 def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dark_panel,
                ndx_agg=None, ndx_dix=None, spx=None, iwm=None, bench_label=None,
                spx_res=None, spx_rel=None, spx_weight_map=None, spx_weight_order=None,
-               breadth_px=None, sector_data=None, spx_keep_days=378,
+               breadth_px=None, sector_data=None, contrib=None, spx_keep_days=378,
                plot_days=378, plot_start=None,
                title=None, window=126, demo=False):
     # `bench_label` is what the residuals are actually taken against (e.g. the
@@ -1375,6 +1459,7 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         # view as the small-multiples grid. Restricted to the displayed names to bound size.
         "sector_rel": sector_rel,
         "rel": rel,
+        "contrib": contrib,
         "spx": spx,
         "iwm": iwm,
         "bench": bench,
@@ -1523,6 +1608,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <button data-t="grid" class="on">Small multiples</button>
     <button data-t="rel">D vs forward return</button>
     <button data-t="idx">DIX vs Return</button>
+    <button data-t="contrib">Top DIX contributors</button>
     <button data-t="xs">Cross-sectional L/S</button>
     <button data-t="ev">D-streak events</button>
     <button data-t="sectors">Sector DIX</button>
@@ -1566,6 +1652,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button data-i="iwm">IWM</button>
     </div>
     <span class="sub" style="align-self:center">toggle one or several indices to compare</span>
+  </div>
+  <div class="controls" id="ctl-contrib" style="display:none">
+    <div class="seg" id="contribSel" title="which index's dollar-DIX to decompose into per-name contributions">
+      <button data-c="ndx" class="on">NDX-100</button>
+      <button data-c="spx">S&amp;P 500</button>
+      <button data-c="iwm">IWM</button>
+    </div>
+    <span class="sub" style="align-self:center">who is moving each index's dark-buying gauge</span>
   </div>
   <div class="controls" id="ctl-spx" style="display:none">
     <label class="chk" title="force all three horizon panels onto one shared y-axis (and scatter x/y range) so the magnitude of the effect is directly comparable across 1mo / 2mo / 3mo"><input type="checkbox" id="spxShared"/> shared axis · SPX panels</label>
@@ -1706,6 +1800,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <svg id="wScatter63" class="scatter" viewBox="0 0 800 320" preserveAspectRatio="none"></svg>
       <div class="panel-stats" id="wStats63"></div>
     </div>
+  </div>
+</div>
+<div class="rel-wrap" id="contribWrap" style="display:none">
+  <div class="sub" id="contribSub" style="margin:0 22px 4px"></div>
+  <div class="rel-card" style="margin:0 22px 14px">
+    <h2 id="contribTitle">Top contributors to the reconstructed dollar-DIX</h2>
+    <div id="contribBody" style="overflow-x:auto"></div>
+  </div>
+  <div class="sub" style="margin:2px 22px 40px;font-size:11px;line-height:1.55">
+    The index dollar-DIX = &Sigma;(price &times; FINRA off-exchange short volume) &divide;
+    &Sigma;(price &times; FINRA off-exchange total volume) across the constituents, which is exactly
+    the dark-dollar-weighted average of the per-name DPI. Each name therefore owns a slice of the
+    index level equal to its dark-dollar SHORT over the universe's total dark-dollar volume &mdash;
+    and those slices <b>sum back to the DIX</b>. That slice (the <b>contribution</b> column) is who is
+    actually moving the index's dark-buying gauge: it is the name's <b>dark-$ weight</b> times its own
+    <b>dark ratio (DPI)</b>. A big contributor is either a heavyweight in dark-dollar volume, a name
+    whose own dark buying is running unusually hot, or both. $ short and $ dark are averaged over the
+    trailing window shown (to smooth single-day FINRA reporting gaps) before ranking. Index weight, when
+    available, is shown for reference &mdash; a name contributing far more (or less) to the DIX than its
+    index weight is where dark flow diverges from market-cap.
   </div>
 </div>
 <div class="rel-wrap" id="xsWrap" style="display:none">
@@ -3726,6 +3840,65 @@ document.getElementById('evExcess').addEventListener('change', e=>{ evExcess=e.t
 // of dark accumulation) plus a small-multiple DIX sparkline per sector.
 // -------------------------------------------------------------------------
 let sectorLevel = 'sector';   // 'sector' (broad GICS) | 'subsector' (SPDR industry funds)
+// -------------------------------------------------------------------------
+// Top DIX contributors: per-name decomposition of each index's dollar-DIX.
+// contribution_i = dark-$ weight_i x DPI_i, and Sum_i contribution_i == DIX.
+// -------------------------------------------------------------------------
+let contribUniv = 'ndx';
+document.getElementById('contribSel').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b || b.dataset.c === contribUniv) return;
+  contribUniv = b.dataset.c;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle('on', x===b));
+  renderContrib();
+});
+function renderContrib(){
+  const LBL = {ndx:'NDX-100', spx:'S&P 500', iwm:'Russell 2000 (IWM)'};
+  const C = (P.contrib || {})[contribUniv];
+  const sub = document.getElementById('contribSub');
+  const title = document.getElementById('contribTitle');
+  const body = document.getElementById('contribBody');
+  title.innerHTML = `Top contributors to the ${LBL[contribUniv]} reconstructed dollar-DIX`;
+  if(!C || !C.names || !C.names.length){
+    sub.textContent = `${LBL[contribUniv]} contributor breakdown unavailable (live builds only, or universe too thin)`;
+    body.innerHTML = '<div style="padding:24px 8px;color:var(--mut)">No contributor data for this index.</div>';
+    return;
+  }
+  const names = C.names;
+  const asof = C.asof === 'demo' ? ' · demo data'
+             : (C.asof ? ` · as of ${C.asof}` : '');
+  sub.innerHTML = `Reconstructed dollar-DIX = <b>${C.dix.toFixed(4)}</b> (${(C.dix*100).toFixed(2)}%) · `
+    + `top ${names.length} of ${C.n} names by contribution · trailing ${C.window}-session mean${asof}`;
+  const maxC = Math.max.apply(null, names.map(n=>n.contr));
+  const hasIw = names.some(n=>n.iw!=null);
+  let rows = '';
+  names.forEach((n,i)=>{
+    const share = C.dix>0 ? 100*n.contr/C.dix : 0;             // % of the DIX this name owns
+    const bw = maxC>0 ? Math.max(1, 100*n.contr/maxC) : 0;
+    const iwCell = hasIw ? `<td>${n.iw!=null ? n.iw.toFixed(2)+'%' : '—'}</td>` : '';
+    rows += `<tr>`
+      + `<td>${i+1}</td>`
+      + `<td>${n.t}</td>`
+      + `<td><div style="display:flex;align-items:center;justify-content:flex-end;gap:8px">`
+      +   `<div style="flex:0 0 84px;height:9px;background:var(--zero);border-radius:3px;overflow:hidden">`
+      +     `<div style="width:${bw.toFixed(1)}%;height:100%;background:var(--accent)"></div></div>`
+      +   `<span style="font-variant-numeric:tabular-nums">${(n.contr*100).toFixed(3)}</span></div></td>`
+      + `<td>${share.toFixed(1)}%</td>`
+      + `<td>${n.w.toFixed(2)}%</td>`
+      + `<td>${(n.dpi*100).toFixed(1)}%</td>`
+      + iwCell
+      + `</tr>`;
+  });
+  body.innerHTML = `<table class="ev-table" style="min-width:560px">`
+    + `<thead><tr>`
+    +   `<th>#</th><th>Ticker</th>`
+    +   `<th title="the name's slice of the index DIX level = dark-$ weight x DPI; these sum to the DIX (shown x100)">Contribution &times;100</th>`
+    +   `<th title="this name's contribution as a share of the whole DIX">% of DIX</th>`
+    +   `<th title="share of the universe's total dark-dollar volume">Dark-$ wt</th>`
+    +   `<th title="the name's own dark ratio, $ short / $ dark (DPI)">DPI</th>`
+    +   (hasIw ? `<th title="the name's index weight, for reference">Index wt</th>` : '')
+    + `</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
 function renderSectors(){
   const S = P.sectors;
   const sub = document.getElementById('sectorsSub');
@@ -3979,6 +4152,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('ctl-grid').style.display = t==='grid' ? '' : 'none';
   document.getElementById('ctl-rel').style.display = t==='rel' ? '' : 'none';
   document.getElementById('ctl-idx').style.display = t==='idx' ? '' : 'none';
+  document.getElementById('ctl-contrib').style.display = t==='contrib' ? '' : 'none';
   document.getElementById('ctl-xs').style.display = t==='xs' ? '' : 'none';
   document.getElementById('ctl-ev').style.display = t==='ev' ? '' : 'none';
   document.getElementById('relStats').style.display = t==='rel' ? '' : 'none';
@@ -3987,6 +4161,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   // index wraps + their controls are governed by the idx multi-toggle; hide them off-tab
   if(t!=='idx'){ ['spxWrap','ndxWrap','iwmWrap','ctl-spx','ctl-ndx','ctl-iwm']
     .forEach(id=>document.getElementById(id).style.display='none'); }
+  document.getElementById('contribWrap').style.display = t==='contrib' ? '' : 'none';
   document.getElementById('xsWrap').style.display = t==='xs' ? '' : 'none';
   document.getElementById('evWrap').style.display = t==='ev' ? '' : 'none';
   document.getElementById('sectorsWrap').style.display = t==='sectors' ? '' : 'none';
@@ -3995,6 +4170,8 @@ document.getElementById('tabs').addEventListener('click', e=>{
     ? 'whiskers = ±1 SE on the overlap-adjusted (effective-N) mean; r CI via block bootstrap; overlapping daily returns → n far exceeds independent obs'
     : t==='idx'
     ? 'reconstructed dollar-weighted DIX per index (NDX-100 / S&P 500 / Russell 2000) vs that index\'s own forward return -- toggle any combination of indices to compare'
+    : t==='contrib'
+    ? 'per-name decomposition of each index\'s dollar-DIX -- contribution = dark-$ weight x own dark ratio (DPI); the contributions sum to the DIX'
     : t==='xs'
     ? 'cross-sectional rank of every name each day → deciles → forward excess return; long-short D10-D1 is market-neutral'
     : t==='ev'
@@ -4008,6 +4185,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
        : 'ordered by latest divergence (accumulating, then distributing)') + ' · toggle Weight/Divergence to reorder · hover a panel for date/value';
   if(t==='rel') renderRel();
   if(t==='idx') updateIdx();
+  if(t==='contrib') renderContrib();
   if(t==='xs') renderXs();
   if(t==='ev') renderEvents();
   if(t==='sectors' && !sectorsRendered){ renderSectors(); sectorsRendered = true; }
@@ -4607,6 +4785,17 @@ def main():
         idix, iclose = demo_russell_dix(start=args.plot_start or "2020-01-01", seed=29)
         iwm_payload = build_reconstructed_index_payload(idix, iclose, out_key="d",
                                                         start=plot_start, n_constituents=1900)
+        # Top-DIX-contributors tab: NDX uses its real (static) weights; SPX/IWM have no per-name
+        # FINRA panels in demo, so synthesize plausible contributor slices for the UI.
+        def _demo_wpairs(prefix, n, seed):
+            rng = np.random.default_rng(seed)
+            ws = np.sort(rng.random(n))[::-1]
+            ws = ws / ws.sum() * 100.0
+            return [(f"{prefix}{i + 1:03d}", round(float(ws[i]), 3)) for i in range(n)]
+        ndx_contrib = demo_contributors(NDX100_WEIGHTS, seed=11)
+        spx_contrib = (demo_contributors(_demo_wpairs("SPX", 500, 13), seed=13)
+                       if args.spx else None)
+        iwm_contrib = demo_contributors(_demo_wpairs("RUT", 1900, 29), seed=29)
         spx_res = None   # S&P 500 grid is a live-data feature (empty in --demo)
         spx_rel = None
         spx_weight_map = {}
@@ -4625,6 +4814,8 @@ def main():
         r42_panel = compute_forward_return(NDX["adjclose"], 42)
         r63_panel = compute_forward_return(NDX["adjclose"], 63)
         ndx_dix = compute_dollar_dix(NDX["short"], NDX["total"], NDX["close"], exclude=(BENCH,))
+        ndx_contrib = build_contributors_payload(NDX["short"], NDX["total"], NDX["close"],
+                                                 exclude=(BENCH,), weight_map=NDX100_WEIGHT)
         # FINRA off-exchange volume is as-traded; Yahoo's volume is split-adjusted. Rescale
         # the pre-split FINRA total onto the adjusted basis so the aggregate dark ratio stays
         # continuous across splits. (The dollar-DIX above needs no such fix: it pairs RAW
@@ -4637,6 +4828,7 @@ def main():
         spx_payload = None
         spx_res = None
         spx_rel = None
+        spx_contrib = None
         spx_weight_map = {}
         spx_weight_order = None
         if args.spx:
@@ -4649,6 +4841,8 @@ def main():
                                            cache_dir=cache_dir, ns="sp500", refresh=args.refresh,
                                            label="S&P 500")
                 spx_dix = compute_dollar_dix(SP["short"], SP["total"], SP["close"])
+                spx_contrib = build_contributors_payload(SP["short"], SP["total"], SP["close"],
+                                                         weight_map=spx_weight_map)
                 spy = load_yahoo_panels(["SPY"], start, end, workers=2, cache_dir=cache_dir,
                                         refresh=args.refresh, label="SPY")
                 n_sp = int((SP["short"].notna() & SP["total"].notna()).any().sum())
@@ -4669,11 +4863,14 @@ def main():
         iwm_syms = (load_iwm_holdings(args.iwm_holdings) if args.iwm_holdings
                     else fetch_ishares_holdings(IWM_PORTFOLIO_ID, label="IWM Russell 2000"))
         iwm_payload = None
+        iwm_contrib = None
         if iwm_syms:
             RU = build_universe_panels(iwm_syms, start, end, workers=args.workers,
                                        cache_dir=cache_dir, ns="russell", refresh=args.refresh,
                                        label="Russell")
             iwm_dix = compute_dollar_dix(RU["short"], RU["total"], RU["close"], exclude=("IWM",))
+            iwm_contrib = build_contributors_payload(RU["short"], RU["total"], RU["close"],
+                                                     exclude=("IWM",))
             iwmp = load_yahoo_panels(["IWM"], start, end, workers=2, cache_dir=cache_dir,
                                      refresh=args.refresh, label="IWM")
             n_ru = int((RU["short"].notna() & RU["total"].notna()).any().sum())
@@ -4778,11 +4975,12 @@ def main():
         res["diff"].to_csv(args.dump_csv.replace(".csv", "_diff.csv"))
         print(f"Wrote residual CSVs alongside {args.dump_csv}", file=sys.stderr)
 
+    contrib = {"ndx": ndx_contrib, "spx": spx_contrib, "iwm": iwm_contrib}
     html = build_html(res, BENCH, r21_panel, r42_panel, r63_panel, close_panel,
                        raw_dark_panel, ndx_agg=ndx_agg, ndx_dix=ndx_dix, spx=spx_payload,
                        iwm=iwm_payload, bench_label=bench_label, spx_res=spx_res, spx_rel=spx_rel,
                        spx_weight_map=spx_weight_map, spx_weight_order=spx_weight_order,
-                       breadth_px=breadth_px, sector_data=sector_data,
+                       breadth_px=breadth_px, sector_data=sector_data, contrib=contrib,
                        plot_days=args.plot_days, plot_start=plot_start, window=args.window,
                        demo=args.demo)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
