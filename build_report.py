@@ -76,8 +76,10 @@ def build_payload(ev):
         pay["quintile"][hz] = [float(gg.loc[i]) for i in [1, 2, 3, 4, 5]]
     for y in range(2018, 2027):
         d = ev[ev.yr == y]
-        rm, pm, _ = E._pearson(d.dpi10, d.m1_ret); rn, pn, _ = E._pearson(d.dpi10, d.next_day_ret)
-        pay["period"].append(dict(year=y, n=int(d.dpi10.notna().sum()),
+        rm, pm, nm = E._pearson(d.dpi10, d.m1_ret); rn, pn, _ = E._pearson(d.dpi10, d.next_day_ret)
+        if nm < 5 or not np.isfinite(rm):
+            continue   # skip years with no usable DPI (e.g. a year still missing FINRA data)
+        pay["period"].append(dict(year=y, n=int(nm),
                                   m1_r=rm, m1_p=pm, next_r=rn, next_p=pn))
     for name, mask in [("mega", ev.mega), ("nonmega", ~ev.mega),
                        ("amc", ev.timing == "amc"), ("bmo", ev.timing == "bmo")]:
