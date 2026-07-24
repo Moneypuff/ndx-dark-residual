@@ -1529,6 +1529,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
                white-space:nowrap;flex:0 0 auto}
   .tabs button:last-child{margin-right:22px}
   .tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+  .tabs a.tablink{background:transparent;color:var(--accent);border:0;border-bottom:2px solid transparent;
+               padding:4px 2px;margin-right:22px;font-size:13px;font-weight:650;cursor:pointer;
+               white-space:nowrap;flex:0 0 auto;text-decoration:none}
+  .tabs a.tablink:hover{border-bottom-color:var(--accent)}
   select{background:var(--panel2);border:1px solid var(--grid);color:var(--ink);
          border-radius:8px;padding:6px 10px;font-size:12px}
   .stats{display:flex;gap:18px;color:var(--mut);font-size:11.5px;margin:4px 22px 0}
@@ -1613,6 +1617,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <button data-t="ev">D-streak events</button>
     <button data-t="sectors">Sector DIX</button>
     <button data-t="spxtbl">SP500 decile table</button>
+    <a class="tablink" href="earnings.html" target="_blank" rel="noopener" title="DPI into earnings vs post-earnings performance -- opens the earnings study in a new tab">Earnings DIX &#8599;</a>
   </div>
   <div class="controls" id="ctl-grid">
     <div class="seg" id="univ" title="which index's constituents to show as small multiples">
