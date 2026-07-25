@@ -529,27 +529,37 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
     # again next run (one cheap 404). Dropping per-doc stays consistent via the `have`
     # intersection below. Skipped on a full --refresh, which re-fetches everything anyway.
     if cache_dir and (not doc_t.empty or not doc_s.empty):
-        # A healthy consolidated row has almost every symbol populated -- across this universe
-        # the worst genuine day is ~16% NaN (a few illiquid names with no off-exchange prints).
-        # So a row that is MOSTLY NaN is not a real day's data: it is an all-NaN holiday, or a
-        # bad/partial fetch that got cached with just a handful of symbols (the exact failure
-        # that left a block of 2026 rows populated for a few tickers but NaN for the earnings
-        # names, so it was neither all-NaN -- the old check -- nor ever re-fetched). Re-fetching
-        # any row above the threshold re-enters it into `missing`; a genuinely file-less day
-        # just comes back empty. Threshold sits well above healthy (16%) and well below a
-        # near-empty corrupt row (~90-100%), so it never disturbs a real day. `heal_frac`
-        # is loosened to 1.0 (all-NaN only) for sparse universes where a healthy day can
-        # legitimately clear this bar (see the parameter's docstring).
+        # A healthy row has almost every REQUESTED symbol populated -- across this universe the
+        # worst genuine day is ~16% NaN (a few illiquid names with no off-exchange prints). So a
+        # row where most of the wanted symbols are NaN is not a usable day for this universe: an
+        # all-NaN holiday, a partial fetch, or a day that was cached under a smaller/older symbol
+        # set and never backfilled for the names added since. Drop it so it re-enters `missing`
+        # and is re-fetched; a genuinely file-less day just comes back empty.
+        #
+        # The fraction is measured over the WANTED columns only, NOT every column in the
+        # document. A namespace's document accumulates columns for every symbol it has ever held,
+        # so a universe that later dropped names keeps those stale columns -- and if they stay
+        # populated on a date whose current-universe columns are NaN (exactly the 2026 earnings
+        # case: stale columns kept the rows well under 50% NaN overall, so an all-column check
+        # never fired and the block stayed stuck), an all-column measure is fooled. Restricting to
+        # the columns we actually need makes the check see the real gap. `heal_frac` is loosened
+        # to 1.0 (all wanted NaN only) for sparse universes where a healthy day can legitimately
+        # leave most wanted names NaN (see the parameter's docstring).
+        want_in = lambda doc: [c for c in wanted if c in doc.columns]  # noqa: E731
         def _drop_sparse(doc):
             if doc.empty:
                 return doc, 0
-            sparse = doc.index[doc.isna().mean(axis=1) >= heal_frac]
+            cols = want_in(doc)
+            if not cols:
+                return doc, 0
+            sparse = doc.index[doc[cols].isna().mean(axis=1) >= heal_frac]
             return (doc.drop(index=sparse), len(sparse)) if len(sparse) else (doc, 0)
         doc_t, n_t = _drop_sparse(doc_t)
         doc_s, n_s = _drop_sparse(doc_s)
         if n_t or n_s:
             print(f"FINRA cache [{ns or 'ndx'}]: re-checking {max(n_t, n_s)} empty/partial "
-                  f"day-row(s) in case FINRA has since posted them", file=sys.stderr)
+                  f"day-row(s) whose requested symbols are missing (re-fetching in case FINRA "
+                  f"has since posted them)", file=sys.stderr)
 
     have_cols = (set(doc_t.columns) if not doc_t.empty else set()) & \
                 (set(doc_s.columns) if not doc_s.empty else set())
