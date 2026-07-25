@@ -153,8 +153,18 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
     biases the sample toward large (disproportionately negative) moves, off by
     default. With authoritative EDGAR dates it is unnecessary.
     """
-    dpi = panels["dpi"]
     adj = panels["adjclose"]
+    # Align the DPI panel to the price calendar. FINRA data only starts at
+    # FINRA_MIN_DATE (2018-08), so when the price history reaches further back (it
+    # starts ~40 days before the earliest earnings date, which for the full universe
+    # predates FINRA), panels["dpi"] has fewer, later-starting rows than adjclose.
+    # `fp` below is a POSITION in adj.index, but the pre-fix code sliced dpi with that
+    # same position (`d.iloc[fp-w:fp]`) despite dpi's shorter index -- a constant
+    # offset (~160 sessions) that read the wrong window for every event and ran off
+    # the end for the most recent ones (2026 events came out all-NaN). Reindexing onto
+    # adj.index makes every positional slice consistent; pre-FINRA dates become NaN
+    # (correctly, there is no dark-pool data there) and are simply skipped by n_ok.
+    dpi = panels["dpi"].reindex(adj.index)
     ret = adj.pct_change()
     lret = np.log(adj).diff()          # daily log returns, for realized vol
     idx = adj.index
