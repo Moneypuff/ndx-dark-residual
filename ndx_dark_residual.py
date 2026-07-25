@@ -522,17 +522,22 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
     # (Rows are all-NaN in both docs for an empty day, so dropping per-doc stays consistent via
     # the `have` intersection below.) Skipped on a full --refresh, which re-fetches everything.
     if cache_dir and (not doc_t.empty or not doc_s.empty):
-        recent_cut = pd.Timestamp.today().normalize() - pd.Timedelta(days=FINRA_RECENT_REFETCH_DAYS)
-        def _drop_recent_empty(doc):
+        # Self-heal ANY all-NaN cached row, not just recent ones. An all-NaN row means the
+        # FINRA fetch for that trading day failed or was throttled and got cached empty --
+        # e.g. a block of days lost to rate-limiting near the end of a large from-scratch
+        # fetch (2,000+ requests). Dropping it re-enters it into `missing` so it is re-fetched
+        # on the next run; a handful of days is a tiny fetch (well under any throttle), and a
+        # genuinely file-less day just comes back empty again. The old recent-only window
+        # (FINRA_RECENT_REFETCH_DAYS) left such gaps stuck forever.
+        def _drop_empty(doc):
             if doc.empty:
                 return doc, 0
-            recent = doc.index[doc.index >= recent_cut]
-            empty = recent[doc.loc[recent].isna().all(axis=1)] if len(recent) else recent[:0]
+            empty = doc.index[doc.isna().all(axis=1)]
             return (doc.drop(index=empty), len(empty)) if len(empty) else (doc, 0)
-        doc_t, n_t = _drop_recent_empty(doc_t)
-        doc_s, n_s = _drop_recent_empty(doc_s)
+        doc_t, n_t = _drop_empty(doc_t)
+        doc_s, n_s = _drop_empty(doc_s)
         if n_t or n_s:
-            print(f"FINRA cache [{ns or 'ndx'}]: re-checking {max(n_t, n_s)} recent empty "
+            print(f"FINRA cache [{ns or 'ndx'}]: re-checking {max(n_t, n_s)} empty "
                   f"day-row(s) in case FINRA has since posted them", file=sys.stderr)
 
     have_cols = (set(doc_t.columns) if not doc_t.empty else set()) & \
