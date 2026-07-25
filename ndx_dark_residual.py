@@ -482,7 +482,7 @@ def _write_txn_version(cache_dir, ns=""):
         pass
 
 
-def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=""):
+def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns="", heal_frac=0.5):
     """(ShortVolume panel, TotalVolume panel) for `symbols` over `dates`.
 
     Reads both consolidated documents, fetches only the dates not already covered by
@@ -493,6 +493,12 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
     `ns` selects a cache namespace (its own document files) so a distinct symbol
     universe -- e.g. the Russell 2000 -- does not collide with the NDX-100 cache, whose
     rows cover the same dates but store only NDX-100 columns.
+
+    `heal_frac` is the per-row NaN fraction at/above which a cached row is treated as
+    empty/partial and re-fetched (see the self-heal below). 0.5 suits a dense large-cap
+    universe (healthy rows are <=~16% NaN); pass 1.0 for a sparse universe (e.g. the
+    Russell 2000) where a healthy day can legitimately be mostly-NaN, so only fully
+    all-NaN rows are re-checked.
     """
     wanted = list(dict.fromkeys(symbols))  # de-dup, keep order
     dates = [d for d in dates if d >= FINRA_MIN_DATE]
@@ -515,29 +521,34 @@ def fetch_finra_dark_volume_panel(dates, symbols, workers=8, cache_dir=None, ns=
             print(f"FINRA cache [{ns or 'ndx'}]: transition config v{TICKER_TRANSITION_VERSION}"
                   f" -> dropping {len(set(drop_t) | set(drop_s))} target column(s) to rebuild: "
                   f"{', '.join(sorted(set(drop_t) | set(drop_s)))}", file=sys.stderr)
-    # Self-heal delayed FINRA posts: an all-NaN cached row within the recency window is either a
-    # genuine holiday or a day whose file simply was not up yet when we last ran. Drop those so
-    # they re-enter `missing` and are re-fetched -- once FINRA publishes, the real row replaces
-    # the empty one; a true holiday just comes back empty and eventually ages out of the window.
-    # (Rows are all-NaN in both docs for an empty day, so dropping per-doc stays consistent via
-    # the `have` intersection below.) Skipped on a full --refresh, which re-fetches everything.
+    # Self-heal delayed / botched FINRA posts: a cached row that is (nearly) empty is either a
+    # genuine holiday, a day whose file simply was not up yet when we last ran, or a day whose
+    # fetch resolved but landed a truncated/partial file that dropped almost every symbol. Drop
+    # those so they re-enter `missing` and are re-fetched -- once FINRA publishes the real file,
+    # the full row replaces the sparse one; a true holiday just comes back empty and is dropped
+    # again next run (one cheap 404). Dropping per-doc stays consistent via the `have`
+    # intersection below. Skipped on a full --refresh, which re-fetches everything anyway.
     if cache_dir and (not doc_t.empty or not doc_s.empty):
-        # Self-heal ANY all-NaN cached row, not just recent ones. An all-NaN row means the
-        # FINRA fetch for that trading day failed or was throttled and got cached empty --
-        # e.g. a block of days lost to rate-limiting near the end of a large from-scratch
-        # fetch (2,000+ requests). Dropping it re-enters it into `missing` so it is re-fetched
-        # on the next run; a handful of days is a tiny fetch (well under any throttle), and a
-        # genuinely file-less day just comes back empty again. The old recent-only window
-        # (FINRA_RECENT_REFETCH_DAYS) left such gaps stuck forever.
-        def _drop_empty(doc):
+        # A healthy consolidated row has almost every symbol populated -- across this universe
+        # the worst genuine day is ~16% NaN (a few illiquid names with no off-exchange prints).
+        # So a row that is MOSTLY NaN is not a real day's data: it is an all-NaN holiday, or a
+        # bad/partial fetch that got cached with just a handful of symbols (the exact failure
+        # that left a block of 2026 rows populated for a few tickers but NaN for the earnings
+        # names, so it was neither all-NaN -- the old check -- nor ever re-fetched). Re-fetching
+        # any row above the threshold re-enters it into `missing`; a genuinely file-less day
+        # just comes back empty. Threshold sits well above healthy (16%) and well below a
+        # near-empty corrupt row (~90-100%), so it never disturbs a real day. `heal_frac`
+        # is loosened to 1.0 (all-NaN only) for sparse universes where a healthy day can
+        # legitimately clear this bar (see the parameter's docstring).
+        def _drop_sparse(doc):
             if doc.empty:
                 return doc, 0
-            empty = doc.index[doc.isna().all(axis=1)]
-            return (doc.drop(index=empty), len(empty)) if len(empty) else (doc, 0)
-        doc_t, n_t = _drop_empty(doc_t)
-        doc_s, n_s = _drop_empty(doc_s)
+            sparse = doc.index[doc.isna().mean(axis=1) >= heal_frac]
+            return (doc.drop(index=sparse), len(sparse)) if len(sparse) else (doc, 0)
+        doc_t, n_t = _drop_sparse(doc_t)
+        doc_s, n_s = _drop_sparse(doc_s)
         if n_t or n_s:
-            print(f"FINRA cache [{ns or 'ndx'}]: re-checking {max(n_t, n_s)} empty "
+            print(f"FINRA cache [{ns or 'ndx'}]: re-checking {max(n_t, n_s)} empty/partial "
                   f"day-row(s) in case FINRA has since posted them", file=sys.stderr)
 
     have_cols = (set(doc_t.columns) if not doc_t.empty else set()) & \
@@ -4595,17 +4606,20 @@ def fetch_ssga_holdings(etf, label=None, session=None, retries=5, pause=1.5):
 
 
 def build_universe_panels(symbols, start, end, workers=8, cache_dir=None, ns="", refresh=False,
-                          label="symbol"):
+                          label="symbol", heal_frac=0.5):
     """FINRA (short/total off-exchange) + Yahoo (raw close, adj close, volume) for `symbols`.
 
     Yahoo's trading-day calendar drives the FINRA date set, so both align to real sessions.
     Returns dict of wide panels incl. per-name 1-day DPI ('dpi') and 5-day-MA D ('d').
+
+    `heal_frac` is forwarded to the FINRA self-heal (see fetch_finra_dark_volume_panel);
+    default 0.5 for a dense large-cap universe, pass 1.0 for a sparse one.
     """
     ypan = load_yahoo_panels(symbols, start, end, workers=workers, cache_dir=cache_dir,
                              refresh=refresh, label=label)
     dates = [pd.Timestamp(d) for d in ypan["close"].index]
     short, total = fetch_finra_dark_volume_panel(dates, symbols, workers=workers,
-                                                 cache_dir=cache_dir, ns=ns)
+                                                 cache_dir=cache_dir, ns=ns, heal_frac=heal_frac)
     dpi, d = finra_dpi_to_d(short, total)
     return {"short": short, "total": total, "dpi": dpi, "d": d,
             "close": ypan["close"], "adjclose": ypan["adjclose"], "volume": ypan["volume"]}
@@ -4877,7 +4891,7 @@ def main():
         if iwm_syms:
             RU = build_universe_panels(iwm_syms, start, end, workers=args.workers,
                                        cache_dir=cache_dir, ns="russell", refresh=args.refresh,
-                                       label="Russell")
+                                       label="Russell", heal_frac=1.0)  # sparse universe: all-NaN only
             iwm_dix = compute_dollar_dix(RU["short"], RU["total"], RU["close"], exclude=("IWM",))
             iwm_contrib = build_contributors_payload(RU["short"], RU["total"], RU["close"],
                                                      exclude=("IWM",))
