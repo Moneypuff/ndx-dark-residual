@@ -1,0 +1,29 @@
+name: DEBUG FINRA earnings cache
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      # Restore the SAME cache the earnings-refresh job uses (read-only inspection).
+      - uses: actions/cache/restore@v4
+        with:
+          path: .ndx_dark_cache
+          key: ndx-earn-cache-v2-
+          restore-keys: |
+            ndx-earn-cache-v2-
+      # Regenerate the earnings dates the study uses so the universe matches.
+      - name: Refresh earnings dates from SEC EDGAR
+        run: python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
+      - name: Trace where 2026 DPI goes NaN
+        run: python debug_finra_cache.py .ndx_dark_cache
