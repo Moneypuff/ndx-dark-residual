@@ -57,27 +57,27 @@
 
 <div class="viz-root">
   <h1>Dark-pool positioning into earnings vs. what the stock does after</h1>
-  <p class="sub">94 NDX-100 names · 2,694 quarterly earnings events · Aug 2018 – Jul 2026 · DPI = short ÷ total off-exchange volume (FINRA) · report dates &amp; AMC/BMO timing from SEC EDGAR 8-K Item 2.02 · prices split-adjusted (Yahoo)</p>
+  <p class="sub">93 entities from the NDX-100 · 2,657 quarterly earnings events with dark-pool data · Aug 2018 – Jul 2026 · DPI = short ÷ total off-exchange volume (FINRA) · report dates &amp; AMC/BMO timing from SEC EDGAR 8-K Item 2.02 · prices split-adjusted (Yahoo)</p>
 
   <div class="kpis" id="kpis"></div>
 
   <div class="note-card" id="headline"></div>
 
-  <h2>Sort events by DPI into the report → forward return climbs</h2>
-  <p>Events split into terciles by each name's <em>own</em> DPI history (so "high" means high for that stock). Bars are the average return in each bucket, at four holding periods after the report.</p>
+  <h2>Sorting events by DPI into the report</h2>
+  <p>Events split into terciles by each name's <em>own</em> DPI history (so "high" means high for that stock). Bars are the average return in each bucket, at four holding periods after the report. The high bucket only pulls ahead at the longest horizon — and even there the gap is inside the noise.</p>
   <div class="card">
     <div class="legend" id="bucketLegend"></div>
     <div class="chart-wrap"><svg id="buckets"></svg></div>
   </div>
 
-  <h2>The edge compounds with the holding period</h2>
-  <p>How far the high-DPI tercile beats the low-DPI tercile (percentage points), from the next-day reaction out to a month. The gap widens the longer you hold — and its statistical significance with it.</p>
+  <h2>The gap only opens at the one-month horizon</h2>
+  <p>How far the high-DPI tercile beats the low-DPI tercile (percentage points), from the next-day reaction out to a month. It is slightly negative at the short horizons and turns positive by a month — none of the four splits is significant on its own; the pooled correlation below is the sturdier read.</p>
   <div class="card">
     <div class="legend"><span>High-DPI minus low-DPI average return · labels show the two-sided p-value</span></div>
     <div class="chart-wrap"><svg id="horizon"></svg></div>
   </div>
 
-  <h2>The gradient is monotonic, and it grows over the month</h2>
+  <h2>By quintile: noisy, with the top bucket highest at a month</h2>
   <div class="card">
     <div class="legend">
       <span><span class="sw" style="background:var(--accent)"></span>next-day</span>
@@ -99,12 +99,12 @@
   </div>
 
   <h2>Does it hold up? By year, by timing, by cohort</h2>
-  <p>Correlation of DPI10 with the 1-month return, computed within each calendar year. Same sign in almost every year, flat/absent in 2018–2019, and building from 2020 on.</p>
+  <p>Correlation of DPI10 with the 1-month return, computed within each calendar year. Positive in every year of the sample, though the size bounces around and no single year carries it.</p>
   <div class="card"><div class="chart-wrap"><svg id="period"></svg></div></div>
   <div class="card" id="subgroup"></div>
 
-  <h2>Per-name: mostly positive, with spread</h2>
-  <p>Correlation of DPI10 with the 1-month return, per name (≥8 events). Most names lean positive; per-name samples are ~30 events, so treat individual bars as texture.</p>
+  <h2>Per-name: a slight positive lean, with wide spread</h2>
+  <p>Correlation of DPI10 with the 1-month return, per name (≥8 events). A bare majority lean positive; per-name samples are ~30 events, so treat individual bars as texture.</p>
   <div class="card"><div class="chart-wrap"><svg id="pername"></svg></div></div>
 
   <h2>Post-earnings price paths: <span id="pathTk" style="color:var(--accent)">—</span></h2>
@@ -117,11 +117,40 @@
     <div class="rvrow" id="pathRvol"></div>
   </div>
 
+  <h2 style="margin-top:46px">Part 2 — what happens to DPI <em>after</em> the report</h2>
+  <p>The first half of this study used DPI <em>into</em> the print as a signal. The rest asks a different question: how does dark-pool positioning itself change once the numbers are out — one week, two weeks and a month later? Every number below is in <b class="k">percentage points of the DPI ratio</b>, measured against the same event's pre-earnings DPI10, so "+1 pp" means the dark-pool short share ran one point above where it sat going into the report.</p>
+
+  <div class="kpis" id="chgKpis"></div>
+
+  <h2>DPI spikes on the reaction day, then fades</h2>
+  <p>Average DPI by session around the report, relative to that event's own pre-earnings DPI10 (the zero line). Session 0 is <b class="k">T</b>, the last clean pre-news close; the news lands between 0 and +1.</p>
+  <div class="card">
+    <div class="legend" id="dpiPathLegend"></div>
+    <div class="chart-wrap"><svg id="dpiPath"></svg></div>
+    <div class="foot" id="dpiPathFoot"></div>
+  </div>
+
+  <h2>The lift is a week-one phenomenon</h2>
+  <p>Splitting the post-earnings month into non-overlapping slices: the elevation is concentrated in the first week and is gone by week two. Bars show the average change vs. the pre-earnings DPI10, with the two-sided p-value.</p>
+  <div class="card"><div class="chart-wrap"><svg id="dpiSlices"></svg></div></div>
+
+  <h2>Where DPI went in, it comes back from</h2>
+  <p>Events sorted into terciles by each name's DPI over an <em>earlier</em> window (sessions −60 to −11), which shares no observations with the change being measured. Names that went into the print with dark-pool positioning already high drift back down over the following month; those that went in low drift up.</p>
+  <div class="card">
+    <div class="legend" id="dpiRevertLegend"></div>
+    <div class="chart-wrap"><svg id="dpiRevert"></svg></div>
+    <div class="foot" id="dpiRevertFoot"></div>
+  </div>
+
+  <h2>The level carries the signal; the change doesn't</h2>
+  <p>A DPI change over T+1…T+5 is only known at T+5, so the honest test is the return <em>from</em> that point. Against the same forward windows, the pre-earnings level keeps working and the post-earnings change adds nothing.</p>
+  <div class="card" id="chgPredict"></div>
+
   <h2>Read-out</h2>
   <div class="card" id="readout"></div>
 
   <div class="note-card">
-    <p style="margin:0"><b class="k">Note on an earlier preliminary cut.</b> A first pass on just 20 mega-caps over 2023–2026, with hand-typed report dates, suggested high DPI preceded a <em>weaker</em> next-day move. That did <b>not</b> survive: with authoritative EDGAR dates, AMC/BMO timing, the full 94-name universe and 8 years of history, the mega-cap next-day effect is −0.05 (p≈0.4, i.e. noise), while the durable signal is the <em>positive</em> 1-month relationship shown here. The earlier result was small-sample/single-window fragility.</p>
+    <p style="margin:0"><b class="k">Note on an earlier preliminary cut.</b> A first pass on just 20 mega-caps over 2023–2026, with hand-typed report dates, suggested high DPI preceded a <em>weaker</em> next-day move. That did <b>not</b> survive: with authoritative EDGAR dates, AMC/BMO timing, the full 94-name universe and 8 years of history, the mega-cap next-day effect is −0.01 (i.e. noise), while the durable signal is the <em>positive</em> 1-month relationship shown here. The earlier result was small-sample/single-window fragility.</p>
   </div>
 
   <h2>Method &amp; caveats</h2>
@@ -130,7 +159,9 @@
     <li><b>Outcome:</b> next-day = adjClose(T+1)/adjClose(T)−1; 1-month = adjClose(T+21 sessions)/adjClose(T)−1, where T is the last clean pre-news close. Timing-aware: for after-hours (AMC) reports T is the report day; for before-open (BMO) reports T is the prior session, so the reaction is always the first full session on the news. Split-adjusted.</li>
     <li><b>Dates:</b> SEC EDGAR 8-K <b>Item 2.02</b> filings, matched to each 10-Q/10-K to isolate the quarterly earnings release (dropping delivery/sales/guidance 2.02s). Acceptance timestamp → US/Eastern gives AMC vs BMO. 94 of 100 names covered; 6 foreign filers (ASML, ARM, PDD, CCEP, FER, NBIS/TRI) file 6-K, not 8-K, and are omitted.</li>
     <li><b>Direction:</b> a high dark-pool short-volume ratio is conventionally read as market-makers shorting to fill <em>buy</em> orders — i.e. accumulation. The positive DPI→forward-return link is consistent with that reading.</li>
-    <li><b>Caveats:</b> effect sizes are small (r≈0.05 next-day, ≈0.10 at a month) — a real but modest tilt, not a stand-alone trade. Single index, mostly-bull sample. DPI is a noisy daily series.</li>
+    <li><b>Post-earnings DPI (part 2):</b> the same windows on the far side of the news — mean DPI over T+1…T+5 / T+10 / T+21 — minus that event's pre-earnings DPI10, in percentage points of the ratio. Session T is excluded from both sides (for an AMC reporter it is the report day itself, part pre-news tape and part after-hours reaction). Because the change contains DPI10 with a minus sign, sorting events on DPI10 exaggerates mean reversion; the tercile sorts use an earlier, non-overlapping window (sessions −60…−11) instead.</li>
+    <li><b>Change as a signal:</b> a change over T+1…T+5 is only observable at T+5, so it is tested against the return from T+5 to T+21 (and T+10→T+21, T+21→T+42) — never against a window it overlaps.</li>
+    <li><b>Caveats:</b> effect sizes are small (r≈0.01 next-day, ≈0.06 at a month) — a real but modest tilt, not a stand-alone trade. Single index, mostly-bull sample. DPI is a noisy daily series.</li>
   </ul>
   <p class="foot">Reproduce: <code>python fetch_earnings_edgar.py</code> then <code>python earnings_dpi_study.py --earnings earnings_dates_edgar.csv</code>. Event data: <code>earnings_dpi_events.csv</code>.</p>
 </div>
@@ -146,14 +177,19 @@ function showTip(h,ev){tip.innerHTML=h;tip.style.opacity=1;let x=ev.clientX+14,y
   tip.style.left=x+"px";tip.style.top=y+"px";}
 const hideTip=()=>tip.style.opacity=0;
 const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed(3);
+/* Part 2 (post-earnings DPI change) helpers -- declared up here so the read-out can use them */
+const CHG = DATA.dpichg;
+const pp=v=>(v>=0?"+":"")+v.toFixed(2)+" pp";           // v already in pp
+const pfmt=p=>p<0.001?"p&lt;0.001":"p="+p.toFixed(3);
+const ptxt=p=>p<0.001?"p<0.001":"p="+p.toFixed(3);
 
 /* KPIs */
 (function(){
   const cm=DATA.corr.dpi10_m1,cn=DATA.corr.dpi10_next_day,t=DATA.tercile.m1;
   const cards=[
     {label:"Sample",val:DATA.n_events.toLocaleString(),note:DATA.n_names+" names · 2018–2026"},
-    {label:"DPI10 vs 1-month",val:r3(cm.pearson),note:"Pearson r · p<0.001",cls:cm.pearson>=0?"pos":"neg"},
-    {label:"High vs low DPI, 1-month",val:pct(t.diff*100),note:"tercile spread · t="+t.t.toFixed(1)+" · p<0.001",cls:t.diff>=0?"pos":"neg"},
+    {label:"DPI10 vs 1-month",val:r3(cm.pearson),note:"Pearson r · "+ptxt(cm.pearson_p),cls:cm.pearson>=0?"pos":"neg"},
+    {label:"High vs low DPI, 1-month",val:pct(t.diff*100),note:"tercile spread · t="+t.t.toFixed(1)+" · "+ptxt(t.p),cls:t.diff>=0?"pos":"neg"},
     {label:"DPI10 vs next-day",val:r3(cn.pearson),note:"Pearson r · p="+cn.pearson_p.toFixed(3),cls:cn.pearson>=0?"pos":"neg"},
   ];
   $("kpis").innerHTML=cards.map(k=>`<div class="kpi"><div class="label">${k.label}</div>
@@ -163,10 +199,11 @@ const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed
 /* Headline note */
 (function(){
   const t=DATA.tercile.m1, cm=DATA.corr.dpi10_m1;
-  $("headline").innerHTML=`<p style="margin:0"><b class="k">Higher dark-pool positioning into a report lines up with better performance after it — modestly next day, and more clearly over the following month.</b>
-   Across ${DATA.n_events.toLocaleString()} earnings events, the third of events with the highest run-in DPI averaged
-   <span class="pos">${pct(t.hi*100)}</span> over the next month vs <span class="pos">${pct(t.lo*100)}</span> for the lowest third — a
-   <span class="pos">${pct(t.diff*100)}</span> spread (t=${t.t.toFixed(1)}, p&lt;0.001), and ${(t.hi_up*100).toFixed(0)}% of high-DPI events were up vs ${(t.lo_up*100).toFixed(0)}% of low-DPI ones.</p>`;
+  $("headline").innerHTML=`<p style="margin:0"><b class="k">Higher dark-pool positioning into a report lines up with better performance over the month after it — weakly, and only at that horizon.</b>
+   Across ${DATA.n_events.toLocaleString()} earnings events, run-in DPI10 correlates ${r3(cm.pearson)} with the 1-month return (${pfmt(cm.pearson_p)});
+   the third of events with the highest run-in DPI averaged <span class="pos">${pct(t.hi*100)}</span> over the next month vs
+   <span class="pos">${pct(t.lo*100)}</span> for the lowest third — a ${pct(t.diff*100)}pp spread, though at ${pfmt(t.p)} that bucket
+   split on its own is not significant. Nothing reliable shows up at the next-day or 1-week horizon.</p>`;
 })();
 
 /* Tercile buckets across 4 horizons */
@@ -267,7 +304,7 @@ const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed
     <td style="padding:6px 8px;font-variant-numeric:tabular-nums">${x.n}</td>
     <td style="padding:6px 8px;font-variant-numeric:tabular-nums;color:${col(x.next_r)}">${r3(x.next_r)}</td>
     <td style="padding:6px 8px;font-variant-numeric:tabular-nums;color:${col(x.m1_r)}">${r3(x.m1_r)}</td></tr>`;});
-  h+=`</table><div class="foot" style="margin-top:8px">1-month is positive in every cohort; next-day is ~flat for mega-caps and positive for the rest.</div>`;
+  h+=`</table><div class="foot" style="margin-top:8px">1-month is positive in every cohort; next-day is ~flat everywhere.</div>`;
   $("subgroup").innerHTML=h;
 })();
 
@@ -295,10 +332,19 @@ const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed
 (function(){
   const cm=DATA.corr.dpi10_m1,cn=DATA.corr.dpi10_next_day,t=DATA.tercile.m1,pos=DATA.pername.filter(p=>p.r>=0).length;
   const bh=DATA.byhorizon;
-  $("readout").innerHTML=`<p style="margin-top:0"><b class="k">Yes — a modest, positive tilt that compounds the longer you hold.</b>
-   The high-DPI tercile beats the low-DPI tercile by ${pct(bh[0].spread*100)}pp the next day, ${pct(bh[1].spread*100)}pp after a week, ${pct(bh[2].spread*100)}pp after two, and ${pct(bh[3].spread*100)}pp after a month — and the significance grows with it (p ${bh[0].spread_p.toFixed(3)} → &lt;0.001). Pooled, DPI10 correlates ${r3(cm.pearson)} with the 1-month return.</p>
-   <p><b class="k">It's broad and reasonably stable.</b> Same sign for after-hours and before-open reporters, for mega-caps and the rest, and in ${pos} of ${DATA.pername.length} names individually. By year it's absent in 2018–2019 and builds from 2020 on.</p>
-   <p><b class="k">But small.</b> r≈0.1 explains ~1% of the variance in monthly post-earnings returns — a genuine edge in the aggregate, not a signal to trade a single name on. Read it as: elevated dark-pool accumulation into a print skews the odds modestly bullish for the month that follows.</p>`;
+  const ppz=v=>(v>=0?"+":"")+v.toFixed(2)+" pp";
+  $("readout").innerHTML=`<p style="margin-top:0"><b class="k">A weak positive tilt that only shows up at the one-month horizon.</b>
+   Pooled, DPI10 correlates ${r3(cm.pearson)} with the 1-month return (${pfmt(cm.pearson_p)}) — but ${r3(DATA.corr.dpi10_next_day.pearson)} next-day and
+   ${r3(DATA.corr.dpi10_w1.pearson)} at a week, neither distinguishable from zero. The high-minus-low tercile spread runs
+   ${ppz(bh[0].spread*100)} next-day, ${ppz(bh[1].spread*100)} after a week, ${ppz(bh[2].spread*100)} after two and ${ppz(bh[3].spread*100)} after a month,
+   and none of those bucket splits clears significance on its own (1-month ${ptxt(bh[3].spread_p)}).</p>
+   <p><b class="k">What consistency there is, is in the sign.</b> The 1-month correlation is positive for after-hours and before-open reporters,
+   for mega-caps and the rest, in every year of the sample, and in ${pos} of ${DATA.pername.length} names individually — a bare majority.</p>
+   <p><b class="k">Small enough to treat as a tilt, not a trade.</b> r≈0.06 explains well under 1% of the variance in monthly post-earnings
+   returns. Read it as: elevated dark-pool accumulation into a print skews the odds slightly bullish for the month that follows, and
+   nothing more.</p>
+   ${CHG?`<p><b class="k">And after the print, DPI moves — but only briefly.</b> The dark-pool short share jumps ${pp(CHG.horizons[0].chg*100)} on the reaction day (${(CHG.horizons[0].up*100).toFixed(0)}% of events), averages ${pp(CHG.slices[0].chg*100)} over week one, and is back at its run-in level by week two (${pp(CHG.slices[1].chg*100)}, ${ptxt(CHG.slices[1].p)}). Over the full month the change is ${pp(CHG.horizons[3].chg*100)} — statistically nothing. Positioning also drifts back toward normal: events that ran in high give back ${pp(CHG.revert[2].hi*100)} over the month, low ones add ${pp(CHG.revert[2].lo*100)}.</p>
+   <p><b class="k">The change is a reaction, not a signal.</b> DPI rises more after up prints than down ones (${pp(CHG.reaction[2].diff*100)} apart at a month, ${ptxt(CHG.reaction[2].p)}) — it follows the tape. And it forecasts nothing: sorted on the week-one change, the T+5→T+21 return spread is ${pp(CHG.predict[0].spread*100)} (${ptxt(CHG.predict[0].p_spread)}), while the pre-earnings <em>level</em> still correlates ${r3(CHG.predict[0].level_r)} with that same window. Where you were going in is what matters; what happened to DPI afterwards is noise.</p>`:""}`;
 })();
 
 /* Post-earnings path fan chart */
@@ -364,4 +410,135 @@ function renderPaths(tk){
 window.selectTicker=tk=>{renderPaths(tk);if(window.__pnHighlight)window.__pnHighlight(tk);};
 buildFilterButtons();
 window.selectTicker(PATHS["NVDA"]?"NVDA":Object.keys(PATHS)[0]);
+
+/* ------------------------------------------------------------------ *
+ * Part 2: post-earnings change in DPI                                  *
+ * ------------------------------------------------------------------ */
+/* KPI tiles: change at each horizon */
+(function(){
+  if(!CHG)return;
+  $("chgKpis").innerHTML=CHG.horizons.map(h=>{
+    const v=h.chg*100;
+    return `<div class="kpi"><div class="label">${h.label}</div>
+      <div class="val ${v>=0?"pos":"neg"}">${pp(v)}</div>
+      <div class="note">${(h.up*100).toFixed(0)}% of events up · ${ptxt(h.p)}</div></div>`;}).join("");
+})();
+
+/* Average DPI path around the report */
+(function(){
+  if(!CHG||!CHG.path.all)return;
+  const P=CHG.path, W=Math.max(640,Math.min(940,innerWidth-60)),H2=380,
+        m={l:56,r:64,t:16,b:44},iw=W-m.l-m.r,ih=H2-m.t-m.b;
+  const s=$("dpiPath");s.setAttribute("viewBox",`0 0 ${W} ${H2}`);s.setAttribute("width",W);s.setAttribute("height",H2);
+  const series=[["all","All events","var(--accent)",3],["up","After an up reaction","var(--up)",2],
+                ["dn","After a down reaction","var(--down)",2]].filter(x=>P[x[0]]);
+  $("dpiPathLegend").innerHTML=series.map(([k,l,c])=>
+    `<span><span class="sw" style="background:${c};height:3px;width:16px;border-radius:2px"></span>${l}</span>`).join("")
+    +`<span>· zero = that event's pre-earnings DPI10</span>`;
+  let all=[];series.forEach(([k])=>all=all.concat(P[k]));
+  const lim=Math.max(1.5,Math.ceil(Math.max(...all.map(Math.abs))*2)/2);
+  const X=i=>m.l+(P.x[i]-P.x[0])/(P.x[P.x.length-1]-P.x[0])*iw, Y=v=>m.t+(lim-v)/(2*lim)*ih;
+  for(let v=-lim;v<=lim+1e-9;v+=lim/3){const y=Y(v);
+    s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":Math.abs(v)<1e-9?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v.toFixed(1);s.appendChild(tk);}
+  const zx=X(P.x.indexOf(0));
+  s.appendChild(el("line",{x1:zx,x2:zx,y1:m.t,y2:m.t+ih,stroke:"var(--axis)","stroke-width":1,"stroke-dasharray":"4 4"}));
+  const zl=el("text",{x:zx,y:m.t-3,"text-anchor":"middle",class:"tick"});zl.textContent="report";s.appendChild(zl);
+  P.x.forEach((d,i)=>{if(d%5)return;const tk=el("text",{x:X(i),y:m.t+ih+18,"text-anchor":"middle",class:"tick"});
+    tk.textContent=(d>0?"+":"")+d;s.appendChild(tk);});
+  const xl=el("text",{x:m.l+iw/2,y:H2-6,"text-anchor":"middle",class:"axlab"});xl.textContent="trading sessions from T";s.appendChild(xl);
+  const yl=el("text",{x:14,y:m.t+ih/2,"text-anchor":"middle",class:"axlab",transform:`rotate(-90 14 ${m.t+ih/2})`});
+  yl.textContent="DPI vs. run-in (pp)";s.appendChild(yl);
+  series.forEach(([k,l,c,w])=>{const a=P[k];let d="";a.forEach((v,i)=>d+=(i?"L":"M")+X(i)+" "+Y(Math.max(-lim,Math.min(lim,v))));
+    s.appendChild(el("path",{d,fill:"none",stroke:c,"stroke-width":w,"stroke-linejoin":"round","stroke-linecap":"round","stroke-opacity":k==="all"?1:.85}));
+    const last=a.length-1;const t=el("text",{x:X(last)+6,y:Y(Math.max(-lim,Math.min(lim,a[last])))+4,class:"vlab",fill:c});
+    t.textContent=k==="all"?"all":(k==="up"?"up":"down");s.appendChild(t);});
+  // hover: vertical readout of all series at the nearest session
+  const hl=el("line",{x1:0,x2:0,y1:m.t,y2:m.t+ih,stroke:"var(--axis)","stroke-width":1,opacity:0});s.appendChild(hl);
+  const hit=el("rect",{x:m.l,y:m.t,width:iw,height:ih,fill:"transparent"});
+  hit.addEventListener("mousemove",e=>{const r=s.getBoundingClientRect();
+    const i=Math.max(0,Math.min(P.x.length-1,Math.round((e.clientX-r.left)/r.width*W-m.l)/iw*(P.x.length-1)));
+    const ix=Math.round(i);hl.setAttribute("x1",X(ix));hl.setAttribute("x2",X(ix));hl.setAttribute("opacity",1);
+    showTip(`<b>session ${P.x[ix]>0?"+":""}${P.x[ix]}</b><br>`+series.map(([k,l,c])=>
+      `<span style="color:${c}">${l}</span>: ${pp(P[k][ix])}`).join("<br>"),e);});
+  hit.addEventListener("mouseleave",()=>{hideTip();hl.setAttribute("opacity",0);});
+  s.appendChild(hit);
+  const d1=CHG.horizons[0];
+  $("dpiPathFoot").innerHTML=`${P.n.toLocaleString()} events with a complete −10…+21 DPI window · reaction-day jump ${pp(d1.chg*100)} (${ptxt(d1.p)})`;
+})();
+
+/* Non-overlapping slices of the post-earnings month */
+(function(){
+  if(!CHG)return;
+  const d=[{label:"Reaction day",chg:CHG.horizons[0].chg,p:CHG.horizons[0].p}].concat(CHG.slices);
+  const W=Math.max(520,Math.min(760,innerWidth-60)),H2=300,m={l:56,r:16,t:26,b:40},iw=W-m.l-m.r,ih=H2-m.t-m.b;
+  const s=$("dpiSlices");s.setAttribute("viewBox",`0 0 ${W} ${H2}`);s.setAttribute("width",W);s.setAttribute("height",H2);
+  const lim=Math.max(1,Math.ceil(Math.max(...d.map(x=>Math.abs(x.chg*100)))));
+  const Y=v=>m.t+(lim-v)/(lim*1.15)*ih;
+  for(let v=0;v<=lim+1e-9;v+=lim/4){const y=Y(v);
+    s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":v===0?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v.toFixed(1);s.appendChild(tk);}
+  const gw=iw/d.length,bw=Math.min(64,gw*0.5);
+  d.forEach((r,i)=>{const cx=m.l+gw*i+gw/2,v=r.chg*100,y=Y(v),top=Math.min(Y(0),y),h=Math.abs(y-Y(0));
+    const rect=el("rect",{x:cx-bw/2,y:top,width:bw,height:Math.max(1.5,h),rx:3,
+      fill:v>=0?"var(--up)":"var(--down)","fill-opacity":r.p<0.05?0.92:0.35});
+    rect.addEventListener("mousemove",e=>showTip(`<b>${r.label}</b><br>${pp(v)} vs run-in<br>${pfmt(r.p)}`,e));
+    rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
+    const vl=el("text",{x:cx,y:top-7,"text-anchor":"middle",class:"vlab"});vl.textContent=pp(v);s.appendChild(vl);
+    const pl=el("text",{x:cx,y:top-19,"text-anchor":"middle",class:"tick","font-size":"9px"});pl.textContent=ptxt(r.p);s.appendChild(pl);
+    const lb=el("text",{x:cx,y:H2-6,"text-anchor":"middle",class:"axlab"});lb.textContent=r.label;s.appendChild(lb);});
+})();
+
+/* Mean reversion: change by prior-window DPI tercile */
+(function(){
+  if(!CHG)return;
+  const d=CHG.revert;
+  $("dpiRevertLegend").innerHTML=`<span><span class="sw" style="background:var(--up)"></span>went in with high DPI</span>
+    <span><span class="sw" style="background:var(--down)"></span>went in with low DPI</span>
+    <span>· change vs. that event's own run-in DPI10</span>`;
+  const W=Math.max(520,Math.min(800,innerWidth-60)),H2=320,m={l:56,r:16,t:18,b:40},iw=W-m.l-m.r,ih=H2-m.t-m.b;
+  const s=$("dpiRevert");s.setAttribute("viewBox",`0 0 ${W} ${H2}`);s.setAttribute("width",W);s.setAttribute("height",H2);
+  let vals=[];d.forEach(r=>vals.push(r.hi*100,r.lo*100));
+  const lim=Math.max(1,Math.ceil(Math.max(...vals.map(Math.abs))*2)/2);
+  const Y=v=>m.t+(lim-v)/(2*lim)*ih;
+  for(let v=-lim;v<=lim+1e-9;v+=lim/2){const y=Y(v);
+    s.appendChild(el("line",{x1:m.l,x2:m.l+iw,y1:y,y2:y,stroke:"var(--grid)","stroke-width":Math.abs(v)<1e-9?1.5:1}));
+    const tk=el("text",{x:m.l-8,y:y+4,"text-anchor":"end",class:"tick"});tk.textContent=(v>0?"+":"")+v.toFixed(1);s.appendChild(tk);}
+  const gw=iw/d.length,bw=Math.min(40,gw*0.28);
+  d.forEach((r,i)=>{const cx=m.l+gw*i+gw/2;
+    [["hi",r.hi*100,"var(--up)",-1],["lo",r.lo*100,"var(--down)",1]].forEach(([k,v,c,side])=>{
+      const y=Y(v),top=Math.min(Y(0),y),h=Math.abs(y-Y(0));
+      const rect=el("rect",{x:cx+(side<0?-bw-1:1),y:top,width:bw,height:Math.max(1.5,h),rx:3,fill:c,"fill-opacity":.9});
+      rect.addEventListener("mousemove",e=>showTip(`<b>${r.label}</b> · ${k==="hi"?"high":"low"} run-in DPI<br>${pp(v)}`,e));
+      rect.addEventListener("mouseleave",hideTip);s.appendChild(rect);
+      const vl=el("text",{x:cx+(side<0?-bw/2-1:bw/2+1),y:v>=0?top-6:top+h+13,"text-anchor":"middle",class:"vlab"});
+      vl.textContent=pp(v);s.appendChild(vl);});
+    const lb=el("text",{x:cx,y:H2-6,"text-anchor":"middle",class:"axlab"});lb.textContent=r.label;s.appendChild(lb);});
+  const m1=d[d.length-1];
+  $("dpiRevertFoot").innerHTML=`High minus low at one month: <b class="k">${pp(m1.spread*100)}</b> (t=${m1.t.toFixed(1)}, ${ptxt(m1.p)}).
+    Sorting on DPI10 itself instead would put the correlation at ${r3(m1.r_naive)} — but DPI10 sits inside the change being
+    measured, so its own noise pulls that number down. Against the independent earlier window it is ${r3(m1.r_prior)}:
+    the reversion is real, and about a third the size the naive sort suggests.`;
+})();
+
+/* Level vs change as forward signals */
+(function(){
+  if(!CHG)return;
+  const rows=CHG.predict.map(r=>`<tr>
+      <td style="padding:6px 10px 6px 0">Δ DPI over ${r.label}</td>
+      <td style="padding:6px 10px;color:var(--muted)">${r.window}</td>
+      <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums">${r3(r.r)}</td>
+      <td style="padding:6px 10px;text-align:right;color:var(--muted)">${ptxt(r.p)}</td>
+      <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;color:${r.level_p<0.05?"var(--up)":"var(--text-secondary)"}">${r3(r.level_r)}</td>
+      <td style="padding:6px 0 6px 10px;text-align:right;color:var(--muted)">${ptxt(r.level_p)}</td></tr>`).join("");
+  $("chgPredict").innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:.9rem;color:var(--text-secondary)">
+    <thead><tr style="color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.04em">
+      <th style="text-align:left;padding-bottom:6px">Signal</th><th style="text-align:left;padding-bottom:6px">Forward window</th>
+      <th style="text-align:right;padding-bottom:6px">r (change)</th><th style="text-align:right;padding-bottom:6px">p</th>
+      <th style="text-align:right;padding-bottom:6px">r (pre-earnings level)</th><th style="text-align:right;padding-bottom:6px">p</th>
+    </tr></thead><tbody>${rows}</tbody></table>
+    <p style="margin:10px 0 0">Sorting events into terciles by the size of their week-1 DPI change gives a
+    ${pp(CHG.predict[0].spread*100)} spread in the T+5→T+21 return (${ptxt(CHG.predict[0].p_spread)}) — nothing.
+    Dark pools react to the print; that reaction is not itself news about the next month.</p>`;
+})();
 </script>

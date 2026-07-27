@@ -100,6 +100,93 @@ def build_payload(ev):
     return pay
 
 
+PRE_PATH = 10   # sessions of DPI shown before the base close T in the event path
+
+
+def build_dpichange(ev, dpi):
+    """Payload for the post-earnings DPI-change section.
+
+    Everything is expressed in percentage points of the DPI ratio, measured against
+    each event's own pre-earnings DPI10, so the numbers read as "dark-pool short
+    share ran N pp above/below where it was going into the print".
+    """
+    ev = ev.copy()
+    lv = {k: float(ev[c].mean()) for k, c in
+          [("pre", "dpi10"), ("base60", "dpi_base60"), ("d1", "dpi_post_next_day"),
+           ("w1", "dpi_post_w1"), ("w2", "dpi_post_w2"), ("m1", "dpi_post_m1")]}
+    HZ = [("next_day", "Reaction day"), ("w1", "1 week"), ("w2", "2 weeks"), ("m1", "1 month")]
+    horizons = []
+    for k, label in HZ:
+        c = ev[f"d_dpi_{k}"]
+        m, t, p, n = E._ttest1(c)
+        horizons.append(dict(key=k, label=label, chg=float(m), med=float(c.median()),
+                             up=float((c > 0).mean()), t=float(t), p=float(p), n=int(n),
+                             post=float(ev[f"dpi_post_{k}"].mean())))
+    slices = []
+    for k, label in [("sw1", "Week 1"), ("sw2", "Week 2"), ("sw34", "Weeks 3–4")]:
+        m, t, p, n = E._ttest1(ev[f"d_dpi_{k}"])
+        slices.append(dict(key=k, label=label, chg=float(m), t=float(t), p=float(p), n=int(n)))
+
+    revert, reaction, predict = [], [], []
+    for k, label in HZ[1:]:
+        c = ev[f"d_dpi_{k}"]
+        rn, pn, n = E._pearson(ev["dpi10"], c)
+        ri, pi, _ = E._pearson(ev["dpi_prior"], c)
+        pp = ev["dpi_prior_pct"]
+        hh, ll = ev[pp >= 2/3][f"d_dpi_{k}"].to_numpy(), ev[pp <= 1/3][f"d_dpi_{k}"].to_numpy()
+        diff, t, pv, _, _ = E._welch(hh, ll)
+        revert.append(dict(key=k, label=label, r_naive=float(rn), r_prior=float(ri),
+                           p_prior=float(pi), hi=float(np.nanmean(hh)), lo=float(np.nanmean(ll)),
+                           spread=float(diff), t=float(t), p=float(pv), n=int(n)))
+        up = ev[ev.next_day_ret > 0][f"d_dpi_{k}"].to_numpy()
+        dn = ev[ev.next_day_ret <= 0][f"d_dpi_{k}"].to_numpy()
+        diff, t, pv, nu, nd = E._welch(up, dn)
+        reaction.append(dict(key=k, label=label, up=float(np.nanmean(up)), dn=float(np.nanmean(dn)),
+                             diff=float(diff), t=float(t), p=float(pv), nu=int(nu), nd=int(nd)))
+    for k, label, rcol, rlab in [("w1", "1 week", "fwd_w1_m1", "T+5 → T+21"),
+                                 ("w2", "2 weeks", "fwd_w2_m1", "T+10 → T+21"),
+                                 ("m1", "1 month", "fwd_m1_m2", "T+21 → T+42")]:
+        r, p, n = E._pearson(ev[f"d_dpi_{k}"], ev[rcol])
+        lr, lp, _ = E._pearson(ev["dpi10"], ev[rcol])
+        pc = ev[f"d_dpi_{k}_pct"]
+        hh, ll = ev[pc >= 2/3][rcol].to_numpy(), ev[pc <= 1/3][rcol].to_numpy()
+        diff, t, pv, _, _ = E._welch(hh, ll)
+        predict.append(dict(key=k, label=label, window=rlab, r=float(r), p=float(p), n=int(n),
+                            level_r=float(lr), level_p=float(lp), hi=float(np.nanmean(hh)),
+                            lo=float(np.nanmean(ll)), spread=float(diff), t=float(t), p_spread=float(pv)))
+
+    # --- average DPI path around the report, T-10 .. T+21, vs each event's DPI10 ---
+    idx = dpi.index
+    ev["base_T"] = pd.to_datetime(ev.base_T)
+    span = PRE_PATH + H + 1
+    rows, tags = [], []
+    for _, r in ev.iterrows():
+        if r.ticker not in dpi.columns or pd.isna(r.base_T) or not np.isfinite(r.dpi10):
+            continue
+        pos = idx.searchsorted(r.base_T)
+        if pos >= len(idx) or idx[pos] != r.base_T or pos - PRE_PATH < 0 or pos + H >= len(idx):
+            continue
+        seg = dpi[r.ticker].iloc[pos - PRE_PATH:pos + H + 1].to_numpy(dtype=float)
+        if len(seg) != span or np.isnan(seg).sum() > span // 4:
+            continue
+        rows.append(seg - float(r.dpi10))
+        tags.append((bool(r.next_day_ret > 0),
+                     "hi" if r.dpi_prior_pct >= 2/3 else ("lo" if r.dpi_prior_pct <= 1/3 else "mid")))
+    M = np.array(rows)
+
+    def curve(sel):
+        sub = M[np.array(sel, dtype=bool)] if len(M) else M
+        if len(sub) < 20:
+            return None
+        return [round(float(v) * 100, 3) for v in np.nanmean(sub, axis=0)]
+    path = {"x": list(range(-PRE_PATH, H + 1)), "n": int(len(M)),
+            "all": curve([True] * len(M)),
+            "up": curve([t[0] for t in tags]), "dn": curve([not t[0] for t in tags]),
+            "hi": curve([t[1] == "hi" for t in tags]), "lo": curve([t[1] == "lo" for t in tags])}
+    return dict(levels=lv, horizons=horizons, slices=slices, revert=revert,
+                reaction=reaction, predict=predict, path=path)
+
+
 def build_paths(ev, adj):
     idx = adj.index
     ev = ev.copy(); ev["base_T"] = pd.to_datetime(ev.base_T)
@@ -170,13 +257,15 @@ def main():
     ev = pd.read_csv(args.events)
     earn = E.load_earnings(args.earnings)
     syms = sorted(earn.ticker.unique())
-    start = (earn.report_date.min() - pd.Timedelta(days=40)).strftime("%Y-%m-%d")
-    end = (earn.report_date.max() + pd.Timedelta(days=70)).strftime("%Y-%m-%d")
+    # same window as earnings_dpi_study.py so both read the identical cached panels
+    start = (earn.report_date.min() - pd.Timedelta(days=120)).strftime("%Y-%m-%d")
+    end = (earn.report_date.max() + pd.Timedelta(days=100)).strftime("%Y-%m-%d")
     panels = N.build_universe_panels(syms, start, end, workers=10,
                                      cache_dir=args.cache_dir or None, ns="earn", label="EARN")
     panels, earn = E.merge_share_classes(panels, earn)  # match the study's universe
 
     payload = build_payload(ev)
+    payload["dpichg"] = build_dpichange(ev, panels["dpi"].reindex(panels["adjclose"].index))
     paths = build_paths(ev, panels["adjclose"])
     html = (Path(args.template).read_text()
             .replace("/*__PAYLOAD__*/", json.dumps(payload))

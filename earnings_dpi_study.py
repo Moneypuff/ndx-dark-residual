@@ -26,6 +26,21 @@ always the first full session on the news.
     m1_ret       = adjclose(T+MONTH) / adjclose(T) - 1  # ~1 month later
 MONTH defaults to 21 trading sessions.
 
+Second question: what happens to DPI AFTER the report
+-----------------------------------------------------
+The same DPI windows are also measured on the far side of the news --
+
+    dpi_post_w1/w2/m1 = mean DPI over T+1..T+5 / T+10 / T+21
+    d_dpi_w1/w2/m1    = dpi_post_* - DPI10        (the change, in ratio points)
+    dpi_base60        = mean DPI over the 60 sessions ending the day before the
+                        report, i.e. the name's ordinary level; adpi_* measure
+                        the pre- and post-windows against it
+
+-- plus non-overlapping slices (week 1 / week 2 / weeks 3-4) to show how the
+change decays, and returns measured FROM each horizon (fwd_w1_m1 = T+5 -> T+21,
+fwd_w2_m1, fwd_m1_m2) so a DPI change can be tested against what happens after
+it is observable, with no look-ahead. See summarize_dpi_change().
+
 Dates
 -----
 Report dates + AMC/BMO timing come from SEC EDGAR 8-K Item 2.02 filings (see
@@ -134,6 +149,16 @@ HORIZONS = {"next_day": 1, "w1": 5, "w2": 10, "m1": 21}
 HZ_LABEL = {"next_day": "NEXT-DAY (T->T+1)", "w1": "1-WEEK (T->T+5)",
             "w2": "2-WEEK (T->T+10)", "m1": "1-MONTH (T->T+21)"}
 
+# Sessions of DPI history used for the "normal level for this name" baseline that
+# the pre- and post-earnings windows are measured against (ends the day before the
+# report, so it is pre-announcement like the DPI5/DPI10 signal).
+BASELINE_SESSIONS = 60
+
+# Forward returns measured FROM a post-earnings horizon (not from T). These are the
+# outcomes a DPI *change* could plausibly trade: the change over T+1..T+5 is only
+# known at T+5, so the honest test is what the stock does from T+5 onward.
+FWD_RETURNS = {"w1_m1": ("w1", "m1"), "w2_m1": ("w2", "m1"), "m1_m2": ("m1", None)}
+
 
 def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), anchor=False):
     """Build one row per earnings event, timing-aware.
@@ -203,12 +228,69 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
             n_ok = int(seg.notna().sum())
             win[f"dpi{w}"] = float(seg.mean()) if n_ok >= max(3, w - 2) else np.nan
 
+        # --- the name's ordinary DPI level going into the event (baseline) ---
+        bseg = d.iloc[max(0, fp - BASELINE_SESSIONS):fp]
+        dpi_base = (float(bseg.mean())
+                    if int(bseg.notna().sum()) >= BASELINE_SESSIONS // 2 else np.nan)
+        # An EARLIER window that does not overlap DPI10 (sessions -60..-11). Because
+        # `d_dpi = post - DPI10` contains DPI10's own measurement noise with a minus
+        # sign, corr(DPI10, d_dpi) is mechanically negative even with no true mean
+        # reversion. `dpi_prior` shares no observations with either side, so ranking
+        # events by it gives an unbiased read on how much reversion is real.
+        pseg = d.iloc[max(0, fp - BASELINE_SESSIONS):max(0, fp - dpi_windows[-1])]
+        dpi_prior = float(pseg.mean()) if int(pseg.notna().sum()) >= 20 else np.nan
+
+        # --- post-earnings DPI: same windows, now AFTER the news ---
+        # Cumulative windows T+1..T+h mirror the return horizons, so `d_dpi_h` is the
+        # change in average dark-pool positioning from the run-in (DPI10) to the h
+        # sessions after the report. Session T itself is excluded on both sides: for
+        # an AMC reporter it is the pre-window's cut-off day, and its tape is a mix of
+        # pre-news trading and the after-hours reaction.
+        post = {}
+        v1 = d.iloc[t_pos + 1] if t_pos + 1 < len(d) else np.nan
+        post["dpi_post_next_day"] = float(v1) if np.isfinite(v1) else np.nan
+        for name, h in horizons.items():
+            if name == "next_day":
+                continue
+            seg = d.iloc[t_pos + 1:t_pos + h + 1]
+            post[f"dpi_post_{name}"] = (float(seg.mean())
+                                        if int(seg.notna().sum()) >= max(3, int(0.6 * h))
+                                        else np.nan)
+        # change vs the pre-earnings run-in, and vs the name's own baseline level
+        for name in horizons:
+            post[f"d_dpi_{name}"] = post[f"dpi_post_{name}"] - win["dpi10"]
+            post[f"adpi_{name}"] = post[f"dpi_post_{name}"] - dpi_base
+        post["dpi_base60"] = dpi_base
+        post["dpi_prior"] = dpi_prior
+        post["adpi_pre"] = win["dpi10"] - dpi_base
+
+        # non-overlapping slices of the post-earnings month, to see how the change
+        # decays: week 1, week 2, then weeks 3-4
+        bounds = [1] + [horizons[k] + 1 for k in ("w1", "w2") if k in horizons]
+        edges = {"sw1": (bounds[0], horizons.get("w1", 5)),
+                 "sw2": (bounds[1] if len(bounds) > 1 else 6, horizons.get("w2", 10)),
+                 "sw34": (bounds[2] if len(bounds) > 2 else 11, horizons.get("m1", 21))}
+        for name, (lo, hi) in edges.items():
+            seg = d.iloc[t_pos + lo:t_pos + hi + 1]
+            n = hi - lo + 1
+            post[f"dpi_{name}"] = (float(seg.mean())
+                                   if int(seg.notna().sum()) >= max(3, int(0.6 * n)) else np.nan)
+            post[f"d_dpi_{name}"] = post[f"dpi_{name}"] - win["dpi10"]
+
         # --- post-earnings returns (split-adjusted), one per horizon ---
         base = a.iloc[t_pos]
         rets = {}
         for name, h in horizons.items():
             v = a.iloc[t_pos + h] if t_pos + h < len(a) else np.nan
             rets[f"{name}_ret"] = (v / base - 1) if np.isfinite(base) and np.isfinite(v) else np.nan
+
+        # --- returns measured from a later horizon (what a DPI change could trade) ---
+        for name, (frm, to) in FWD_RETURNS.items():
+            s = horizons[frm]
+            e_ = horizons[to] if to else 2 * horizons[frm]   # m1 -> m2 = one more month
+            v0 = a.iloc[t_pos + s] if t_pos + s < len(a) else np.nan
+            v1_ = a.iloc[t_pos + e_] if t_pos + e_ < len(a) else np.nan
+            rets[f"fwd_{name}"] = (v1_ / v0 - 1) if np.isfinite(v0) and np.isfinite(v1_) else np.nan
 
         # --- realized volatility over each post-earnings window (annualized %) ---
         # RV_h = sqrt(252/h * sum_{i=1..h} r_i^2), r_i = daily log return on session T+i.
@@ -226,6 +308,7 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
             "base_T": T.date().isoformat(),
             "anchored": int(anchored),
             **win,
+            **post,
             **rets,
             **rvol,
             "looks_reaction": looks_reaction,
@@ -236,6 +319,14 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
     # *for this name*?" -- removes cross-sectional level differences between names
     for w in dpi_windows:
         ev[f"dpi{w}_pct"] = ev.groupby("ticker")[f"dpi{w}"].rank(pct=True)
+    # same for the post-earnings DPI *change*, so "DPI rose a lot" is judged against
+    # how much this name's DPI usually moves after its own reports
+    for name in horizons:
+        col = f"d_dpi_{name}"
+        if col in ev.columns:
+            ev[f"{col}_pct"] = ev.groupby("ticker")[col].rank(pct=True)
+    if "dpi_prior" in ev.columns:
+        ev["dpi_prior_pct"] = ev.groupby("ticker")["dpi_prior"].rank(pct=True)
     return ev
 
 
@@ -342,6 +433,20 @@ def _welch(a, b):
     return a.mean() - b.mean(), t, p, na, nb
 
 
+def _ttest1(x):
+    """One-sample t-test against zero; returns (mean, t, p, n)."""
+    x = np.asarray(x, dtype=float)
+    x = x[np.isfinite(x)]
+    n = len(x)
+    if n < 3:
+        return np.nan, np.nan, np.nan, n
+    sd = x.std(ddof=1)
+    if sd == 0:
+        return float(x.mean()), np.nan, np.nan, n
+    t = float(x.mean()) / (sd / np.sqrt(n))
+    return float(x.mean()), t, _t_sf(abs(t), n - 1) * 2, n
+
+
 def summarize(ev, dpi_windows=(5, 10)):
     out = []
     out.append("=" * 78)
@@ -428,6 +533,145 @@ def summarize(ev, dpi_windows=(5, 10)):
     return "\n".join(out)
 
 
+CHG_HZ = [("w1", "1 WEEK  (T+1..T+5)"), ("w2", "2 WEEKS (T+1..T+10)"),
+          ("m1", "1 MONTH (T+1..T+21)")]
+
+
+def summarize_dpi_change(ev):
+    """How DPI itself moves AFTER the report: level change at 1 week / 2 weeks /
+    1 month, what drives it, and whether the change carries any forward signal."""
+    out = []
+    out.append("=" * 78)
+    out.append("POST-EARNINGS CHANGE IN DPI  (1 week / 2 weeks / 1 month after the report)")
+    out.append("=" * 78)
+    pre = ev["dpi10"]
+    out.append(f"Pre-earnings DPI10 mean {pre.mean():.4f}   "
+               f"name-baseline DPI60 mean {ev['dpi_base60'].mean():.4f}   "
+               f"run-in premium {100*ev['adpi_pre'].mean():+.2f} pp "
+               f"(t={_ttest1(ev['adpi_pre'])[1]:+.2f})")
+    out.append("  (DPI is a ratio 0..1; changes are reported in percentage points of that ratio.)")
+
+    # --- level in / level out / change, per horizon -------------------------
+    out.append("")
+    out.append("--- LEVEL AND CHANGE ---")
+    out.append(f"  {'window':22s} {'pre':>7s} {'post':>7s} {'change':>9s} {'median':>8s} "
+               f"{'%up':>5s} {'t':>7s} {'p':>7s}   n")
+    if "dpi_post_next_day" in ev.columns:
+        chg = ev["d_dpi_next_day"]
+        m, t, p, n = _ttest1(chg)
+        out.append(f"  {'REACTION DAY (T+1)':22s} {pre.mean():7.4f} "
+                   f"{ev['dpi_post_next_day'].mean():7.4f} {100*m:+8.2f}pp "
+                   f"{100*chg.median():+7.2f}pp {100*(chg > 0).mean():4.0f}% "
+                   f"{t:+7.2f} {p:7.4f}   {n}")
+    for k, lbl in CHG_HZ:
+        chg = ev[f"d_dpi_{k}"]
+        m, t, p, n = _ttest1(chg)
+        out.append(f"  {lbl:22s} {pre.mean():7.4f} {ev[f'dpi_post_{k}'].mean():7.4f} "
+                   f"{100*m:+8.2f}pp {100*chg.median():+7.2f}pp "
+                   f"{100*(chg > 0).mean():4.0f}% {t:+7.2f} {p:7.4f}   {n}")
+
+    # --- non-overlapping slices: how the change decays ----------------------
+    out.append("")
+    out.append("--- NON-OVERLAPPING SLICES (change vs pre-earnings DPI10) ---")
+    for k, lbl in [("sw1", "week 1   (T+1..T+5)"), ("sw2", "week 2   (T+6..T+10)"),
+                   ("sw34", "weeks 3-4 (T+11..T+21)")]:
+        col = f"d_dpi_{k}"
+        if col not in ev.columns:
+            continue
+        m, t, p, n = _ttest1(ev[col])
+        out.append(f"  {lbl:24s} {100*m:+6.2f}pp   (t={t:+.2f}, p={p:.4f}, n={n})   "
+                   f"level {ev[f'dpi_{k}'].mean():.4f}")
+
+    # --- what the change is made of ----------------------------------------
+    out.append("")
+    out.append("--- WHAT PREDICTS THE CHANGE ---")
+    for k, lbl in CHG_HZ:
+        chg = ev[f"d_dpi_{k}"]
+        r_pre, p_pre, n = _pearson(pre, chg)
+        r_ab, p_ab, _ = _pearson(ev["adpi_pre"], chg)
+        r_rx, p_rx, _ = _pearson(ev["next_day_ret"], chg)
+        r_pers, p_pers, _ = _pearson(pre, ev[f"dpi_post_{k}"])
+        r_ind, p_ind, _ = _pearson(ev["dpi_prior"], chg)
+        out.append(f"  {lbl}")
+        out.append(f"     vs pre-earnings DPI10   r={r_pre:+.3f} (p={p_pre:.4f}, n={n})"
+                   f"    [persistence: corr(pre, post) = {r_pers:+.3f}]")
+        out.append(f"     vs prior window (-60..-11) r={r_ind:+.3f} (p={p_ind:.4f})"
+                   "  <- no shared observations: unbiased reversion read")
+        out.append(f"     vs run-in premium       r={r_ab:+.3f} (p={p_ab:.4f})"
+                   "     <- run-in above the name's own 60d baseline")
+        out.append(f"     vs earnings reaction    r={r_rx:+.3f} (p={p_rx:.4f})")
+        up = ev[ev["next_day_ret"] > 0][f"d_dpi_{k}"].to_numpy()
+        dn = ev[ev["next_day_ret"] <= 0][f"d_dpi_{k}"].to_numpy()
+        diff, t, pv, nu, nd = _welch(up, dn)
+        out.append(f"     after an UP reaction {100*np.nanmean(up):+6.2f}pp (n={nu})   "
+                   f"after a DOWN reaction {100*np.nanmean(dn):+6.2f}pp (n={nd})   "
+                   f"diff {100*diff:+.2f}pp (t={t:+.2f}, p={pv:.4f})")
+
+    # --- change by pre-earnings DPI tercile (mean reversion, visible) -------
+    out.append("")
+    out.append("--- CHANGE BY PRE-EARNINGS DPI TERCILE (within-name) ---")
+    for pcol, tag in [("dpi10_pct", "sorted on DPI10 (shares noise with the change)"),
+                      ("dpi_prior_pct", "sorted on the prior -60..-11 window (unbiased)")]:
+        if pcol not in ev.columns:
+            continue
+        out.append(f"  {tag}")
+        p10 = ev[pcol]
+        hi_m, lo_m = ev[p10 >= 2 / 3], ev[p10 <= 1 / 3]
+        for k, lbl in CHG_HZ:
+            hh, ll = hi_m[f"d_dpi_{k}"].to_numpy(), lo_m[f"d_dpi_{k}"].to_numpy()
+            diff, t, pv, nh, nl = _welch(hh, ll)
+            out.append(f"    {lbl}:  high-DPI events {100*np.nanmean(hh):+6.2f}pp (n={nh})   "
+                       f"low-DPI events {100*np.nanmean(ll):+6.2f}pp (n={nl})   "
+                       f"high-low {100*diff:+.2f}pp (t={t:+.2f}, p={pv:.4f})")
+
+    # --- does the change carry forward signal? ------------------------------
+    # Each change is only observable at the end of its own window, so it is tested
+    # against the return FROM that point on -- no look-ahead.
+    out.append("")
+    out.append("--- DOES THE CHANGE PREDICT WHAT COMES NEXT? ---")
+    tests = [("w1", "fwd_w1_m1", "dDPI over week 1   -> return T+5 -> T+21"),
+             ("w2", "fwd_w2_m1", "dDPI over 2 weeks  -> return T+10 -> T+21"),
+             ("m1", "fwd_m1_m2", "dDPI over 1 month  -> return T+21 -> T+42")]
+    for k, rcol, lbl in tests:
+        if rcol not in ev.columns:
+            continue
+        chg, fwd = ev[f"d_dpi_{k}"], ev[rcol]
+        r, p, n = _pearson(chg, fwd)
+        sr, sp, _ = _spearman(chg, fwd)
+        pc = ev[f"d_dpi_{k}_pct"]
+        hh = ev[pc >= 2 / 3][rcol].to_numpy()
+        ll = ev[pc <= 1 / 3][rcol].to_numpy()
+        diff, t, pv, nh, nl = _welch(hh, ll)
+        # for reference: the pre-earnings level over the same forward window
+        rp, pp_, _ = _pearson(ev["dpi10"], fwd)
+        out.append(f"  {lbl}")
+        out.append(f"     Pearson r={r:+.3f} (p={p:.4f}, n={n})   Spearman r={sr:+.3f} (p={sp:.4f})"
+                   f"   [pre-earnings DPI10 over the same window: r={rp:+.3f} (p={pp_:.4f})]")
+        out.append(f"     rising-DPI tercile {100*np.nanmean(hh):+.2f}% (n={nh})   "
+                   f"falling-DPI tercile {100*np.nanmean(ll):+.2f}% (n={nl})   "
+                   f"spread {100*diff:+.2f}pp (t={t:+.2f}, p={pv:.4f})")
+
+    # --- double sort: run-in level x post-earnings change -------------------
+    out.append("")
+    out.append("--- DOUBLE SORT: pre-earnings DPI10 tercile x week-1 DPI change tercile ---")
+    out.append("    cell = mean return T+5 -> T+21 (n)")
+    lab = ["low", "mid", "high"]
+    def _terc_mask(col):
+        p = ev[col]
+        return [p <= 1 / 3, (p > 1 / 3) & (p < 2 / 3), p >= 2 / 3]
+    rows_m = _terc_mask("dpi10_pct")
+    cols_m = _terc_mask("d_dpi_w1_pct")
+    out.append("    " + "run-in / dDPI".ljust(16) + "".join(f"{c:>16s}" for c in lab))
+    for i, rm in enumerate(rows_m):
+        cells = []
+        for cm in cols_m:
+            s = ev[rm & cm]["fwd_w1_m1"].dropna()
+            cells.append(f"{100*s.mean():+7.2f}% ({len(s):4d})" if len(s) else f"{'--':>15s}")
+        out.append(f"    {lab[i]:16s}" + "".join(f"{c:>16s}" for c in cells))
+    out.append("=" * 78)
+    return "\n".join(out)
+
+
 # ----------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
@@ -446,9 +690,11 @@ def main():
 
     earn = load_earnings(args.earnings)
     syms = sorted(earn["ticker"].unique())
-    pad = pd.Timedelta(days=25)
-    start = (earn["report_date"].min() - pd.Timedelta(days=40)).strftime("%Y-%m-%d")
-    end = (earn["report_date"].max() + pad + pd.Timedelta(days=45)).strftime("%Y-%m-%d")
+    # ~80 sessions of lead-in so the 60-session DPI baseline is populated for the
+    # earliest events; ~100 calendar days of tail so the last events still have
+    # T+42 (the second post-earnings month) available
+    start = (earn["report_date"].min() - pd.Timedelta(days=120)).strftime("%Y-%m-%d")
+    end = (earn["report_date"].max() + pd.Timedelta(days=100)).strftime("%Y-%m-%d")
     print(f"Universe: {len(syms)} names   window {start} -> {end}", file=sys.stderr)
 
     panels = N.build_universe_panels(syms, start, end, workers=args.workers,
@@ -464,6 +710,8 @@ def main():
     print(f"wrote {out_csv} ({len(ev)} events)", file=sys.stderr)
 
     print(summarize(ev))
+    print()
+    print(summarize_dpi_change(ev))
     return ev, panels
 
 
