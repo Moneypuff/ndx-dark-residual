@@ -1234,24 +1234,50 @@ def signed_divergence_order(cols, latest):
     return sorted(cols, key=key)
 
 
+def vw_merge_alphabet(df, weights=None):
+    """Fold Alphabet's class C (GOOG) into class A (GOOGL) as a VOLUME-WEIGHTED
+    average of their per-day dark ratios / D, each class weighted by its own
+    off-exchange total volume (`weights`, a same-shaped panel with GOOG/GOOGL
+    columns). This equals (short_G+short_GL)/(total_G+total_GL) -- the identical
+    construction the earnings study uses -- rather than the plain mean of the two
+    ratios, which over-weights the thinner, higher-D class C. GOOG is dropped and
+    every other column passes through untouched. Falls back to a simple mean on
+    days without usable weights (and whenever `weights` is absent, e.g. --demo).
+    Operates on a copy."""
+    if "GOOG" not in df.columns or "GOOGL" not in df.columns:
+        return df
+    df = df.copy()
+    pair = df[["GOOG", "GOOGL"]]
+    merged = None
+    if weights is not None and {"GOOG", "GOOGL"} <= set(weights.columns):
+        w = weights[["GOOG", "GOOGL"]].reindex(df.index)
+        w = w.where(pair.notna())                 # ignore a class's weight where its ratio is NaN
+        num = (pair * w).sum(axis=1, min_count=1)
+        den = w.sum(axis=1, min_count=1)
+        merged = num / den.replace(0, np.nan)
+    fallback = pair.mean(axis=1)                   # skip-NaN mean of whichever classes are present
+    merged = fallback if merged is None else merged.fillna(fallback)
+    df["GOOGL"] = merged
+    return df.drop(columns=["GOOG"])
+
+
 def build_grid_payload(res, bench_key, bench_label, keep, weight_map=None, weight_order=None,
-                       sector_map=None):
+                       sector_map=None, weights=None):
     """Build one universe's Small-multiples grid payload (diff/reg/raw data over `keep`,
     plus the four sort orders and the weight table). `res` is a compute_residuals() result;
     the benchmark series (res['bench']) is shown as a cell keyed under `bench_key`. Alphabet's
-    two share classes are merged into GOOGL. `weight_map`/`weight_order` drive the optional
-    index-weight ordering; without them, weight-sort falls back to the divergence order."""
+    two share classes are merged into GOOGL -- volume-weighted by off-exchange total volume
+    (`weights`, the total-volume panel) when supplied, else a simple mean. Because the merge
+    is linear and the benchmark is common, volume-weighting the residual columns (diff/reg)
+    equals taking the residual of the volume-weighted D. `weight_map`/`weight_order` drive the
+    optional index-weight ordering; without them, weight-sort falls back to the divergence order."""
     diff, reg = res["diff"], res["reg"]
     raw = res["raw"].copy()
     raw[bench_key] = res["bench"]
 
-    def _merge_alphabet(df):
-        if "GOOG" in df.columns and "GOOGL" in df.columns:
-            df = df.copy()
-            df["GOOGL"] = df[["GOOG", "GOOGL"]].mean(axis=1)
-            df = df.drop(columns=["GOOG"])
-        return df
-    diff, reg, raw = _merge_alphabet(diff), _merge_alphabet(reg), _merge_alphabet(raw)
+    diff = vw_merge_alphabet(diff, weights)
+    reg = vw_merge_alphabet(reg, weights)
+    raw = vw_merge_alphabet(raw, weights)
 
     def pack(df):
         out = {}
@@ -1305,24 +1331,24 @@ def _weekly_anchored(idx, step=5):
     return idx[sorted(range(n - 1, -1, -step))]
 
 
-def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, weekly_over=378):
+def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, weekly_over=378,
+                  weights=None):
     """Per-name raw 1-day dark ratio ('d') + 1/2/3-month forward returns for the cell-modal
     decile bars. Bounded to everything since `plot_start` when given (to match the grid's
     full-history window), else to the most recent `keep_days` sessions. A long window
     (> `weekly_over` sessions) is downsampled to weekly (every 5th session) so a large
     universe like the S&P 500 stays light in the payload. Alphabet's two share classes are
-    merged into GOOGL."""
+    merged into GOOGL: the dark ratio is volume-weighted by off-exchange total volume
+    (`weights`, the total-volume panel) as in the earnings study, and GOOGL's own prices
+    drive the forward returns (class C dropped, not averaged in)."""
     r21 = compute_forward_return(adjclose_panel, 21)
     r42 = compute_forward_return(adjclose_panel, 42)
     r63 = compute_forward_return(adjclose_panel, 63)
 
-    def _mg(df):
-        if "GOOG" in df.columns and "GOOGL" in df.columns:
-            df = df.copy()
-            df["GOOGL"] = df[["GOOG", "GOOGL"]].mean(axis=1)
-            df = df.drop(columns=["GOOG"])
-        return df
-    dpi, r21, r42, r63 = _mg(dpi_panel), _mg(r21), _mg(r42), _mg(r63)
+    def _keep_primary(df):   # returns: keep GOOGL (primary), drop class C rather than averaging
+        return df.drop(columns=["GOOG"]) if {"GOOG", "GOOGL"} <= set(df.columns) else df
+    dpi = vw_merge_alphabet(dpi_panel, weights)
+    r21, r42, r63 = _keep_primary(r21), _keep_primary(r42), _keep_primary(r63)
     idx = dpi.index
     if plot_start is not None:
         keep = idx[idx >= plot_start]
@@ -1347,7 +1373,7 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
                spx_res=None, spx_rel=None, spx_weight_map=None, spx_weight_order=None,
                breadth_px=None, sector_data=None, contrib=None, spx_keep_days=378,
                plot_days=378, plot_start=None,
-               title=None, window=126, demo=False):
+               title=None, window=126, demo=False, total_panel=None, spx_total=None):
     # `bench_label` is what the residuals are actually taken against (e.g. the
     # reconstructed "NDX-DIX"); `bench` remains the ticker used for forward returns.
     bench_label = bench_label or bench
@@ -1374,7 +1400,7 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
 
     # NDX-100 Small-multiples grid (residuals vs the reconstructed NDX-DIX)
     ndx_grid = build_grid_payload(res, bench, bench_label, keep, NDX100_WEIGHT, NDX100,
-                                  sector_map=TICKER_SECTOR)
+                                  sector_map=TICKER_SECTOR, weights=total_panel)
     data = ndx_grid["data"]
     order, order_diff = ndx_grid["order"], ndx_grid["order_diff"]
     order_raw, order_weight, weights = ndx_grid["order_raw"], ndx_grid["order_weight"], ndx_grid["weights"]
@@ -1410,7 +1436,7 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
             spx_keep = _weekly_anchored(spx_keep)
         spx_grid = build_grid_payload(spx_res, "SPX-DIX", "SPX-DIX", spx_keep,
                                       spx_weight_map, spx_weight_order,
-                                      sector_map=spx_sector_map)
+                                      sector_map=spx_sector_map, weights=spx_total)
 
     # Relationship tab: x-axis is the raw (unsmoothed) 1-day dark ratio derived from
     # FINRA's daily off-exchange volume, NOT the 5-day-MA `D` used everywhere else --
@@ -1425,13 +1451,12 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
     dark = raw_dark_panel.reindex(columns=rel_src)
     # Alphabet trades as two near-identical share classes whose dark ratios move in
     # tandem, so the raw-D studies would double-count the same flow signal (and its
-    # events would fire twice). Merge them: GOOGL becomes the simple average of the
-    # two ratios (they track within noise) and GOOG is dropped from the relationship
-    # payload entirely (returns/closes kept under GOOGL). The Small-multiples grid now
-    # merges Alphabet the same way.
-    if "GOOG" in dark.columns and "GOOGL" in dark.columns:
-        dark["GOOGL"] = dark[["GOOG", "GOOGL"]].mean(axis=1)
-        dark = dark.drop(columns=["GOOG"])
+    # events would fire twice). Merge them: GOOGL becomes the VOLUME-WEIGHTED average
+    # of the two ratios -- each class weighted by its off-exchange total volume, i.e.
+    # (short_G+short_GL)/(total_G+total_GL), matching the earnings study -- and GOOG is
+    # dropped from the relationship payload entirely (returns/closes kept under GOOGL).
+    # The Small-multiples grid merges Alphabet the same way.
+    dark = vw_merge_alphabet(dark, total_panel)
     rel_cols = dark.columns
     rel = {
         "d": pack(dark, None),
@@ -1466,7 +1491,9 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         dpi_s, adj_s = sector_data["dpi"], sector_data["adjclose"]
         cols = [c for c in shown if c in dpi_s.columns and c in adj_s.columns]
         if cols:
-            sector_rel = pack_name_rel(dpi_s[cols], adj_s[cols], plot_start=plot_start)
+            sec_tot = sector_data["total"][cols] if "total" in sector_data else None
+            sector_rel = pack_name_rel(dpi_s[cols], adj_s[cols], plot_start=plot_start,
+                                       weights=sec_tot)
 
     payload = {
         "dates": dates,
@@ -4836,6 +4863,7 @@ def main():
         spx_weight_order = None
         breadth_px = None
         sector_data = None   # sector-DIX tab is a live-data feature (empty in --demo)
+        ndx_total = spx_total = None   # no FINRA volume panels in --demo -> mean-merge Alphabet
     else:
         # ---- NDX-100: per-name D (FINRA DPI, 5d-MA) + prices (Yahoo) ----
         print(f"Building NDX-100 panel from FINRA + Yahoo ({start.date()} -> {end.date()})...",
@@ -4844,6 +4872,7 @@ def main():
                                     cache_dir=cache_dir, ns="", refresh=args.refresh, label="NDX")
         panel = NDX["d"]
         close_panel, raw_dark_panel = NDX["close"], NDX["dpi"]
+        ndx_total = NDX["total"]      # off-exchange total-volume weights for the Alphabet merge
         r21_panel = compute_forward_return(NDX["adjclose"], 21)
         r42_panel = compute_forward_return(NDX["adjclose"], 42)
         r63_panel = compute_forward_return(NDX["adjclose"], 63)
@@ -4862,6 +4891,7 @@ def main():
         spx_payload = None
         spx_res = None
         spx_rel = None
+        spx_total = None
         spx_contrib = None
         spx_weight_map = {}
         spx_weight_order = None
@@ -4888,7 +4918,9 @@ def main():
                 spx_res = compute_residuals(SP["d"], "SPX-DIX", window=args.window,
                                             min_periods=args.min_periods, bench_series=spx_bench)
                 # per-name raw-D + forward returns for the S&P cell-modal decile bars
-                spx_rel = pack_name_rel(SP["dpi"], SP["adjclose"], plot_start=plot_start)
+                spx_total = SP["total"]
+                spx_rel = pack_name_rel(SP["dpi"], SP["adjclose"], plot_start=plot_start,
+                                        weights=SP["total"])
                 print(f"S&P 500 grid: residualized {spx_res['reg'].notna().any().sum()} names "
                       f"vs the S&P 500 DIX", file=sys.stderr)
 
@@ -5016,7 +5048,7 @@ def main():
                        spx_weight_map=spx_weight_map, spx_weight_order=spx_weight_order,
                        breadth_px=breadth_px, sector_data=sector_data, contrib=contrib,
                        plot_days=args.plot_days, plot_start=plot_start, window=args.window,
-                       demo=args.demo)
+                       demo=args.demo, total_panel=ndx_total, spx_total=spx_total)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(html)

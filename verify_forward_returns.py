@@ -278,6 +278,45 @@ def check_candle_semantics(c):
 
 
 # ---------------------------------------------------------------------------
+# 3b. Alphabet share-class merge (dashboard candles vs earnings study)
+# ---------------------------------------------------------------------------
+def check_alphabet_merge(c):
+    """The decile candles fold GOOG (class C) into GOOGL. Verify the dashboard's
+    merge is VOLUME-WEIGHTED and identical to the earnings study's construction
+    -- (short_G+short_GL)/(total_G+total_GL) -- so the two pipelines feed the
+    same Alphabet D, not a plain mean (which over-weights the thinner class C)."""
+    print("\n[3b] Alphabet GOOG->GOOGL merge is volume-weighted & consistent")
+    rng = np.random.default_rng(11)
+    idx = pd.date_range("2021-01-01", periods=40, freq="B")
+    total = pd.DataFrame({"GOOG": rng.uniform(80, 120, 40),
+                          "GOOGL": rng.uniform(300, 500, 40),
+                          "AAPL": rng.uniform(900, 1100, 40)}, index=idx)
+    ratio = pd.DataFrame({"GOOG": rng.uniform(0.35, 0.5, 40),
+                          "GOOGL": rng.uniform(0.25, 0.4, 40),
+                          "AAPL": rng.uniform(0.1, 0.15, 40)}, index=idx)
+    short = ratio * total                                  # short = dark-ratio * total
+
+    merged = N.vw_merge_alphabet(ratio, total)
+    # earnings-study construction, computed independently here:
+    study = (short["GOOG"] + short["GOOGL"]) / (total["GOOG"] + total["GOOGL"])
+    c.check(np.allclose(merged["GOOGL"].to_numpy(), study.to_numpy(), atol=1e-12),
+            "dashboard merge == (sumShort)/(sumTotal) (earnings-study construction)")
+    c.check("GOOG" not in merged.columns and "AAPL" in merged.columns,
+            "class C dropped, unrelated names untouched")
+
+    # It must NOT be the plain mean (unless the classes happened to tie).
+    plain = ratio[["GOOG", "GOOGL"]].mean(axis=1)
+    c.check(not np.allclose(merged["GOOGL"].to_numpy(), plain.to_numpy(), atol=1e-6),
+            "volume weighting differs from the old plain mean",
+            f"vw {merged['GOOGL'].iloc[0]:.4f} vs mean {plain.iloc[0]:.4f}")
+
+    # With weights absent (e.g. --demo) it falls back to the plain mean, safely.
+    fb = N.vw_merge_alphabet(ratio, None)
+    c.check(np.allclose(fb["GOOGL"].to_numpy(), plain.to_numpy(), atol=1e-12),
+            "falls back to a simple mean when weights are unavailable")
+
+
+# ---------------------------------------------------------------------------
 # 4. Earnings-event forward returns (committed CSV invariants)
 # ---------------------------------------------------------------------------
 def check_earnings_events(c, path):
@@ -514,6 +553,7 @@ def main():
     check_forward_primitive(c)
     check_decile_candles(c)
     check_candle_semantics(c)
+    check_alphabet_merge(c)
     check_earnings_events(c, args.events)
     if args.rebuild:
         check_live_recompute(c, args)
