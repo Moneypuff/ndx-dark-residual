@@ -8,10 +8,13 @@ against each index's own 1-month (21 trading day) forward return, **6 Jan 2020 â
 
 Reproduce:
 ```
-python index_comovement_study.py --csv index_comovement_regimes.csv
+python index_comovement_study.py --csv index_comovement_regimes.csv   # text/CSV study
+python build_comovement.py --docs-out docs/comovement.html            # interactive tab
 ```
 Data is read from the payload already embedded in `docs/index.html` (no live
-FINRA re-fetch); pass `--html` to point at another build.
+FINRA re-fetch); pass `--html`/`--payload` to point at another build. The
+interactive version is published as the **Comovement** tab in the dashboard
+(`docs/comovement.html`), rebuilt nightly by the refresh workflow.
 
 ## Definitions
 

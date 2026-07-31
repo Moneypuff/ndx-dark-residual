@@ -1644,6 +1644,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <button data-t="sectors">Sector DIX</button>
     <button data-t="spxtbl">SP500 decile table</button>
     <a class="tablink" href="earnings.html" target="_blank" rel="noopener" title="DPI into earnings vs post-earnings performance -- opens the earnings study in a new tab">Earnings DIX &#8599;</a>
+    <a class="tablink" href="comovement.html" target="_blank" rel="noopener" title="Cross-index DIX comovement (NDX/SPX/IWM) vs 1-month forward returns -- opens the comovement study in a new tab">Comovement &#8599;</a>
   </div>
   <div class="controls" id="ctl-grid">
     <div class="seg" id="univ" title="which index's constituents to show as small multiples">
