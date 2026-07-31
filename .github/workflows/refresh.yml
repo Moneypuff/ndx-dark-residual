@@ -86,10 +86,19 @@ jobs:
           --cache-dir .ndx_dark_cache
           ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
 
+      # Cross-index DIX comovement tab: reads the DIX payload just written into
+      # docs/index.html and joins it to QQQ/SPY/IWM closes (same Yahoo cache).
+      - name: Build comovement tab
+        run: >
+          python build_comovement.py
+          --payload docs/index.html
+          --docs-out docs/comovement.html
+          --cache-dir .ndx_dark_cache
+
       - name: Commit and push updated dashboard
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html
+          git add docs/index.html docs/comovement.html
           git diff --staged --quiet && echo "No changes to commit" || git commit -m "Refresh dashboard $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push
