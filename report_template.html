@@ -156,6 +156,12 @@ const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed
     {label:"High vs low DPI, 1-month",val:pct(t.diff*100),note:"tercile spread · t="+t.t.toFixed(1)+" · p<0.001",cls:t.diff>=0?"pos":"neg"},
     {label:"DPI10 vs next-day",val:r3(cn.pearson),note:"Pearson r · p="+cn.pearson_p.toFixed(3),cls:cn.pearson>=0?"pos":"neg"},
   ];
+  if(DATA.xm1){
+    const x=DATA.xm1;
+    cards.push({label:"High vs low DPI, 1-mo EXCESS of QQQ",val:pct(x.spread*100),
+      note:"cluster p="+(x.p<0.001?"<0.001":x.p.toFixed(3))+" · "+x.quarters+" seasons",
+      cls:x.spread>=0?"pos":"neg"});
+  }
   $("kpis").innerHTML=cards.map(k=>`<div class="kpi"><div class="label">${k.label}</div>
     <div class="val ${k.cls||''}">${k.val}</div><div class="note">${k.note}</div></div>`).join("");
 })();
@@ -166,7 +172,8 @@ const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed
   $("headline").innerHTML=`<p style="margin:0"><b class="k">Higher dark-pool positioning into a report lines up with better performance after it — modestly next day, and more clearly over the following month.</b>
    Across ${DATA.n_events.toLocaleString()} earnings events, the third of events with the highest run-in DPI averaged
    <span class="pos">${pct(t.hi*100)}</span> over the next month vs <span class="pos">${pct(t.lo*100)}</span> for the lowest third — a
-   <span class="pos">${pct(t.diff*100)}</span> spread (t=${t.t.toFixed(1)}, p&lt;0.001), and ${(t.hi_up*100).toFixed(0)}% of high-DPI events were up vs ${(t.lo_up*100).toFixed(0)}% of low-DPI ones.</p>`;
+   <span class="pos">${pct(t.diff*100)}</span> spread (t=${t.t.toFixed(1)}, p&lt;0.001), and ${(t.hi_up*100).toFixed(0)}% of high-DPI events were up vs ${(t.lo_up*100).toFixed(0)}% of low-DPI ones.${
+   DATA.xm1?` <b>Net of the market</b> (each event's return minus QQQ's over the identical window, with p-values clustered by earnings season): the 1-month spread is <span class="${DATA.xm1.spread>=0?'pos':'neg'}">${pct(DATA.xm1.spread*100)}</span> (95% CI ${pct(DATA.xm1.ci[0]*100)} to ${pct(DATA.xm1.ci[1]*100)}, p=${DATA.xm1.p<0.001?'<0.001':DATA.xm1.p.toFixed(3)} across ${DATA.xm1.quarters} seasons)${DATA.xm1.exp?`, and it ${Math.sign(DATA.xm1.exp.spread)===Math.sign(DATA.xm1.spread)?'survives':'does not survive'} real-time (expanding, no-look-ahead) DPI ranking at <span class="${DATA.xm1.exp.spread>=0?'pos':'neg'}">${pct(DATA.xm1.exp.spread*100)}</span> (p=${DATA.xm1.exp.p<0.001?'<0.001':DATA.xm1.exp.p.toFixed(3)})`:''}.`:''}</p>`;
 })();
 
 /* Tercile buckets across 4 horizons */
