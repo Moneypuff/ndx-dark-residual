@@ -26,6 +26,26 @@ always the first full session on the news.
     m1_ret       = adjclose(T+MONTH) / adjclose(T) - 1  # ~1 month later
 MONTH defaults to 21 trading sessions.
 
+Each horizon also gets a MARKET-EXCESS twin (`*_xret` = the name's return minus
+QQQ's return over the identical window) -- the headline outcome, since raw
+returns in a mostly-bull sample partly just ride beta -- plus:
+    pre_m1_ret  = the 21 sessions INTO the report (momentum control)
+    m1_post_ret = T+1 -> T+21 (drift AFTER the first reaction session)
+
+Inference upgrades
+------------------
+* within-name DPI percentiles come in two flavours: full-history (original,
+  mild look-ahead) and EXPANDING (each event ranked only against that name's
+  prior events -- what was knowable on the day; needs >= 8 prior events).
+* earnings cluster in reporting weeks, so pooled p-values overstate precision:
+  a CLUSTER BOOTSTRAP by calendar quarter (the earnings season) is reported
+  next to every headline stat. ~2,700 events collapse to ~32 seasons.
+* a DOUBLE SORT on pre-earnings momentum terciles x DPI terciles separates the
+  DPI effect from "it already ran up into the print".
+* a GAP-DIRECTION split tests whether high pre-report DPI predicts drift
+  regardless of the news, or specifically the recovery of gapped-down names
+  (the "informed dark accumulation" tell).
+
 Dates
 -----
 Report dates + AMC/BMO timing come from SEC EDGAR 8-K Item 2.02 filings (see
@@ -135,7 +155,11 @@ HZ_LABEL = {"next_day": "NEXT-DAY (T->T+1)", "w1": "1-WEEK (T->T+5)",
             "w2": "2-WEEK (T->T+10)", "m1": "1-MONTH (T->T+21)"}
 
 
-def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), anchor=False):
+BENCH_TICKER = "QQQ"   # market proxy for the excess-return outcome
+
+
+def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), anchor=False,
+                 bench=BENCH_TICKER):
     """Build one row per earnings event, timing-aware.
 
     A = the announce session (first trading day on/after the report date). The
@@ -168,6 +192,7 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
     ret = adj.pct_change()
     lret = np.log(adj).diff()          # daily log returns, for realized vol
     idx = adj.index
+    bench_a = adj[bench] if bench in adj.columns else None
     rows = []
     for _, e in earnings.iterrows():
         tk = e["ticker"]
@@ -203,12 +228,28 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
             n_ok = int(seg.notna().sum())
             win[f"dpi{w}"] = float(seg.mean()) if n_ok >= max(3, w - 2) else np.nan
 
-        # --- post-earnings returns (split-adjusted), one per horizon ---
+        # --- post-earnings returns (split-adjusted), one per horizon, raw and
+        # in EXCESS of the market proxy over the identical window ---
         base = a.iloc[t_pos]
+        bbase = bench_a.iloc[t_pos] if bench_a is not None else np.nan
         rets = {}
         for name, h in horizons.items():
             v = a.iloc[t_pos + h] if t_pos + h < len(a) else np.nan
-            rets[f"{name}_ret"] = (v / base - 1) if np.isfinite(base) and np.isfinite(v) else np.nan
+            r_own = (v / base - 1) if np.isfinite(base) and np.isfinite(v) else np.nan
+            rets[f"{name}_ret"] = r_own
+            bv = (bench_a.iloc[t_pos + h]
+                  if bench_a is not None and t_pos + h < len(bench_a) else np.nan)
+            r_b = (bv / bbase - 1) if np.isfinite(bbase) and np.isfinite(bv) else np.nan
+            rets[f"{name}_xret"] = (r_own - r_b
+                                    if np.isfinite(r_own) and np.isfinite(r_b) else np.nan)
+
+        # momentum INTO the report (last 21 sessions ending at T) and the drift
+        # AFTER the first reaction session (T+1 -> T+21)
+        pre_v = a.iloc[t_pos - 21] if t_pos - 21 >= 0 else np.nan
+        pre_m1 = (base / pre_v - 1) if np.isfinite(base) and np.isfinite(pre_v) else np.nan
+        t1 = a.iloc[t_pos + 1] if t_pos + 1 < len(a) else np.nan
+        vm = a.iloc[t_pos + horizons["m1"]] if t_pos + horizons["m1"] < len(a) else np.nan
+        m1_post = (vm / t1 - 1) if np.isfinite(t1) and np.isfinite(vm) else np.nan
 
         # --- realized volatility over each post-earnings window (annualized %) ---
         # RV_h = sqrt(252/h * sum_{i=1..h} r_i^2), r_i = daily log return on session T+i.
@@ -227,16 +268,43 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
             "anchored": int(anchored),
             **win,
             **rets,
+            "pre_m1_ret": pre_m1,
+            "m1_post_ret": m1_post,
             **rvol,
             "looks_reaction": looks_reaction,
             "has_data": int(np.isfinite(rets["next_day_ret"])),
         })
     ev = pd.DataFrame(rows)
     # within-name DPI percentile ranks (0..1): "is this event's run-in DPI high
-    # *for this name*?" -- removes cross-sectional level differences between names
+    # *for this name*?" -- removes cross-sectional level differences between names.
+    # Two flavours: full-history (original; mild look-ahead) and EXPANDING (each
+    # event ranked only against the same name's PRIOR events + itself, so the
+    # tercile was knowable on the day; NaN until >= EXPAND_MIN_EVENTS history).
+    ev = ev.sort_values(["ticker", "report_date"]).reset_index(drop=True)
     for w in dpi_windows:
         ev[f"dpi{w}_pct"] = ev.groupby("ticker")[f"dpi{w}"].rank(pct=True)
+        ev[f"dpi{w}_pct_exp"] = (
+            ev.groupby("ticker")[f"dpi{w}"]
+              .transform(lambda s: _expanding_pct(s, EXPAND_MIN_EVENTS)))
     return ev
+
+
+EXPAND_MIN_EVENTS = 8   # ~2 years of quarters before an expanding rank is scored
+
+
+def _expanding_pct(s, min_events=EXPAND_MIN_EVENTS):
+    """Percentile (0..1, mid-rank) of each value within the series up to and
+    including itself; NaN until `min_events` non-NaN observations have accrued."""
+    v = s.to_numpy(dtype=float)
+    out = np.full(len(v), np.nan)
+    seen = []
+    for i, x in enumerate(v):
+        if np.isfinite(x):
+            seen.append(x)
+            if len(seen) >= min_events:
+                arr = np.asarray(seen)
+                out[i] = ((arr < x).mean() + 0.5 * (arr == x).mean())
+    return pd.Series(out, index=s.index)
 
 
 # ----------------------------------------------------------------------------
@@ -342,6 +410,84 @@ def _welch(a, b):
     return a.mean() - b.mean(), t, p, na, nb
 
 
+def _season_key(ev):
+    """Calendar quarter of the report date -- the earnings 'season' cluster."""
+    d = pd.to_datetime(ev["report_date"])
+    return (d.dt.year * 10 + d.dt.quarter).to_numpy()
+
+
+def cluster_boot_corr(ev, xcol, ycol, B=4000, seed=0):
+    """Pearson r of xcol vs ycol with a cluster bootstrap over earnings seasons
+    (calendar quarters resampled with replacement). Events inside a season are
+    cross-sectionally correlated, so the honest unit is the ~32 seasons, not the
+    ~2,700 events. Vectorized via per-quarter sufficient statistics.
+    Returns (r, ci_lo, ci_hi, p_boot, n_events, n_quarters)."""
+    d = ev[[xcol, ycol, "report_date"]].dropna()
+    if len(d) < 30:
+        return (np.nan,) * 4 + (len(d), 0)
+    x = d[xcol].to_numpy(dtype=float)
+    y = d[ycol].to_numpy(dtype=float)
+    q = _season_key(d)
+    suff = pd.DataFrame({"q": q, "n": 1.0, "sx": x, "sy": y,
+                         "sxx": x * x, "syy": y * y, "sxy": x * y})
+    G = suff.groupby("q").sum().to_numpy()
+    k = len(G)
+
+    def corr_of(T):
+        n, sx, sy, sxx, syy, sxy = T.T if T.ndim == 2 else T
+        cov = sxy / n - (sx / n) * (sy / n)
+        vx = sxx / n - (sx / n) ** 2
+        vy = syy / n - (sy / n) ** 2
+        with np.errstate(invalid="ignore", divide="ignore"):
+            return cov / np.sqrt(vx * vy)
+
+    r = float(corr_of(G.sum(axis=0)))
+    rng = np.random.default_rng(seed)
+    draws = rng.integers(0, k, size=(B, k))
+    rb = corr_of(G[draws].sum(axis=1))
+    rb = rb[np.isfinite(rb)]
+    if not len(rb):
+        return r, np.nan, np.nan, np.nan, len(d), k
+    lo, hi = np.percentile(rb, [2.5, 97.5])
+    p = 2 * min((rb <= 0).mean(), (rb >= 0).mean())
+    return r, float(lo), float(hi), float(min(1.0, p)), len(d), k
+
+
+def cluster_boot_spread(ev, pcol, rcol, B=4000, seed=0):
+    """High-minus-low tercile mean spread of rcol (terciles of pcol, cutoffs at
+    1/3 and 2/3 as elsewhere) with the same season-cluster bootstrap.
+    Returns (spread, ci_lo, ci_hi, p_boot, n_hi, n_lo, n_quarters)."""
+    d = ev[[pcol, rcol, "report_date"]].dropna()
+    if len(d) < 30:
+        return (np.nan,) * 4 + (0, 0, 0)
+    hi_m = (d[pcol] >= 2 / 3).to_numpy()
+    lo_m = (d[pcol] <= 1 / 3).to_numpy()
+    r = d[rcol].to_numpy(dtype=float)
+    q = _season_key(d)
+    suff = pd.DataFrame({"q": q,
+                         "nh": hi_m.astype(float), "sh": np.where(hi_m, r, 0.0),
+                         "nl": lo_m.astype(float), "sl": np.where(lo_m, r, 0.0)})
+    G = suff.groupby("q").sum().to_numpy()
+    k = len(G)
+
+    def spread_of(T):
+        nh, sh, nl, sl = T.T if T.ndim == 2 else T
+        with np.errstate(invalid="ignore", divide="ignore"):
+            return np.where((nh > 0) & (nl > 0), sh / nh - sl / nl, np.nan)
+
+    est = float(spread_of(G.sum(axis=0)))
+    rng = np.random.default_rng(seed)
+    draws = rng.integers(0, k, size=(B, k))
+    sb = spread_of(G[draws].sum(axis=1))
+    sb = sb[np.isfinite(sb)]
+    if not len(sb):
+        return est, np.nan, np.nan, np.nan, int(hi_m.sum()), int(lo_m.sum()), k
+    lo, hi = np.percentile(sb, [2.5, 97.5])
+    p = 2 * min((sb <= 0).mean(), (sb >= 0).mean())
+    return (est, float(lo), float(hi), float(min(1.0, p)),
+            int(hi_m.sum()), int(lo_m.sum()), k)
+
+
 def summarize(ev, dpi_windows=(5, 10)):
     out = []
     out.append("=" * 78)
@@ -352,6 +498,7 @@ def summarize(ev, dpi_windows=(5, 10)):
                f"T+1 looks like a real earnings reaction: "
                f"{int(ev['looks_reaction'].sum())}/{len(ev)} "
                f"({100*ev['looks_reaction'].mean():.0f}%)")
+    has_x = "m1_xret" in ev.columns and ev["m1_xret"].notna().any()
     for hz in HORIZONS:
         col, lbl = f"{hz}_ret", HZ_LABEL[hz]
         if col not in ev.columns:
@@ -361,6 +508,11 @@ def summarize(ev, dpi_windows=(5, 10)):
         out.append(f"--- {lbl} ---   n={len(s)}")
         out.append(f"    mean {s.mean()*100:+.2f}%   median {s.median()*100:+.2f}%   "
                    f"std {s.std()*100:.2f}%   %positive {100*(s>0).mean():.0f}%")
+        if has_x:
+            sx = ev[f"{hz}_xret"].dropna()
+            out.append(f"    EXCESS vs QQQ: mean {sx.mean()*100:+.2f}%   "
+                       f"median {sx.median()*100:+.2f}%   "
+                       f"%positive {100*(sx>0).mean():.0f}%")
         for w in dpi_windows:
             sig = ev[f"dpi{w}"]
             pr, pp, pn = _pearson(sig, ev[col])
@@ -369,6 +521,14 @@ def summarize(ev, dpi_windows=(5, 10)):
             out.append(f"    DPI{w:<2}  Pearson r={pr:+.3f} (p={pp:.3f}, n={pn})   "
                        f"Spearman r={sr:+.3f} (p={sp:.3f})   "
                        f"within-name r={prp:+.3f} (p={ppp:.3f})")
+        if has_x:
+            for w in dpi_windows:
+                xr, xp, _ = _pearson(ev[f"dpi{w}"], ev[f"{hz}_xret"])
+                cr, clo, chi, cp, cn, ck = cluster_boot_corr(ev, f"dpi{w}", f"{hz}_xret")
+                out.append(f"    DPI{w:<2} vs EXCESS  r={xr:+.3f} (p={xp:.3f})   "
+                           f"season-cluster boot: r={cr:+.3f} "
+                           f"[95% CI {clo:+.3f},{chi:+.3f}] p={cp:.3f} "
+                           f"({ck} quarters)")
 
     # bucket analysis on within-name DPI percentile (top vs bottom tercile)
     out.append("")
@@ -391,6 +551,70 @@ def summarize(ev, dpi_windows=(5, 10)):
             out.append(f"     {lbl:8s}: high {hm*100:+.2f}% ({hpos:.0f}% up)   "
                        f"low {lm*100:+.2f}% ({lpos:.0f}% up)   "
                        f"high-low {diff*100:+.2f}pp (t={t:+.2f}, p={pv:.3f})")
+
+    # the same spreads measured honestly: excess of QQQ, season-clustered p,
+    # and (separately) EXPANDING within-name percentiles (no look-ahead)
+    if has_x:
+        out.append("")
+        out.append("--- HEADLINE SPREADS, EXCESS vs QQQ + season-cluster bootstrap ---")
+        for pcol, tag in [("dpi10_pct", "full-history pct (look-ahead)"),
+                          ("dpi10_pct_exp", f"EXPANDING pct (>= {EXPAND_MIN_EVENTS} "
+                                            "prior events; tradable)")]:
+            if pcol not in ev.columns or not ev[pcol].notna().any():
+                continue
+            out.append(f"  DPI10 terciles on {tag}:")
+            for hz in HORIZONS:
+                xcol = f"{hz}_xret"
+                if xcol not in ev.columns:
+                    continue
+                sp, lo_, hi_, pb, nh, nl, k = cluster_boot_spread(ev, pcol, xcol)
+                out.append(f"     {hz:8s}: high-low {sp*100:+.2f}pp excess   "
+                           f"[95% CI {lo_*100:+.2f},{hi_*100:+.2f}] "
+                           f"cluster p={pb:.3f}   (n hi/lo={nh}/{nl}, {k} quarters)")
+
+    # momentum double-sort: does high DPI add anything beyond the run-in?
+    if has_x and "pre_m1_ret" in ev.columns:
+        out.append("")
+        out.append("--- DOUBLE SORT: pre-earnings momentum terciles x DPI10 terciles ---")
+        out.append("    (cells = mean 1-month EXCESS return; momentum = 21 sessions into T)")
+        d = ev.dropna(subset=["pre_m1_ret", "dpi10_pct", "m1_xret"]).copy()
+        if len(d) >= 90:
+            d["mom_t"] = pd.qcut(d["pre_m1_ret"], 3, labels=["down", "flat", "up"])
+            for mt in ["down", "flat", "up"]:
+                g = d[d["mom_t"] == mt]
+                hi = g[g["dpi10_pct"] >= 2 / 3]["m1_xret"]
+                md = g[(g["dpi10_pct"] > 1 / 3) & (g["dpi10_pct"] < 2 / 3)]["m1_xret"]
+                lo = g[g["dpi10_pct"] <= 1 / 3]["m1_xret"]
+                diff, t, pv, _, _ = _welch(hi.to_numpy(), lo.to_numpy())
+                pre = g["pre_m1_ret"].mean()
+                out.append(f"     momentum {mt:5s} (avg run-in {pre*100:+.1f}%, n={len(g)}): "
+                           f"loD {lo.mean()*100:+.2f}%  midD {md.mean()*100:+.2f}%  "
+                           f"hiD {hi.mean()*100:+.2f}%   "
+                           f"hi-lo {diff*100:+.2f}pp (p={pv:.3f})")
+        else:
+            out.append("     insufficient data")
+
+    # gap-direction split: drift after the reaction, conditional on the reaction
+    if "m1_post_ret" in ev.columns:
+        out.append("")
+        out.append("--- GAP-DIRECTION SPLIT: post-reaction drift (T+1 -> T+21) by DPI10 ---")
+        out.append("    ('informed dark accumulation' would show up as high-DPI names "
+                   "recovering after a down gap)")
+        d = ev.dropna(subset=["next_day_ret", "m1_post_ret", "dpi10_pct"])
+        cuts = [("gap DOWN < -2%", d["next_day_ret"] < -0.02),
+                ("flat +/-2%", d["next_day_ret"].abs() <= 0.02),
+                ("gap UP > +2%", d["next_day_ret"] > 0.02)]
+        for lbl, m in cuts:
+            g = d[m]
+            if len(g) < 30:
+                continue
+            hi = g[g["dpi10_pct"] >= 2 / 3]["m1_post_ret"]
+            lo = g[g["dpi10_pct"] <= 1 / 3]["m1_post_ret"]
+            diff, t, pv, _, _ = _welch(hi.to_numpy(), lo.to_numpy())
+            r, rp, _ = _pearson(g["dpi10"], g["m1_post_ret"])
+            out.append(f"     {lbl:16s} n={len(g):4d}: drift hiD {hi.mean()*100:+.2f}% "
+                       f"vs loD {lo.mean()*100:+.2f}%  ({diff*100:+.2f}pp, p={pv:.3f})   "
+                       f"corr(DPI10, drift) r={r:+.3f} (p={rp:.3f})")
 
     # realized volatility over each post-earnings window (annualized), and whether
     # pre-earnings DPI relates to how much the stock actually moves afterwards
@@ -442,10 +666,15 @@ def main():
                     help="snap dates to nearest price reaction (diagnostic; biased -- off by default)")
     ap.add_argument("--no-merge-classes", action="store_true", default=False,
                     help="keep dual-class tickers (GOOG & GOOGL) separate instead of merging")
+    ap.add_argument("--summary-out", default="",
+                    help="also write the text summary to this file (committed by the "
+                         "refresh workflow so the findings doc can be updated from it)")
     args = ap.parse_args()
 
     earn = load_earnings(args.earnings)
-    syms = sorted(earn["ticker"].unique())
+    # QQQ rides along in the panel build purely as the market proxy for the
+    # excess-return outcome (it never appears in the earnings CSV itself)
+    syms = sorted(set(earn["ticker"].unique()) | {BENCH_TICKER})
     pad = pd.Timedelta(days=25)
     start = (earn["report_date"].min() - pd.Timedelta(days=40)).strftime("%Y-%m-%d")
     end = (earn["report_date"].max() + pad + pd.Timedelta(days=45)).strftime("%Y-%m-%d")
@@ -463,7 +692,11 @@ def main():
     ev.to_csv(out_csv, index=False)
     print(f"wrote {out_csv} ({len(ev)} events)", file=sys.stderr)
 
-    print(summarize(ev))
+    text = summarize(ev)
+    print(text)
+    if args.summary_out:
+        Path(args.summary_out).write_text(text + "\n", encoding="utf-8")
+        print(f"wrote {args.summary_out}", file=sys.stderr)
     return ev, panels
 
 

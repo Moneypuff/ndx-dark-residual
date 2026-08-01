@@ -52,6 +52,7 @@ Design notes
 """
 
 import argparse
+import base64
 import concurrent.futures
 import io
 import json
@@ -61,6 +62,7 @@ import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -1497,8 +1499,14 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         "title": title,
     }
     blob = json.dumps(payload, separators=(",", ":"))
-
-    return HTML_TEMPLATE.replace("/*__DATA__*/", blob)
+    # Embed the payload deflate-compressed + base64 instead of as a raw JSON
+    # literal: the built page drops from ~25 MB to a few MB (parse-time first
+    # paint included), stays a single self-contained file, and still works over
+    # file:// (the decoder is an inline module script -- no fetch involved).
+    # Python readers of the built page (index_comovement_study, build_comovement)
+    # understand both this and the legacy plain-JSON form.
+    comp = base64.b64encode(zlib.compress(blob.encode("utf-8"), 9)).decode("ascii")
+    return HTML_TEMPLATE.replace("/*__DATAZ__*/", comp)
 
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
@@ -1629,12 +1637,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .modal-rel .stat b{color:var(--ink);font-variant-numeric:tabular-nums}
   @media (max-width:900px){ .modal-rel{grid-template-columns:1fr} }
   .modal-empty{color:var(--mut);font-size:12px;padding:30px 0;text-align:center}
+  .today{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px;font-size:11.5px;align-items:center}
+  .today .chip{border:1px solid var(--grid);border-radius:7px;padding:3px 9px;background:var(--panel);
+               color:var(--ink);white-space:nowrap;line-height:1.5}
+  .today .chip .mut{color:var(--mut)}
+  .today a.chip{text-decoration:none}
+  .today a.chip:hover{border-color:var(--accent)}
 </style>
 </head>
 <body>
 <header>
   <h1 id="ttl">NDX-100 Dark-Ratio (D) Residual vs QQQ</h1>
   <div class="sub" id="sub"></div>
+  <div class="today" id="today" style="display:none"></div>
   <div class="tabs" id="tabs">
     <button data-t="grid" class="on">Small multiples</button>
     <button data-t="rel">D vs forward return</button>
@@ -2002,9 +2017,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 <div class="rel-wrap" id="spxtblWrap" style="display:none">
   <div class="sub" id="spxtblSub" style="margin:0 22px 4px"></div>
-  <div style="margin:0 22px 8px">
+  <div style="margin:0 22px 8px;display:flex;gap:14px;align-items:center">
     <input id="spxtblFilter" type="search" placeholder="filter ticker..." autocomplete="off"
            style="background:var(--panel);border:1px solid var(--grid);color:var(--ink);border-radius:7px;padding:5px 10px;font-size:12px;width:180px">
+    <label class="chk" title="rank each day's D against only that name's PREVIOUS 252 sessions (min 120) instead of its full history -- the decile that was actually knowable in real time. First switch recomputes all names (a moment's pause)."><input type="checkbox" id="spxtblTrail"/> trailing deciles (no look-ahead)</label>
   </div>
   <div id="spxtblBody" style="margin:0 22px 20px;max-height:72vh;overflow:auto;border:1px solid var(--grid);border-radius:8px"></div>
   <div class="sub" style="margin:2px 22px 40px;font-size:11px;line-height:1.55">
@@ -2029,6 +2045,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
     <div class="modal-sub" id="mSub"></div>
     <div id="mSpark"></div>
+    <label class="chk" id="mBasisWrap" style="display:inline-flex;margin:8px 0 0" title="rank each day's D against only that name's PREVIOUS 252 sessions (min 120) instead of its full history -- the decile that was actually knowable in real time"><input type="checkbox" id="mBasis"/>&nbsp;trailing deciles (no look-ahead)</label>
     <div id="mRel" class="modal-rel">
       <div>
         <h3>Forward return by decile of this name's raw D &middot; 1mo</h3>
@@ -2061,8 +2078,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<script>
-const P = /*__DATA__*/;
+<script type="module">
+// Payload arrives deflate-compressed (base64) to keep the page small; inflate
+// via the native DecompressionStream. Top-level await is why this script is a
+// module -- module scripts are deferred, so the DOM below is already parsed.
+const PZ = "/*__DATAZ__*/";
+const P = await (async () => {
+  const b = atob(PZ), bytes = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'));
+  return JSON.parse(await new Response(stream).text());
+})();
 const grid = document.getElementById('grid');
 let mode = 'reg', shared = true, filter = '', sortMode = 'weight';
 let gridUniv = 'ndx';                                    // 'ndx' | 'spx' small-multiples grid
@@ -2231,19 +2257,75 @@ const overlay = document.getElementById('overlay');
 // the per-name raw-D source for the modal: S&P grid cells use P.spx_rel, NDX cells P.rel
 function modalRel(){ return (gridUniv === 'spx' && P.spx_rel) ? P.spx_rel : P.rel; }
 
+// Trailing (no-look-ahead) decile machinery: each day's D ranked against only
+// that name's PREVIOUS `win` observations (min `minObs`), then forward returns
+// pooled per decile -- the decile that was actually knowable in real time.
+// Returns {buckets, todayDec}; buckets carry the same fields deciles() emits
+// (their dLo/dHi are the min/max D observed in the bucket, which OVERLAP across
+// buckets by construction -- hence renderBars' todayDecOverride).
+const TRAIL_WIN = 252, TRAIL_MIN = 120;
+function decilesTrailing(ds, rs, win=TRAIL_WIN, minObs=TRAIL_MIN){
+  const bx = Array.from({length:10}, ()=>({xs:[], ys:[]}));
+  const hist = [];
+  let todayDec = -1;
+  for(let i=0;i<ds.length;i++){
+    const x = ds[i];
+    if(x==null) continue;
+    const w0 = Math.max(0, hist.length - win);
+    if(hist.length - w0 >= minObs){
+      let below=0, eq=0;
+      for(let j=w0;j<hist.length;j++){ const v=hist[j]; if(v<x) below++; else if(v===x) eq++; }
+      const pct = (below + 0.5*eq) / (hist.length - w0);
+      const dec = Math.min(9, Math.floor(pct*10));
+      todayDec = dec;                       // latest non-null D's live decile
+      const y = rs && i < rs.length ? rs[i] : null;
+      if(y!=null){ bx[dec].xs.push(x); bx[dec].ys.push(y); }
+    }
+    hist.push(x);
+  }
+  const buckets = bx.map(b=>{
+    if(b.ys.length < 3) return null;
+    const m = mean(b.ys);
+    let ss=0; for(const y of b.ys) ss += (y-m)*(y-m);
+    return {n: b.ys.length, dAvg: mean(b.xs), rMean: m,
+            rMedian: median([...b.ys].sort((a,c)=>a-c)),
+            rStd: Math.sqrt(ss/b.ys.length),
+            dLo: Math.min(...b.xs), dHi: Math.max(...b.xs)};
+  });
+  return {buckets, todayDec};
+}
+
+let trailBasis = false;                 // modal + SP500-table decile basis toggle
+let curModal = null;                    // {tkr, R} of the open cell modal, for re-render
+
 function renderModalDeciles(h, tkr, R){
   const bars = document.getElementById('mBars'+h);
   const stat = document.getElementById('mStat'+h);
   R = R || modalRel();
   const ds = (R.d||{})[tkr], rs = ((R['r'+h])||{})[tkr];
   if(!ds || !rs){ bars.innerHTML=''; stat.textContent='no per-name dark-ratio history for this name'; return; }
+  const hn = parseInt(h,10);
+  if(trailBasis){
+    const {buckets, todayDec} = decilesTrailing(ds, rs);
+    const nn = buckets.reduce((s,b)=>s+(b?b.n:0), 0);
+    if(nn < 20){ bars.innerHTML=''; stat.textContent='not enough history for trailing deciles (needs 120+ prior sessions)'; return; }
+    bars.innerHTML = renderBars(buckets, hn, null, null, todayDec);
+    stat.innerHTML = `n = <b>${nn.toLocaleString()}</b> · trailing deciles (prior ${TRAIL_WIN} sessions, min ${TRAIL_MIN}) · today's D &rarr; highlighted decile`;
+    return;
+  }
   const pts=[]; const n=Math.min(ds.length, rs.length);
   for(let i=0;i<n;i++){ const x=ds[i], y=rs[i]; if(x==null||y==null) continue; pts.push([x,y]); }
   if(pts.length<20){ bars.innerHTML=''; stat.textContent='too few overlapping observations'; return; }
-  const hn=parseInt(h,10), todayD=lastNonNull(ds), r=pearson(pts);
+  const todayD=lastNonNull(ds), r=pearson(pts);
   bars.innerHTML = renderBars(deciles(pts,10), hn, null, todayD);
   stat.innerHTML = `n = <b>${pts.length.toLocaleString()}</b> · Pearson r = <b>${r==null?'--':r.toFixed(3)}</b> · today's D &rarr; highlighted decile`;
 }
+document.getElementById('mBasis').addEventListener('change', e=>{
+  trailBasis = e.target.checked;
+  const t = document.getElementById('spxtblTrail'); if(t) t.checked = trailBasis;
+  spxTblRows = null;                    // the SP500 table shares the basis; recompute lazily
+  if(curModal) for(const h of ['21','42','63']) renderModalDeciles(h, curModal.tkr, curModal.R);
+});
 
 function openCellModal(tkr){
   const S = GS();
@@ -2275,6 +2357,8 @@ function openCellModal(tkr){
   // forward-return-by-decile for this name (NDX cells use P.rel; S&P cells use P.spx_rel)
   const hasRel = !!((modalRel().d||{})[tkr]);
   document.getElementById('mRel').style.display = hasRel ? '' : 'none';
+  document.getElementById('mBasisWrap').style.display = hasRel ? 'inline-flex' : 'none';
+  curModal = hasRel ? {tkr, R: null} : null;
   if(hasRel){ renderModalDeciles('21', tkr); renderModalDeciles('42', tkr); renderModalDeciles('63', tkr); }
 
   overlay.classList.add('on');
@@ -2331,8 +2415,122 @@ if(P.demo){
   document.body.insertBefore(banner, document.body.firstChild);
   document.title = '[DEMO] ' + document.title;
 }
+// -------------------------------------------------------------------------
+// "Today" strip: the current cross-index comovement regime (with its
+// historical 1-month stats), each gauge's 1-year DIX percentile, sector-DIX
+// band crossings in the last 5 sessions, and active per-name D-streaks --
+// the day's signal changes, surfaced above the tabs. All client-side from
+// the payload already on the page.
+// -------------------------------------------------------------------------
+function renderToday(){
+  const box = document.getElementById('today');
+  try{
+    const chips = [];
+    const G3 = ['NDX','SPX','IWM'];
+    if(P.spx && P.iwm && P.rel.ndx_dix){
+      const gauges = {
+        NDX: {dates: P.rel.dates, dix: P.rel.ndx_dix, r21: (P.rel.r21||{})[P.bench]},
+        SPX: {dates: P.spx.dates, dix: P.spx.dix, r21: P.spx.r21},
+        IWM: {dates: P.iwm.dates, dix: P.iwm.d,  r21: P.iwm.r21}};
+      // 5d MA (min 3 obs) per gauge, keyed by date -- mirrors the comovement study
+      const ma = {};
+      for(const k of G3){
+        const g = gauges[k], m = new Map(), buf = [];
+        for(let i=0;i<g.dates.length;i++){
+          buf.push(g.dix[i]);
+          if(buf.length>5) buf.shift();
+          const ok = buf.filter(v=>v!=null);
+          if(ok.length>=3) m.set(g.dates[i], ok.reduce((a,b)=>a+b,0)/ok.length);
+        }
+        ma[k] = m;
+      }
+      const days = P.rel.dates.filter(d => ma.NDX.has(d) && ma.SPX.has(d) && ma.IWM.has(d));
+      if(days.length > 300){
+        const zone = {};
+        for(const k of G3){
+          const vals = days.map(d=>ma[k].get(d));
+          const srt = [...vals].sort((a,b)=>a-b);
+          const lo = srt[Math.floor(0.30*(srt.length-1))], hi = srt[Math.floor(0.70*(srt.length-1))];
+          zone[k] = vals.map(v => v<=lo ? 'L' : v>=hi ? 'H' : 'M');
+        }
+        const codes = days.map((_,i)=>zone.NDX[i]+zone.SPX[i]+zone.IWM[i]);
+        const code = codes[codes.length-1], prev = codes[codes.length-2];
+        const r21map = {};
+        for(const k of G3){
+          const g = gauges[k], m = new Map();
+          if(g.r21) for(let i=0;i<g.dates.length;i++) if(g.r21[i]!=null) m.set(g.dates[i], g.r21[i]);
+          r21map[k] = m;
+        }
+        const hist = {NDX:[], SPX:[], IWM:[]};
+        let nd = 0;
+        for(let i=0;i<days.length;i++){
+          if(codes[i] !== code) continue;
+          nd++;
+          for(const k of G3){ const v = r21map[k].get(days[i]); if(v!=null) hist[k].push(v); }
+        }
+        const W = {L:'Low', M:'Mid', H:'High'};
+        const st = k => {
+          const a = hist[k];
+          if(!a.length) return `${k} --`;
+          const m = a.reduce((x,y)=>x+y,0)/a.length, h = 100*a.filter(v=>v>0).length/a.length;
+          return `${k} <b>${m>=0?'+':''}${m.toFixed(1)}%</b><span class="mut">/${h.toFixed(0)}%</span>`;
+        };
+        chips.push(`<a class="chip" href="comovement.html" target="_blank" rel="noopener" title="cross-index DIX comovement regime (5d-MA DIX vs each gauge's own history: Low = bottom 30%, High = top 30%) with the mean 1-month forward return / hit rate over this regime's ${nd} historical days. Overlapping windows -- treat as context, not a forecast. Click for the full study.">Comovement <b>N=${W[code[0]]} S=${W[code[1]]} I=${W[code[2]]}</b> <span class="mut">(${nd}d) &middot; hist 1mo:</span> ${st('NDX')} &middot; ${st('SPX')} &middot; ${st('IWM')}</a>`);
+        if(prev && prev !== code)
+          chips.push(`<span class="chip" style="border-color:var(--accent)">regime <b>changed today</b> <span class="mut">(was N=${W[prev[0]]} S=${W[prev[1]]} I=${W[prev[2]]})</span></span>`);
+        for(const k of G3){
+          const vals = days.map(d=>ma[k].get(d));
+          const wnd = vals.slice(-252), cur = wnd[wnd.length-1];
+          const p = 100*wnd.filter(v=>v<cur).length/wnd.length;
+          chips.push(`<span class="chip" title="today's ${k} DIX (5d MA) percentile within its trailing year">${k} DIX <b style="color:${p>=50?'var(--pos)':'var(--neg)'}">${p.toFixed(0)}%</b><span class="mut">ile 1y</span></span>`);
+        }
+      }
+    }
+    // sector-DIX band crossings in the last 5 sessions ("what changed")
+    if(P.sectors && P.sectors.items && P.sectors.dates){
+      const dts = P.sectors.dates, cutoff = dts[Math.max(0, dts.length-5)];
+      for(const it of P.sectors.items){
+        if(!it.last_cross || it.last_cross.date < cutoff) continue;
+        const up = it.last_cross.dir === 'up';
+        chips.push(`<span class="chip" title="${it.name}: sector DIX crossed into the ${up?'top (80th pct)':'bottom (20th pct)'} of its trailing-year band on ${it.last_cross.date} -- see the Sector DIX tab"><b>${it.etf}</b> <span style="color:${up?'var(--pos)':'var(--neg)'}">${up?'&#9650;P80':'&#9660;P20'}</span> <span class="mut">${it.last_cross.date.slice(5)}</span></span>`);
+      }
+    }
+    // active per-name D-streaks: 5+ consecutive sessions with raw D in the
+    // name's own top/bottom decile (full-history cutoffs; NDX universe)
+    if(P.rel && P.rel.d){
+      const hi = [], lo = [];
+      for(const tk in P.rel.d){
+        if(tk === P.bench) continue;
+        const s = P.rel.d[tk], vals = s.filter(v=>v!=null);
+        if(vals.length < 250) continue;
+        const srt = [...vals].sort((a,b)=>a-b);
+        const q10 = srt[Math.floor(0.10*(srt.length-1))], q90 = srt[Math.floor(0.90*(srt.length-1))];
+        let run = 0, dir = 0;
+        for(let i=s.length-1;i>=0;i--){
+          const v = s[i];
+          if(v==null) break;
+          const d = v>=q90 ? 1 : v<=q10 ? -1 : 0;
+          if(run===0){ if(!d) break; dir=d; run=1; }
+          else if(d===dir) run++;
+          else break;
+        }
+        if(run>=5) (dir>0?hi:lo).push({tk, run});
+      }
+      const fmtL = a => a.sort((x,y)=>y.run-x.run).slice(0,4).map(x=>`${x.tk}&nbsp;${x.run}d`).join(', ')
+                        + (a.length>4 ? ` +${a.length-4}` : '');
+      if(hi.length) chips.push(`<span class="chip" title="raw 1-day D has spent 5+ consecutive sessions in the TOP decile of the name's own history -- a dark-accumulation streak (see the D-streak events tab)">D-streak <span style="color:var(--pos)">high: ${fmtL(hi)}</span></span>`);
+      if(lo.length) chips.push(`<span class="chip" title="raw 1-day D has spent 5+ consecutive sessions in the BOTTOM decile of the name's own history -- a distribution streak (see the D-streak events tab)">D-streak <span style="color:var(--neg)">low: ${fmtL(lo)}</span></span>`);
+    }
+    if(chips.length){
+      box.innerHTML = `<span class="mut" style="font-size:10px;letter-spacing:.5px;text-transform:uppercase">Today</span>` + chips.join('');
+      box.style.display = '';
+    }
+  }catch(err){ console.warn('today strip unavailable:', err); }
+}
+
 updateChrome();
 render();
+renderToday();
 
 // -------------------------------------------------------------------------
 // Tab: D vs forward return (1mo / 2mo / 3mo)
@@ -2510,7 +2708,7 @@ function barsAxisExtent(buckets, h){
 // several panels for direct visual comparison.
 // todayVal (optional): the latest DIX/D print -- its decile bucket gets spotlighted so
 // you can see where today's dark reading sits in its historical distribution.
-function renderBars(buckets, h, forcedA, todayVal){
+function renderBars(buckets, h, forcedA, todayVal, todayDecOverride){
   const w=800, H=220, padL=50, padR=14, padT=12, padB=40;  // padB fits Dn + domain range
   const barVal = b => useMedian ? b.rMedian : b.rMean;
   const se = b => useMedian ? 0 : b.rStd / Math.sqrt(Math.max(1, b.n / h));
@@ -2518,9 +2716,11 @@ function renderBars(buckets, h, forcedA, todayVal){
   const mid = padT + (H-padT-padB)/2, half = (H-padT-padB)/2;
   const ys = v => mid - (Math.max(-a, Math.min(a, v))/a) * half;
   const y0 = ys(0), bw = (w-padL-padR)/buckets.length;
-  // which decile does today's print fall into? (first bucket whose upper edge it clears)
-  let todayDec = -1;
-  if(todayVal != null && isFinite(todayVal)){
+  // which decile does today's print fall into? Trailing-basis callers pass the
+  // decile directly (their buckets' x-ranges overlap, so edge-matching is wrong);
+  // otherwise: first bucket whose upper edge it clears.
+  let todayDec = todayDecOverride != null ? todayDecOverride : -1;
+  if(todayDec < 0 && todayVal != null && isFinite(todayVal)){
     for(let i=0;i<buckets.length;i++){ if(buckets[i] && todayVal <= buckets[i].dHi){ todayDec=i; break; } }
     if(todayDec === -1) for(let i=buckets.length-1;i>=0;i--){ if(buckets[i]){ todayDec=i; break; } }
   }
@@ -4256,6 +4456,8 @@ function openSectorConstituent(tkr){
     document.getElementById('mSub').innerHTML =
       `<span>no per-name dark-ratio history for ${tkr}</span><span></span>`;
     spEl.innerHTML = ''; relBox.style.display = 'none';
+    document.getElementById('mBasisWrap').style.display = 'none';
+    curModal = null;
     overlay.classList.add('on'); return;
   }
   document.getElementById('mSub').innerHTML =
@@ -4266,6 +4468,8 @@ function openSectorConstituent(tkr){
   const pad=(mx-mn)*0.1||0.02;
   spEl.innerHTML = spark(dser, Math.max(0,mn-pad), mx+pad, 'raw', 860, 140, 10);
   relBox.style.display = '';
+  document.getElementById('mBasisWrap').style.display = 'inline-flex';
+  curModal = {tkr: key, R};
   renderModalDeciles('21', key, R); renderModalDeciles('42', key, R); renderModalDeciles('63', key, R);
   overlay.classList.add('on');
 }
@@ -4283,6 +4487,13 @@ function computeSpxTableRows(){
   for(const t of Object.keys(R.d).sort()){
     const ds = R.d[t], rs = (R.r21||{})[t];
     if(!ds || !rs) continue;
+    if(trailBasis){
+      const {buckets, todayDec} = decilesTrailing(ds, rs);
+      const nn = buckets.reduce((s,b)=>s+(b?b.n:0), 0);
+      if(nn < 30) continue;
+      out.push({t, bk: buckets, curDec: todayDec});
+      continue;
+    }
     const pts=[], n=Math.min(ds.length, rs.length);
     for(let i=0;i<n;i++){ const x=ds[i], y=rs[i]; if(x==null||y==null) continue; pts.push([x,y]); }
     if(pts.length < 30) continue;
@@ -4305,7 +4516,9 @@ function renderSpxTable(){
   if(!spxTblRows) spxTblRows = computeSpxTableRows();
   const f = (document.getElementById('spxtblFilter').value || '').toUpperCase().trim();
   const shown = f ? spxTblRows.filter(r=>r.t.includes(f)) : spxTblRows;
-  sub.innerHTML = `${shown.length} of ${spxTblRows.length} S&P 500 names · mean 1-month (21d) forward return by decile of each name's dark ratio D · ±1 SE (whisker level) below each mean`;
+  sub.innerHTML = `${shown.length} of ${spxTblRows.length} S&P 500 names · mean 1-month (21d) forward return by decile of each name's dark ratio D`
+    + (trailBasis ? ` · <b>trailing deciles</b> (each day ranked vs the name's prior ${TRAIL_WIN} sessions -- no look-ahead)` : '')
+    + ` · ±1 SE (whisker level) below each mean`;
   let h = '<table class="dtbl"><thead><tr><th>Ticker</th><th>now</th>';
   for(let b=1;b<=10;b++) h += `<th>D${b}</th>`;
   h += '</tr></thead><tbody>';
@@ -4323,6 +4536,12 @@ function renderSpxTable(){
   body.innerHTML = h + '</tbody></table>';
 }
 document.getElementById('spxtblFilter').addEventListener('input', renderSpxTable);
+document.getElementById('spxtblTrail').addEventListener('change', e=>{
+  trailBasis = e.target.checked;
+  document.getElementById('mBasis').checked = trailBasis;   // one shared basis
+  spxTblRows = null;
+  renderSpxTable();
+});
 
 // -------------------------------------------------------------------------
 // Top-level tab switching
