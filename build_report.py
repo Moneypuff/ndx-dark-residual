@@ -70,6 +70,23 @@ def build_payload(ev):
         pay["byhorizon"].append(dict(key=hz, label=label, r=c["pearson"], p=c["pearson_p"],
                                      hi=t["hi"], lo=t["lo"], spread=t["diff"], spread_t=t["t"],
                                      spread_p=t["p"], hi_up=t["hi_up"], lo_up=t["lo_up"]))
+    # market-excess headline (present once the study has rerun with *_xret
+    # columns): 1-month excess-of-QQQ tercile spread with season-cluster
+    # bootstrap inference, plus the same spread on EXPANDING (no look-ahead)
+    # within-name percentiles.
+    if "m1_xret" in ev.columns and ev["m1_xret"].notna().any():
+        sp, lo, hi, pb, nh, nl, k = E.cluster_boot_spread(ev, "dpi10_pct", "m1_xret")
+        r, rlo, rhi, rp, rn, _ = E.cluster_boot_corr(ev, "dpi10", "m1_xret")
+        x = dict(spread=float(sp), ci=[float(lo), float(hi)], p=float(pb),
+                 n_hi=nh, n_lo=nl, quarters=int(k),
+                 r=float(r), r_ci=[float(rlo), float(rhi)], r_p=float(rp))
+        if "dpi10_pct_exp" in ev.columns and ev["dpi10_pct_exp"].notna().any():
+            sp2, lo2, hi2, pb2, nh2, nl2, _ = E.cluster_boot_spread(
+                ev, "dpi10_pct_exp", "m1_xret")
+            x["exp"] = dict(spread=float(sp2), ci=[float(lo2), float(hi2)],
+                            p=float(pb2), n_hi=nh2, n_lo=nl2)
+        pay["xm1"] = x
+
     ev["q"] = pd.qcut(ev.dpi10_pct, 5, labels=[1, 2, 3, 4, 5])
     for hz, col in [("next_day", "next_day_ret"), ("m1", "m1_ret")]:
         gg = ev.groupby("q", observed=True)[col].mean()

@@ -1,94 +1,82 @@
 # Study & dashboard improvement roadmap
 
-Prioritized improvements for the three research surfaces in this repo. Items marked
-**[done]** were implemented on this branch; the rest are ordered by expected
-insight-per-effort within each section.
+All items below are now **implemented** on this branch. Each entry notes where
+the implementation lives and — where the data has already spoken — what came of
+it. Findings docs: `EARNINGS_DPI_FINDINGS.md`, `INDEX_COMOVEMENT_FINDINGS.md`.
 
 ## Sector ETFs: return vs DIX  **[done]**
 
-The dashboard now plots each sector / industry fund's reconstructed dollar-DIX
-against **its own ETF's forward return** — the same treatment the NDX / SPX / IWM
-gauges get.
+The *DIX vs Return* tab has a **Sectors** toggle: any of the 23 sector /
+industry funds' reconstructed dollar-DIX vs **its own ETF's** 1/2/3-month
+forward return — decile bars (overlap-adjusted ±1 SE), scatter with today's-DIX
+marker, Pearson/Spearman + block-bootstrap CIs, and a cross-fund summary table
+ranked by the D10−D1 1-month spread (click a row to load that fund).
+Plumbing: `build_sector_payload` packs `r21/r42/r63` per fund from the ETF's
+own adjusted close.
 
-- **Where:** the *DIX vs Return* tab gained a **Sectors** toggle. Pick any of the
-  23 funds (8+5 broad sectors, 10 SPDR industry funds); you get the familiar
-  1/2/3-month decile bars (±1 SE, overlap-adjusted), the daily scatter with
-  today's-DIX marker, and Pearson/Spearman with block-bootstrap CIs.
-- **At a glance:** a summary table ranks all funds by the size of the effect
-  (D10−D1: mean 1-month forward return in the fund's top DIX decile minus its
-  bottom decile), with r at each horizon and which decile today's DIX sits in.
-  Click a row to load that fund into the panels.
-- **Plumbing:** `build_sector_payload` now packs `r21/r42/r63` per fund from the
-  ETF's own adjusted close (fetched alongside the constituent panels); forward
-  returns are computed on the full price history before slicing to the plot
-  window, exactly like `build_index_payload`.
+## Earnings DPI study  **[all done]**
 
-## Earnings DPI study (`earnings_dpi_study.py`)
+1. **Market-excess outcomes** — every horizon now has a `*_xret` twin (the
+   name's return minus QQQ's over the identical window); the summary, report
+   payload and report headline lead with the excess numbers.
+2. **Real-time (expanding) within-name percentiles** — `dpi{5,10}_pct_exp`
+   ranks each event only against that name's prior events (min 8); the
+   headline spread is reported on both bases.
+3. **Season-clustered inference** — `cluster_boot_corr` / `cluster_boot_spread`
+   resample calendar quarters (≈32 seasons) instead of trusting ~2,700
+   correlated events; cluster CIs and p-values sit next to every headline stat.
+4. **Momentum double-sort** — pre-earnings 1-month return terciles × DPI
+   terciles, excess returns per cell, DPI spread within each momentum tercile.
+5. **Gap-direction split** — post-reaction drift (T+1→T+21) by DPI tercile
+   within gap-down / flat / gap-up events; tests the "informed dark
+   accumulation" reading directly.
+6. **Foreign filers** — `fetch_earnings_edgar.py` falls back to a scored 6-K
+   heuristic (quarter-end windows + filing-index contents) for issuers with no
+   8-K/2.02 trail (`source=6k` column); recovers ASML, ARM, PDD, CCEP, FER,
+   NBIS.
+   The study also writes `earnings_dpi_summary.txt` (committed by the refresh
+   workflow) so the findings doc can be updated from real runs.
 
-1. **Market-excess outcomes.** Forward returns are raw in a mostly-bull
-   2018–2026 sample, so part of the high-DPI drift is beta. Add QQQ-excess
-   (and, with the sector panels now available, sector-excess) forward returns as
-   the headline outcome; the raw numbers can stay as a secondary column.
-2. **Real-time (expanding) within-name percentiles.** Event DPI is currently
-   ranked against the name's *full* history — a mild look-ahead. Rank each event
-   against only prior events/history (expanding window, min N) so terciles are
-   tradable as-of the report date; report both cuts.
-3. **Season-clustered inference.** Earnings cluster in reporting weeks, so the
-   2,663 events are cross-sectionally correlated and pooled p-values overstate
-   precision. Cluster the bootstrap/SEs by calendar quarter (earnings season) —
-   the honest unit is ~32 seasons, not 2,663 events.
-4. **Control for pre-earnings momentum.** High DPI into a report may proxy for
-   the preceding run-up. A double sort (DPI tercile × pre-earnings 1-month
-   return tercile) would show whether DPI adds anything beyond momentum.
-5. **Surprise interaction.** Does high pre-report DPI predict the *reaction to*
-   the news (dark accumulation = informed positioning) or drift regardless of
-   it? Split post-earnings paths by the T+1 gap direction: high-DPI + negative
-   gap that still recovers by T+21 would be the strongest "informed flow" tell.
-6. **Complete the universe.** The 6 foreign filers (6-K reporters) can be added
-   via their press-release exhibit dates; SPCX/HONA need a fallback source.
+## Cross-index comovement study  **[all done]**
 
-## Cross-index comovement study (`index_comovement_study.py`)
+1. **Expanding-window regimes** (`--basis expanding|full|both`) — under
+   real-time cutoffs the requested LLH divergence has existed on only 17 live
+   days; its 94-day full-sample count was mostly relabeled history.
+2. **Two-factor regression** (LEVEL + large-vs-small SPREAD, Newey-West 21
+   lags) — level carries nothing anywhere; the spread tilts NDX only
+   (+0.66pp/z, t=1.76).
+3. **Regime-entry event study** (first day + 21-session cool-down) — the
+   "large-cap firm / small-cap Low" family survives (NDX +4.6–6.8%, hit
+   86–100% over 28 entries); the requested LLH divergence does not (NDX +0.3%
+   at entry).
+4. **Block-bootstrap CIs** (21-day moving blocks) on every regime mean, in the
+   CSV and the printed table; degenerate small-cell CIs are suppressed.
+5. **Sector dark-flow gauge** — defensive-minus-cyclical DIX z-spread vs index
+   forward returns: a clean null (|t| < 0.5 everywhere). Recorded so it stays
+   found.
+6. **Out-of-sample split** (fit <2024, evaluate 2024+) — the two-factor model
+   does not generalize (OOS corr ≈ 0 to −0.14); the findings doc now says so.
 
-1. **Expanding-window regimes.** Deciles are full-sample (flagged in caveats).
-   Add `--expanding` cutoffs (min ~250 sessions) and report the headline regimes
-   both ways — the divergence result is only tradable if it survives this.
-2. **Continuous spread factor instead of 27 cells.** Most cells hold 30–130
-   overlapping days ≈ a handful of episodes. Collapse to two continuous
-   signals — joint level (mean of the three DIX5 z-scores) and the large-vs-small
-   spread ((NDX+SPX)/2 − IWM z) — and regress forward returns on both. Uses every
-   observation, kills the arbitrary Low/Mid/High binning, and directly tests the
-   study's own conclusion that *divergence, not level, carries the signal*.
-3. **Regime-entry event study.** Score only the first day a regime is entered
-   (with a cool-down), not every day inside it — cuts the overlap problem and
-   answers the practical question "what happens after the setup appears?".
-4. **Block-bootstrap CIs on the regime means** (21-day blocks), so the table can
-   show which cells are distinguishable from baseline instead of leaning on
-   medians-vs-means language.
-5. **Add sector gauges to the comovement set.** With per-sector DIX now packed,
-   defensive (XLP/XLU/XLV) vs cyclical (XLI/XLF/XLE) dark-flow divergence is a
-   natural extension of the same framework.
-6. **Out-of-sample split.** Freeze thresholds on pre-2024 data, evaluate 2024+;
-   the COVID recovery and 2022 drawdown currently sit inside the sample and
-   flatter several cells.
+## Dashboard  **[all done]**
 
-## Dashboard (`ndx_dark_residual.py` → `docs/index.html`)
-
-1. **Payload size / first paint.** `docs/index.html` is ~25 MB with the JSON
-   inlined. Move the payload to a sibling `payload.json` fetched on load (GitHub
-   Pages gzips JSON ~5×), or embed it deflate+base64 and inflate client-side.
-   Biggest single UX win available.
-2. **Surface the comovement regime on the dashboard.** The comovement study's
-   actionable output is *today's* N/S/I regime; a small header badge (with the
-   regime's historical 1-month stats) would connect the study to the daily view.
-3. **Cross-linked "today" summary.** One strip aggregating the latest signals —
-   index DIX percentiles, sectors at P80/P20 crossings, comovement regime,
-   names with active D-streaks — so the tabs become drill-downs from a single
-   morning read.
-4. **Signal-change alerts from the nightly refresh.** The workflow already knows
-   yesterday→today; have it append to a small `alerts.json` (sector band
-   crossings, regime changes) rendered as a "what changed" panel, or open a
-   GitHub issue on big transitions.
-5. **Real-time-safe percentiles everywhere.** The event-study tab already offers
-   trailing (no look-ahead) decile cutoffs; extend that option to the grid
-   modals and the SP500 decile table so displayed "today's decile" values are
-   tradable, not full-sample.
+1. **Payload compression** — the JSON payload is embedded deflate+base64 and
+   inflated client-side via `DecompressionStream` (inline module script, still
+   a single self-contained file that works over file://). `docs/index.html`
+   drops ~25 MB → ~12 MB and the browser no longer parses a 25 MB JS literal.
+   Python payload readers (`index_comovement_study.py`, `build_comovement.py`)
+   accept both the old and new encodings.
+2. **Comovement regime badge** — the header's new **Today** strip leads with
+   the current N/S/I regime, its day count and historical 1-month mean/hit per
+   index, linking to the comovement tab.
+3. **Today summary strip** — same strip also shows each gauge's 1-year DIX
+   percentile, and per-name D-streaks (5+ consecutive sessions in a name's own
+   top/bottom D decile).
+4. **What-changed alerts** — sector-DIX P80/P20 band crossings from the last 5
+   sessions and a "regime changed today" chip surface signal transitions on
+   every load, computed client-side from the payload the nightly refresh
+   already ships (no extra workflow state).
+5. **Real-time-safe deciles** — a "trailing deciles (no look-ahead)" toggle in
+   the grid cell modal and the SP500 decile table ranks each day's D against
+   only the name's prior 252 sessions (min 120), matching the event-study
+   tab's trailing basis, so "today's decile" is the one that was actually
+   knowable.
