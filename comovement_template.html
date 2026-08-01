@@ -289,6 +289,16 @@ tr.feat .reg-cell::before{content:"◆"; color:var(--accent); font-size:10px; ma
 .hxgrid.sm .hxc span{display:none}
 .hxgrid.sm .hxc.thin::after{display:none}
 .hxfacets .hxwrap{padding:16px 14px 12px}
+.hxc.now{outline:2px solid var(--accent); outline-offset:1.5px; z-index:1}
+.hxc .xh{position:absolute; left:-6px; right:-6px; top:50%; height:0;
+  border-top:1px dashed rgba(var(--acc-rgb),.65); pointer-events:none}
+.hxc .xv{position:absolute; top:-6px; bottom:-6px; left:50%; width:0;
+  border-left:1px dashed rgba(var(--acc-rgb),.65); pointer-events:none}
+.hxlab.now{color:var(--accent); font-weight:600}
+.today-tag{font-family:var(--mono); font-size:10px; color:var(--accent);
+  border:1px solid var(--accent-line); border-radius:100px; padding:2px 8px;
+  margin-left:auto; letter-spacing:.1em; text-transform:uppercase}
+.legend .tdot{color:var(--accent); font-size:13px}
 .hxlab{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); display:flex;
   align-items:center; justify-content:center; text-align:center; white-space:nowrap}
 .hxlab.y{justify-content:flex-end; padding-right:9px}
@@ -534,7 +544,8 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
           (Q1&nbsp;=&nbsp;coldest fifth, Q5&nbsp;=&nbsp;hottest). Every cell is the <b>S&amp;P&nbsp;500's own 1-month
           forward return</b> on the days that combination held. The dashed strips are the one-gauge
           marginals — the bottom strip is the direct test of whether a strong or weak NDX DIX,
-          on its own, dictates the forward return.</p>
+          on its own, dictates the forward return. The <b>amber crosshair</b> marks where the
+          latest session sits.</p>
       </div>
     </div>
 
@@ -545,6 +556,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
         <button data-m="hit" aria-pressed="false">Hit-rate</button>
       </div>
       <div class="legend"><span id="hxLgL">−4%</span><span class="scale"></span><span id="hxLgR">+4%</span></div>
+      <div class="legend" id="hxNow" hidden><span class="tdot">◎</span><span id="hxNowTxt"></span></div>
     </div>
 
     <div class="hxwrap">
@@ -560,13 +572,14 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
         <b>sliced instead of plotted</b>: the same NDX&nbsp;×&nbsp;IWM map is drawn three times, once for each
         level of SPX's own DIX (Low / Mid / High, the decile bands used everywhere above). Think of them
         as three floors of a cube — pick the floor that matches today's SPX DIX, then read the
-        NDX&nbsp;×&nbsp;IWM cell you're in. Cells marked <b>~</b> hold fewer than 10 days; blank
+        NDX&nbsp;×&nbsp;IWM cell you're in — the <b>◎ today</b> tag and crosshair mark the floor and
+        cell the latest session lands on. Cells marked <b>~</b> hold fewer than 10 days; blank
         cells never occurred.</p>
     </div>
     <div class="hxfacets">
-      <div class="hxwrap"><p class="hxtitle"><span class="sw" style="background:rgba(var(--acc-rgb),.09)"></span>SPX DIX Low</p><div id="hxF_L"></div></div>
-      <div class="hxwrap"><p class="hxtitle"><span class="sw" style="background:rgba(var(--acc-rgb),.34)"></span>SPX DIX Mid</p><div id="hxF_M"></div></div>
-      <div class="hxwrap"><p class="hxtitle"><span class="sw" style="background:rgba(var(--acc-rgb),.78)"></span>SPX DIX High</p><div id="hxF_H"></div></div>
+      <div class="hxwrap"><p class="hxtitle"><span class="sw" style="background:rgba(var(--acc-rgb),.09)"></span>SPX DIX Low<span class="today-tag" id="hxTg_L" hidden>◎ today</span></p><div id="hxF_L"></div></div>
+      <div class="hxwrap"><p class="hxtitle"><span class="sw" style="background:rgba(var(--acc-rgb),.34)"></span>SPX DIX Mid<span class="today-tag" id="hxTg_M" hidden>◎ today</span></p><div id="hxF_M"></div></div>
+      <div class="hxwrap"><p class="hxtitle"><span class="sw" style="background:rgba(var(--acc-rgb),.78)"></span>SPX DIX High<span class="today-tag" id="hxTg_H" hidden>◎ today</span></p><div id="hxF_H"></div></div>
     </div>
     <p class="hm-note"><b>Caveat:</b> slicing 1,600-odd overlapping sessions three ways leaves many
       cells thin — treat single cells as suggestive and lean on the marginals and the full-sample map
@@ -948,6 +961,20 @@ new MutationObserver(()=>{ readout(matchMask()); draw(); })
 const HEAT = /*__HEAT__*/;
 let HXM = "mean";                       // heatmap metric, independent of the table's
 const HQ = HEAT.q;
+const NOW = (HEAT.now && HEAT.now.x != null && HEAT.now.y != null) ? HEAT.now : null;
+
+function xline(cls){ const s = document.createElement("i"); s.className = cls; return s; }
+// ring the latest session's cell; thread dashed crosshair lines through its row/col
+function markNow(t, i, j, active){
+  if(!active) return t;
+  if(i === NOW.x && j === NOW.y){
+    t.classList.add("now");
+    t.title = `TODAY (${NOW.date}) — ` + t.title;
+  }
+  else if(j === NOW.y) t.appendChild(xline("xh"));
+  else if(i === NOW.x) t.appendChild(xline("xv"));
+  return t;
+}
 
 function hxTile(st, extra, name, small){
   const d = document.createElement("div");
@@ -980,18 +1007,21 @@ function renderPair(){
   g.className = "hxgrid";
   g.style.gridTemplateColumns = `58px repeat(${HQ},1fr) minmax(64px,.85fr)`;
   for(let j = HQ-1; j >= 0; j--){                       // IWM hot at the top
-    g.appendChild(hxLab("IWM Q"+(j+1), "y"));
+    g.appendChild(hxLab("IWM Q"+(j+1), "y" + (NOW && j===NOW.y ? " now" : "")));
     for(let i = 0; i < HQ; i++)
-      g.appendChild(hxTile(HEAT.pair[j][i], "",
-        `NDX Q${i+1}${qRange("NDX",i)} × IWM Q${j+1}${qRange("IWM",j)}`));
-    g.appendChild(hxTile(HEAT.margy[j], "marg mx", `IWM Q${j+1} alone — any NDX`));
+      g.appendChild(markNow(hxTile(HEAT.pair[j][i], "",
+        `NDX Q${i+1}${qRange("NDX",i)} × IWM Q${j+1}${qRange("IWM",j)}`), i, j, NOW));
+    g.appendChild(markNow(hxTile(HEAT.margy[j], "marg mx",
+      `IWM Q${j+1} alone — any NDX`), -1, j, NOW));
   }
   g.appendChild(hxLab("all IWM", "y my"));
   for(let i = 0; i < HQ; i++)
-    g.appendChild(hxTile(HEAT.margx[i], "marg my", `NDX Q${i+1} alone — any IWM`));
+    g.appendChild(markNow(hxTile(HEAT.margx[i], "marg my",
+      `NDX Q${i+1} alone — any IWM`), i, -1, NOW));
   g.appendChild(hxTile(HEAT.all, "marg mx my", "All days — unconditional"));
   g.appendChild(hxLab("", ""));
-  for(let i = 0; i < HQ; i++) g.appendChild(hxLab("NDX Q"+(i+1)));
+  for(let i = 0; i < HQ; i++)
+    g.appendChild(hxLab("NDX Q"+(i+1), NOW && i===NOW.x ? "now" : ""));
   g.appendChild(hxLab("all NDX"));
   document.getElementById("hxPair").replaceChildren(g);
 }
@@ -1001,13 +1031,16 @@ function renderFacet(z){
   g.className = "hxgrid sm";
   g.style.gridTemplateColumns = `46px repeat(${HQ},1fr)`;
   const grid = HEAT.facet[z], nm = {L:"Low",M:"Mid",H:"High"}[z];
+  const onFloor = NOW && NOW.z === z;                   // crosshair only on today's floor
   for(let j = HQ-1; j >= 0; j--){
-    g.appendChild(hxLab("I·Q"+(j+1), "y"));
+    g.appendChild(hxLab("I·Q"+(j+1), "y" + (onFloor && j===NOW.y ? " now" : "")));
     for(let i = 0; i < HQ; i++)
-      g.appendChild(hxTile(grid[j][i], "", `SPX DIX ${nm} · NDX Q${i+1} × IWM Q${j+1}`, true));
+      g.appendChild(markNow(hxTile(grid[j][i], "",
+        `SPX DIX ${nm} · NDX Q${i+1} × IWM Q${j+1}`, true), i, j, onFloor));
   }
   g.appendChild(hxLab("", ""));
-  for(let i = 0; i < HQ; i++) g.appendChild(hxLab("N·Q"+(i+1)));
+  for(let i = 0; i < HQ; i++)
+    g.appendChild(hxLab("N·Q"+(i+1), onFloor && i===NOW.x ? "now" : ""));
   document.getElementById("hxF_"+z).replaceChildren(g);
 }
 
@@ -1021,7 +1054,17 @@ function hxNote(){
     (hit ${top[2]}%). IWM DIX alone — coldest → ${fmt(yb[0],"mean")}, hottest → ${fmt(yt[0],"mean")}.`;
 }
 
+function hxToday(){
+  if(!NOW) return;
+  document.getElementById("hxNow").hidden = false;
+  document.getElementById("hxNowTxt").textContent =
+    `today ${NOW.date} — NDX Q${NOW.x+1} · IWM Q${NOW.y+1} · SPX DIX ${LVL[NOW.z]||NOW.z}`;
+  ["L","M","H"].forEach(zz=>{
+    const t = document.getElementById("hxTg_"+zz); if(t) t.hidden = zz !== NOW.z;
+  });
+}
 function renderHeatAll(){ renderPair(); ["L","M","H"].forEach(renderFacet); hxNote(); }
+hxToday();
 document.querySelectorAll("#hxSeg button").forEach(b=>{
   b.addEventListener("click", ()=>{
     HXM = b.dataset.m;

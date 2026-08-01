@@ -127,6 +127,7 @@ def build_heat(A, q=5):
     facet  : the same grid sliced by SPX's own DIX level (L/M/H deciles, as elsewhere)
     margx/y: one-gauge marginals (all IWM rows collapsed / all NDX cols collapsed)
     edges  : the DIX5 quintile boundaries, for tooltips
+    now    : where the latest session sits (quintile coords + SPX level), for the crosshair
     """
     x = pd.qcut(A["NDX_dix5"], q, labels=False, duplicates="drop")
     y = pd.qcut(A["IWM_dix5"], q, labels=False, duplicates="drop")
@@ -147,6 +148,12 @@ def build_heat(A, q=5):
         "all": cell_stats(r),
         "edges": {"NDX": [round(float(v), 3) for v in A["NDX_dix5"].quantile(qs)],
                   "IWM": [round(float(v), 3) for v in A["IWM_dix5"].quantile(qs)]},
+        "now": {"date": A.index[-1].strftime("%Y-%m-%d"),
+                "x": int(x.iloc[-1]), "y": int(y.iloc[-1]),
+                "z": str(A["SPX_z"].iloc[-1]),
+                "ndx": round(float(A["NDX_dix5"].iloc[-1]), 3),
+                "iwm": round(float(A["IWM_dix5"].iloc[-1]), 3),
+                "spx": round(float(A["SPX_dix5"].iloc[-1]), 3)},
     }
 
 
