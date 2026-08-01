@@ -1,0 +1,890 @@
+<style>
+:root{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8;
+  --neg:#d4635f; --neg-ink:#f0938f;
+  --pos-rgb:70,179,154; --neg-rgb:212,99,95; --acc-rgb:227,179,65;
+  --shadow:0 1px 0 rgba(255,255,255,.03), 0 18px 40px -24px rgba(0,0,0,.8);
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+    --line:#d3dbe3; --line-soft:#e3e9ef;
+    --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+    --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+    --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+    --pos-rgb:31,143,121; --neg-rgb:192,65,60; --acc-rgb:154,108,18;
+    --shadow:0 1px 0 rgba(255,255,255,.6), 0 16px 34px -26px rgba(20,40,60,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8; --neg:#d4635f; --neg-ink:#f0938f;
+  --pos-rgb:70,179,154; --neg-rgb:212,99,95; --acc-rgb:227,179,65;
+}
+:root[data-theme="light"]{
+  --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+  --line:#d3dbe3; --line-soft:#e3e9ef;
+  --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+  --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+  --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+  --pos-rgb:31,143,121; --neg-rgb:192,65,60; --acc-rgb:154,108,18;
+}
+
+/* series colors for the three index price lines (theme-aware) */
+:root{ --sNDX:#6ea8fe; --sSPX:#cfd8e2; --sIWM:#c08cff; }
+@media (prefers-color-scheme: light){ :root{ --sNDX:#2f6bd8; --sSPX:#51606d; --sIWM:#7a45cf; } }
+:root[data-theme="dark"]{ --sNDX:#6ea8fe; --sSPX:#cfd8e2; --sIWM:#c08cff; }
+:root[data-theme="light"]{ --sNDX:#2f6bd8; --sSPX:#51606d; --sIWM:#7a45cf; }
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+.page{
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono",Menlo,"Roboto Mono","DejaVu Sans Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-family:var(--sans);
+  color:var(--ink);
+  background:
+    radial-gradient(120% 60% at 85% -10%, var(--accent-soft), transparent 60%),
+    linear-gradient(var(--grad), var(--ground) 340px);
+  background-attachment:fixed;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:"kern" 1;
+  min-height:100vh;
+}
+.wrap{max-width:1000px; margin:0 auto; padding:0 24px}
+.mono{font-family:var(--mono)}
+.num{font-variant-numeric:tabular-nums; font-family:var(--mono)}
+
+/* ---- top strip ---- */
+.strip{
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:18px 0 16px; border-bottom:1px solid var(--line-soft);
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.strip .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-soft); display:inline-block; margin-right:9px; vertical-align:middle}
+.strip b{color:var(--ink-dim); font-weight:500}
+
+/* ---- hero ---- */
+.hero{padding:64px 0 30px}
+.eyebrow{
+  font-family:var(--mono); font-size:12px; letter-spacing:.24em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 22px; display:flex; align-items:center; gap:12px;
+}
+.eyebrow::before{content:""; width:26px; height:1px; background:var(--accent-line)}
+h1{
+  font-size:clamp(31px,5.4vw,56px); line-height:1.04; letter-spacing:-.022em; font-weight:800;
+  margin:0; text-wrap:balance; max-width:16ch;
+}
+h1 .g{color:var(--accent)}
+.lede{
+  font-size:clamp(16px,2vw,19px); color:var(--ink-dim); max-width:60ch; margin:24px 0 0;
+  text-wrap:pretty;
+}
+.lede b{color:var(--ink); font-weight:600}
+
+/* ---- hero stat trio ---- */
+.regime-card{
+  margin-top:44px; border:1px solid var(--accent-line); border-radius:16px;
+  background:linear-gradient(180deg, var(--accent-soft), transparent 70%), var(--surface);
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.regime-head{
+  display:flex; flex-wrap:wrap; align-items:center; gap:14px 20px;
+  padding:20px 26px; border-bottom:1px solid var(--line);
+}
+.regime-head .tag{
+  font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--accent); padding:5px 11px; border:1px solid var(--accent-line); border-radius:100px;
+}
+.regime-head .desc{font-size:14px; color:var(--ink-dim)}
+.dixset{display:flex; gap:8px; margin-left:auto}
+.dixchip{
+  font-family:var(--mono); font-size:12px; letter-spacing:.03em;
+  display:flex; align-items:center; gap:7px; padding:6px 11px; border-radius:8px;
+  border:1px solid var(--line); background:var(--surface-2); white-space:nowrap;
+}
+.dixchip .lvl{font-weight:600}
+.stat-grid{display:grid; grid-template-columns:repeat(3,1fr)}
+.stat{padding:26px 26px 28px; border-right:1px solid var(--line); position:relative}
+.stat:last-child{border-right:0}
+.stat .idx{
+  font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-faint); margin-bottom:6px;
+}
+.stat .idx .px{color:var(--ink-dim)}
+.stat .big{
+  font-family:var(--mono); font-size:clamp(34px,5vw,46px); font-weight:600; line-height:1;
+  color:var(--pos-ink); letter-spacing:-.02em; font-variant-numeric:tabular-nums;
+}
+.stat .sub{margin-top:12px; font-family:var(--mono); font-size:12.5px; color:var(--ink-dim);
+  display:flex; gap:14px; flex-wrap:wrap}
+.stat .sub .delta{color:var(--pos-ink)}
+.stat .bar{position:absolute; left:0; bottom:0; height:2px; background:var(--pos); width:0;
+  transition:width 1.1s cubic-bezier(.2,.7,.2,1) .25s}
+
+/* ---- section scaffold ---- */
+section{padding:52px 0}
+.sec-h{display:flex; align-items:baseline; gap:16px; margin:0 0 26px}
+.sec-h .n{font-family:var(--mono); font-size:12px; color:var(--accent); letter-spacing:.1em;
+  padding-top:5px}
+.sec-h h2{font-size:clamp(21px,3vw,28px); letter-spacing:-.015em; font-weight:750; margin:0;
+  text-wrap:balance}
+.sec-h .h-sub{color:var(--ink-dim); font-size:14.5px; margin:5px 0 0; max-width:62ch}
+
+/* ---- baseline row ---- */
+.base{display:grid; grid-template-columns:repeat(3,1fr); gap:14px}
+.base .cell{
+  border:1px solid var(--line); border-radius:12px; background:var(--surface); padding:18px 20px;
+}
+.base .cell .lab{font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--ink-faint);
+  text-transform:uppercase; margin-bottom:12px}
+.base .cell .v{font-family:var(--mono); font-size:27px; font-weight:600; color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.base .cell .m{font-family:var(--mono); font-size:12.5px; color:var(--ink-dim); margin-top:8px}
+
+/* ---- method ---- */
+.method{
+  border:1px solid var(--line); border-left:2px solid var(--accent-line);
+  border-radius:12px; background:var(--surface); padding:8px 26px;
+}
+.method dl{margin:0}
+.method .row{display:grid; grid-template-columns:120px 1fr; gap:20px; padding:15px 0;
+  border-bottom:1px solid var(--line-soft)}
+.method .row:last-child{border-bottom:0}
+.method dt{font-family:var(--mono); font-size:13px; color:var(--accent); letter-spacing:.02em}
+.method dd{margin:0; font-size:14.5px; color:var(--ink-dim)}
+.method dd b{color:var(--ink); font-weight:600}
+.method code{font-family:var(--mono); font-size:12.5px; background:var(--surface-2);
+  padding:1px 6px; border-radius:5px; border:1px solid var(--line); color:var(--ink)}
+
+/* ---- heatmap ---- */
+.controls{display:flex; flex-wrap:wrap; gap:18px 24px; align-items:center; margin-bottom:20px}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden;
+  background:var(--surface)}
+.seg button{
+  font-family:var(--mono); font-size:12.5px; letter-spacing:.03em; color:var(--ink-dim);
+  background:transparent; border:0; padding:9px 16px; cursor:pointer; transition:.15s;
+}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft); color:var(--accent)}
+.seg button:hover{color:var(--ink)}
+.legend{display:flex; align-items:center; gap:11px; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-faint); margin-left:auto}
+.legend .scale{width:150px; height:9px; border-radius:5px;
+  background:linear-gradient(90deg,var(--neg),rgba(120,130,140,.25) 50%,var(--pos))}
+.legend.dix .scale{background:linear-gradient(90deg,rgba(var(--acc-rgb),.08),rgba(var(--acc-rgb),.75))}
+
+.tscroll{overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--surface);
+  box-shadow:var(--shadow)}
+table.hm{border-collapse:collapse; width:100%; min-width:720px}
+table.hm thead th{
+  position:sticky; top:0; z-index:2; background:var(--surface-2);
+  font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:500; text-align:right; padding:14px 14px; white-space:nowrap;
+  border-bottom:1px solid var(--line);
+}
+table.hm thead th.lft{text-align:left}
+table.hm thead th .px{color:var(--ink-dim)}
+.grp-dix{border-left:1px solid var(--line)}
+.grp-ret{border-left:2px solid var(--line)}
+table.hm tbody td{padding:0; border-bottom:1px solid var(--line-soft); font-variant-numeric:tabular-nums}
+table.hm tbody tr:last-child td{border-bottom:0}
+table.hm tbody tr:hover td{background:rgba(var(--acc-rgb),.045)}
+.reg-cell{display:flex; align-items:center; gap:9px; padding:11px 14px; white-space:nowrap}
+.reg-cell .days{font-family:var(--mono); font-size:12px; color:var(--ink-dim);
+  min-width:34px; text-align:right}
+.dixtile{
+  width:26px; height:26px; border-radius:6px; display:grid; place-items:center;
+  font-family:var(--mono); font-size:12px; font-weight:600; border:1px solid var(--line);
+  color:var(--ink);
+}
+.dixtiles{display:flex; gap:5px}
+.retc{padding:11px 14px; text-align:right; font-family:var(--mono); position:relative}
+.retc .v{font-size:15px; font-weight:600; letter-spacing:-.01em}
+.retc .x{font-size:10.5px; color:var(--ink-faint); margin-top:2px; letter-spacing:.02em}
+tr.feat td{background:rgba(var(--acc-rgb),.07)!important}
+tr.feat .reg-cell::before{content:"◆"; color:var(--accent); font-size:10px; margin-right:-3px}
+.hm-note{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin:14px 2px 0;
+  display:flex; gap:8px; align-items:baseline}
+.hm-note b{color:var(--ink-dim); font-weight:500}
+
+/* ---- price chart + regime filter ---- */
+.pfilter{display:flex; flex-wrap:wrap; gap:16px 22px; align-items:flex-end; margin-bottom:16px}
+.pf-group{display:flex; flex-direction:column; gap:7px}
+.pf-lab{font-family:var(--mono); font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-faint)}
+.seg.lmh button{padding:8px 13px}
+.pf-reset{font-family:var(--mono); font-size:12px; color:var(--ink-dim); background:var(--surface);
+  border:1px solid var(--line); border-radius:8px; padding:9px 15px; cursor:pointer; transition:.15s;
+  align-self:flex-end}
+.pf-reset:hover{color:var(--ink); border-color:var(--accent-line)}
+.pf-readout{
+  display:flex; flex-wrap:wrap; align-items:center; gap:10px 22px;
+  border:1px solid var(--line); border-left:2px solid var(--accent-line); border-radius:11px;
+  background:var(--surface); padding:15px 20px; margin-bottom:18px; font-family:var(--mono);
+}
+.pf-readout .lead{font-size:12.5px; color:var(--accent); letter-spacing:.04em}
+.pf-readout .days{font-size:12.5px; color:var(--ink-dim)}
+.pf-readout .rets{display:flex; gap:18px; margin-left:auto; flex-wrap:wrap}
+.pf-readout .r{font-size:13px; color:var(--ink-dim); display:flex; align-items:center; gap:7px}
+.pf-readout .r i{width:9px; height:9px; border-radius:2px; display:inline-block}
+.pf-readout .r b{font-variant-numeric:tabular-nums; font-weight:600}
+
+.chart-legend{display:flex; flex-wrap:wrap; gap:8px 20px; margin-bottom:12px; font-family:var(--mono);
+  font-size:12px; color:var(--ink-dim)}
+.chart-legend .lg{display:flex; align-items:center; gap:8px}
+.chart-legend .lg i{width:16px; height:3px; border-radius:2px; display:inline-block}
+.chart-legend .lg.band i{height:13px; width:9px; border-radius:2px;
+  background:rgba(var(--acc-rgb),.4); border:1px solid var(--accent-line)}
+.chart-wrap{position:relative; border:1px solid var(--line); border-radius:14px;
+  background:var(--surface); box-shadow:var(--shadow); padding:14px 10px 10px}
+#pxCanvas{display:block; width:100%; height:400px; touch-action:none}
+.ptip{position:absolute; pointer-events:none; opacity:0; transition:opacity .12s;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:10px 12px;
+  font-family:var(--mono); font-size:11.5px; box-shadow:var(--shadow); z-index:5; min-width:150px}
+.ptip .d{color:var(--ink); font-size:12px; margin-bottom:2px}
+.ptip .rg{color:var(--accent); font-size:10.5px; letter-spacing:.06em; margin-bottom:8px}
+.ptip .rw{display:flex; align-items:center; justify-content:space-between; gap:16px; color:var(--ink-dim)}
+.ptip .rw i{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:6px}
+.ptip .rw b{color:var(--ink); font-variant-numeric:tabular-nums}
+.chart-cap{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin:12px 2px 0;
+  display:flex; gap:8px; align-items:baseline}
+.chart-cap b{color:var(--ink-dim); font-weight:500}
+
+/* ---- findings ---- */
+.finds{display:grid; gap:14px}
+.find{
+  display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:start;
+  border:1px solid var(--line); border-radius:12px; background:var(--surface); padding:20px 22px;
+}
+.find .mk{color:var(--accent); font-family:var(--mono); font-size:13px; line-height:1.7}
+.find h3{margin:0 0 6px; font-size:16px; font-weight:700; letter-spacing:-.01em}
+.find p{margin:0; font-size:14.5px; color:var(--ink-dim)}
+.find p b{color:var(--ink)}
+.find .pos{color:var(--pos-ink); font-weight:600}
+.find .neg{color:var(--neg-ink); font-weight:600}
+
+/* ---- caveats ---- */
+.cav{columns:2; column-gap:32px}
+.cav .c{break-inside:avoid; margin-bottom:16px; padding-left:18px; position:relative;
+  font-size:13.5px; color:var(--ink-dim)}
+.cav .c::before{content:""; position:absolute; left:0; top:9px; width:7px; height:7px;
+  border:1px solid var(--neg); border-radius:2px; transform:rotate(45deg)}
+.cav .c b{color:var(--ink); font-weight:600}
+
+/* ---- footer ---- */
+footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
+.repro{font-family:var(--mono); font-size:13px; background:var(--surface); border:1px solid var(--line);
+  border-radius:10px; padding:16px 18px; color:var(--ink-dim); overflow-x:auto; white-space:nowrap}
+.repro .p{color:var(--accent)}
+.foot-meta{display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:20px;
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--ink-faint)}
+
+@media (max-width:720px){
+  .stat-grid{grid-template-columns:1fr}
+  .stat{border-right:0; border-bottom:1px solid var(--line)}
+  .stat:last-child{border-bottom:0}
+  .base{grid-template-columns:1fr}
+  .cav{columns:1}
+  .method .row{grid-template-columns:1fr; gap:4px}
+  .dixset{margin-left:0; width:100%}
+  .sec-h{flex-direction:column; gap:4px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important; transition:none!important}
+}
+</style>
+
+<div class="page">
+<div class="wrap">
+
+  <div class="strip">
+    <span><span class="dot"></span>Dark-flow comovement study</span>
+    <span><b>NDX · SPX · IWM</b> &nbsp;/&nbsp; 5-day DIX &nbsp;/&nbsp; 1-month forward</span>
+    <span id="mRange">2020-01-06 → 2026-07-28</span>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">DIX divergence → forward return</p>
+    <h1>When dark flow <span class="g">pulls apart</span>, the next month pays.</h1>
+    <p class="lede">Across <b><span id="mNdays">1,648</span> sessions</b>, a 5-day moving average of each index's dollar-DIX
+      is ranked into deciles, then read against that index's own 1-month forward return. The signal
+      lives in the <b>divergences</b> — not the joint level. Here is the requested one: <b>S&amp;P&nbsp;500
+      and NDX-100 DIX in their lower deciles while Russell&nbsp;2000 (IWM) DIX runs hot.</b></p>
+
+    <div class="regime-card" id="heroCard">
+      <div class="regime-head">
+        <span class="tag">Requested regime</span>
+        <span class="desc">Large-cap dark flow cooled, small-cap dark flow elevated</span>
+        <div class="dixset">
+          <span class="dixchip">NDX DIX <span class="lvl" style="color:var(--ink-dim)">Low</span></span>
+          <span class="dixchip">SPX DIX <span class="lvl" style="color:var(--ink-dim)">Low</span></span>
+          <span class="dixchip">IWM DIX <span class="lvl" style="color:var(--accent)">High</span></span>
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat" data-k="NDX">
+          <div class="idx">NDX-100 <span class="px">· QQQ</span></div>
+          <div class="big" data-count="0">+0.00%</div>
+          <div class="sub"><span class="s-med"></span><span class="s-hit"></span><span class="delta s-delta"></span></div>
+          <div class="bar" data-w="0"></div>
+        </div>
+        <div class="stat" data-k="SPX">
+          <div class="idx">S&amp;P 500 <span class="px">· SPY</span></div>
+          <div class="big" data-count="0">+0.00%</div>
+          <div class="sub"><span class="s-med"></span><span class="s-hit"></span><span class="delta s-delta"></span></div>
+          <div class="bar" data-w="0"></div>
+        </div>
+        <div class="stat" data-k="IWM">
+          <div class="idx">Russell 2000 <span class="px">· IWM</span></div>
+          <div class="big" data-count="0">+0.00%</div>
+          <div class="sub"><span class="s-med"></span><span class="s-hit"></span><span class="delta s-delta"></span></div>
+          <div class="bar" data-w="0"></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">01</span>
+      <div>
+        <h2>Against the unconditional baseline</h2>
+        <p class="h-sub">Every one of the <span id="mNdays2">1,648</span> common days, regardless of regime — the bar each
+          conditional read has to clear.</p>
+      </div>
+    </div>
+    <div class="base">
+      <div class="cell" data-k="NDX"><div class="lab">NDX-100 · QQQ</div><div class="v"></div>
+        <div class="m"></div></div>
+      <div class="cell" data-k="SPX"><div class="lab">S&amp;P 500 · SPY</div><div class="v"></div>
+        <div class="m"></div></div>
+      <div class="cell" data-k="IWM"><div class="lab">Russell 2000 · IWM</div><div class="v"></div>
+        <div class="m"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">02</span>
+      <div>
+        <h2>How it's built</h2>
+        <p class="h-sub">No look-ahead in the outcome: each regime is scored on the day it's observed,
+          by the return realised over the following 21 sessions.</p>
+      </div>
+    </div>
+    <div class="method">
+      <dl>
+        <div class="row"><dt>DIX</dt><dd>Dollar-weighted <code>Σ($ short) / Σ($ off-exchange)</code>
+          across each index's constituents — SqueezeMetrics' construction. High DIX is the conventionally
+          <b>bullish</b> read (market-makers shorting to fill dark buy orders = accumulation).</dd></div>
+        <div class="row"><dt>DIX5</dt><dd>The <b>5-day moving average</b> of DIX — the same smoothing
+          the dashboard uses as its residual benchmark.</dd></div>
+        <div class="row"><dt>Regime</dt><dd>Per index, DIX5 bucketed by decile over the common sample:
+          <b>Low</b> = deciles 1–3, <b>Mid</b> = 4–7, <b>High</b> = 8–10. Three indices → 27 possible
+          comovement regimes.</dd></div>
+        <div class="row"><dt>Return</dt><dd>Each index's own price proxy 21 trading days ahead, in
+          percent — <b>QQQ</b> for NDX, <b>SPY</b> for SPX, <b>IWM</b> for the Russell 2000.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">03</span>
+      <div>
+        <h2>Where each regime lived</h2>
+        <p class="h-sub">Growth of $100 in each index since 6 Jan 2020. Pick a DIX regime for any or all
+          three indices — the amber bands mark every day that regime was active, so you can see when in
+          the cycle it clustered and what price did around it.</p>
+      </div>
+    </div>
+
+    <div class="pfilter">
+      <div class="pf-group"><span class="pf-lab">NDX DIX</span>
+        <div class="seg lmh" data-idx="0" role="group" aria-label="NDX DIX regime">
+          <button data-v="L">Low</button><button data-v="M">Mid</button><button data-v="H">High</button><button data-v="">Any</button>
+        </div></div>
+      <div class="pf-group"><span class="pf-lab">SPX DIX</span>
+        <div class="seg lmh" data-idx="1" role="group" aria-label="SPX DIX regime">
+          <button data-v="L">Low</button><button data-v="M">Mid</button><button data-v="H">High</button><button data-v="">Any</button>
+        </div></div>
+      <div class="pf-group"><span class="pf-lab">IWM DIX</span>
+        <div class="seg lmh" data-idx="2" role="group" aria-label="IWM DIX regime">
+          <button data-v="L">Low</button><button data-v="M">Mid</button><button data-v="H">High</button><button data-v="">Any</button>
+        </div></div>
+      <button class="pf-reset" id="pfReset">Clear all</button>
+    </div>
+
+    <div class="pf-readout" id="pfRead"></div>
+
+    <div class="chart-legend">
+      <span class="lg"><i style="background:var(--sNDX)"></i>NDX-100 · QQQ</span>
+      <span class="lg"><i style="background:var(--sSPX)"></i>S&amp;P 500 · SPY</span>
+      <span class="lg"><i style="background:var(--sIWM)"></i>Russell 2000 · IWM</span>
+      <span class="lg band"><i></i>selected-regime days</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="pxCanvas"></canvas>
+      <div class="ptip" id="pTip"></div>
+    </div>
+    <p class="chart-cap"><b>Tip:</b> rebased to 100 at the start; hover for the level and that day's
+      regime. Rows in the table below are clickable — they set this filter.</p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">04</span>
+      <div>
+        <h2>The comovement landscape</h2>
+        <p class="h-sub">Every observed regime, sorted by frequency. Amber intensity encodes the DIX
+          level fed in; the teal↔rust scale encodes the 1-month return that came out.
+          <b>Click a row to filter the chart above.</b></p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="seg" role="group" aria-label="cell metric">
+        <button data-m="mean" aria-pressed="true">Mean return</button>
+        <button data-m="med" aria-pressed="false">Median</button>
+        <button data-m="hit" aria-pressed="false">Hit-rate</button>
+      </div>
+      <div class="legend dix"><span>DIX Low</span><span class="scale"></span><span>High</span></div>
+      <div class="legend" id="retLegend"><span id="lgL">−4%</span><span class="scale"></span><span id="lgR">+4%</span></div>
+    </div>
+
+    <div class="tscroll">
+      <table class="hm">
+        <thead>
+          <tr>
+            <th class="lft">Regime <span class="px">· days</span></th>
+            <th class="grp-dix">NDX <span class="px">DIX</span></th>
+            <th>SPX <span class="px">DIX</span></th>
+            <th>IWM <span class="px">DIX</span></th>
+            <th class="grp-ret">NDX <span class="px">· QQQ</span></th>
+            <th>SPX <span class="px">· SPY</span></th>
+            <th>IWM <span class="px">· IWM</span></th>
+          </tr>
+        </thead>
+        <tbody id="hmBody"></tbody>
+      </table>
+    </div>
+    <p class="hm-note"><b>Reading it:</b> the three amber tiles are the input regime (N / S / I);
+      the three right cells are the forward return of each index. The ◆ row is the requested regime.</p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">05</span>
+      <div>
+        <h2>What the pattern says</h2>
+        <p class="h-sub">Four reads that hold across the table.</p>
+      </div>
+    </div>
+    <div class="finds">
+      <div class="find"><span class="mk">◆</span><div>
+        <h3>Divergence carries the signal, not the level</h3>
+        <p>All-hot and all-cold regimes both sit near baseline (<b id="fComov">+1.5% to +2.3%</b>). The large
+          positive and negative months cluster in the <b>mixed</b> regimes — the joint DIX level alone
+          barely discriminates.</p></div></div>
+      <div class="find"><span class="mk">◆</span><div>
+        <h3>A high IWM DIX, on its own, is a poor omen for small caps</h3>
+        <p>The purest case — IWM DIX High while both large caps sit only Mid — turns small caps
+          <span class="neg">slightly negative</span> (<b id="fIwmVal">−0.20%</b>, hit <span id="fIwmHit">46%</span>) —
+          a contrarian, mean-reverting tell.</p></div></div>
+      <div class="find"><span class="mk">◆</span><div>
+        <h3>…but the requested combination flips it bullish</h3>
+        <p>Pair that hot IWM DIX with <b>Low</b> SPX <i>and</i> NDX DIX and all three indices run
+          <span class="pos">above baseline</span> (<span id="fFeat">+2.2% to +2.9%</span>), IWM lifting most vs. its own norm.
+          The divergence, not the IWM level, is what matters.</p></div></div>
+      <div class="find"><span class="mk">◆</span><div>
+        <h3>The cleanest large-cap tailwind is the opposite tilt</h3>
+        <p>Large-cap DIX firm while small-cap DIX is Low produced the best months in the sample —
+          NDX <span class="pos" id="fBestVal">+6.79%</span> at a <span id="fBestHit">94%</span> hit-rate when <span id="fBestReg">NDX High / SPX Mid / IWM Low</span>.</p></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">06</span>
+      <div><h2>Read with these in mind</h2></div>
+    </div>
+    <div class="cav">
+      <div class="c"><b>Overlapping windows.</b> 21-day forward returns overlap heavily, so ~<span id="mNdays3">1,648</span>
+        sessions is only ~<span id="mIndep">78</span> <i>independent</i> months. Treat medians and hit-rates as sturdier than
+        means, and small buckets as suggestive.</div>
+      <div class="c"><b>Sample window.</b> Starts Jan 2020, so the COVID crash-and-recovery and the
+        2022 drawdown both sit inside it and inflate some means and hit-rates.</div>
+      <div class="c"><b>In-sample deciles.</b> Regime thresholds are full-history deciles of DIX5;
+        live use would key off provisional, expanding-window cutoffs.</div>
+      <div class="c"><b>IWM DIX is reconstructed</b> from iShares' Russell 2000 holdings and spans a
+        wider raw range than the NDX/SPX gauges — its deciles are internally consistent, not comparable
+        in level.</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="repro"><span class="p">python</span> build_comovement.py --docs-out docs/comovement.html</div>
+    <div class="foot-meta">
+      <span>Source · docs/index.html payload</span>
+      <span><span id="mNdays4">1,648</span> common sessions</span>
+      <span id="mNreg">21 of 27 regimes observed</span>
+      <span id="mBuilt">Refresh 2026-07-28</span>
+    </div>
+  </footer>
+
+</div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+const FEATURE = "N=Low,S=Low,I=High";
+const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+
+function dixAlpha(lvl){ return lvl==="Low"?0.09 : lvl==="Mid"?0.34 : 0.78; }
+function dixLevels(reg){ // returns [N,S,I]
+  const m = {}; reg.split(",").forEach(p=>{const [k,v]=p.split("="); m[k]=v;});
+  return [m.N,m.S,m.I];
+}
+// diverging tint for returns (mean/med around 0, hit around 50)
+function retStyle(val, metric){
+  let t, ink;
+  if(metric==="hit"){
+    t = Math.max(-1, Math.min(1, (val-50)/30));
+  } else {
+    t = Math.max(-1, Math.min(1, val/4));
+  }
+  const a = Math.pow(Math.abs(t), 0.85) * 0.9;
+  const rgb = t>=0 ? css("--pos-rgb") : css("--neg-rgb");
+  const bg = `rgba(${rgb},${a.toFixed(3)})`;
+  ink = t>=0 ? css("--pos-ink") : css("--neg-ink");
+  if(Math.abs(t) < 0.14) ink = css("--ink");
+  return {bg, ink};
+}
+function fmt(val, metric){
+  if(metric==="hit") return Math.round(val)+"%";
+  return (val>=0?"+":"")+val.toFixed(2)+"%";
+}
+
+let METRIC = "mean";
+const MI = {mean:0, med:1, hit:2};
+function render(){
+  const body = document.getElementById("hmBody");
+  body.innerHTML = "";
+  DATA.forEach(row=>{
+    const [reg, days, ndx, spx, iwm] = row;
+    const [lN,lS,lI] = dixLevels(reg);
+    const tr = document.createElement("tr");
+    if(reg===FEATURE) tr.className = "feat";
+    tr.dataset.reg = reg; tr.style.cursor = "pointer";
+    tr.title = "Filter the price chart to this regime";
+
+    const tdReg = document.createElement("td");
+    tdReg.innerHTML = `<div class="reg-cell">
+      <div class="dixtiles">
+        <span class="dixtile" style="background:rgba(var(--acc-rgb),${dixAlpha(lN)})" title="NDX DIX ${lN}">N</span>
+        <span class="dixtile" style="background:rgba(var(--acc-rgb),${dixAlpha(lS)})" title="SPX DIX ${lS}">S</span>
+        <span class="dixtile" style="background:rgba(var(--acc-rgb),${dixAlpha(lI)})" title="IWM DIX ${lI}">I</span>
+      </div>
+      <span class="days">${days}d</span>
+    </div>`;
+    tr.appendChild(tdReg);
+
+    // DIX-level label cells
+    [[lN,"grp-dix"],[lS,""],[lI,""]].forEach(([lvl,cls])=>{
+      const td = document.createElement("td");
+      td.className = cls;
+      td.innerHTML = `<div class="retc"><div class="v" style="color:${lvl==="High"?css("--accent"):"var(--ink-dim)"};font-size:13px">${lvl}</div></div>`;
+      tr.appendChild(td);
+    });
+
+    [[ndx,"grp-ret"],[spx,""],[iwm,""]].forEach(([arr,cls])=>{
+      const v = arr[MI[METRIC]];
+      const {bg, ink} = retStyle(v, METRIC);
+      const td = document.createElement("td");
+      td.className = cls;
+      const xtra = METRIC==="hit" ? `μ ${arr[0]>=0?"+":""}${arr[0].toFixed(1)}` :
+                   METRIC==="mean" ? `hit ${Math.round(arr[2])}%` : `hit ${Math.round(arr[2])}%`;
+      td.innerHTML = `<div class="retc" style="background:${bg}">
+        <div class="v" style="color:${ink}">${fmt(v,METRIC)}</div>
+        <div class="x">${xtra}</div></div>`;
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+}
+document.querySelectorAll(".seg button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    METRIC = b.dataset.m;
+    document.querySelectorAll(".seg button").forEach(x=>x.setAttribute("aria-pressed", x===b));
+    const lg = document.getElementById("retLegend");
+    document.getElementById("lgL").textContent = METRIC==="hit" ? "20%" : "−4%";
+    document.getElementById("lgR").textContent = METRIC==="hit" ? "80%" : "+4%";
+    render();
+  });
+});
+render();
+
+// re-render on theme toggle so tints resolve against the active tokens
+new MutationObserver(render).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", render);
+
+// hero count-up + bars
+const reduce = window.matchMedia("(prefers-reduced-motion:reduce)").matches;
+function animateHero(){
+  document.querySelectorAll("#heroCard .bar").forEach(b=>{ b.style.width = b.dataset.w+"%"; });
+  document.querySelectorAll("#heroCard .big").forEach(el=>{
+    const target = parseFloat(el.dataset.count);
+    if(reduce){ el.textContent = "+"+target.toFixed(2)+"%"; return; }
+    const dur = 1000, t0 = performance.now();
+    (function step(now){
+      const p = Math.min(1, (now-t0)/dur);
+      const e = 1 - Math.pow(1-p, 3);
+      el.textContent = "+"+(target*e).toFixed(2)+"%";
+      if(p<1) requestAnimationFrame(step);
+    })(performance.now());
+  });
+}
+if("IntersectionObserver" in window){
+  const io = new IntersectionObserver((ents)=>{
+    ents.forEach(e=>{ if(e.isIntersecting){ animateHero(); io.disconnect(); } });
+  }, {threshold:.4});
+  io.observe(document.getElementById("heroCard"));
+} else animateHero();
+
+/* ===== price chart + regime filter ===== */
+const PX = /*__PX__*/;
+const META = /*__META__*/;
+const IDX3 = ["NDX","SPX","IWM"];
+const SERIES_TOK = ["--sNDX","--sSPX","--sIWM"];
+const LVL = {L:"Low", M:"Mid", H:"High"};
+let FILT = ["L","L","H"];               // default: the requested regime
+
+const cv = document.getElementById("pxCanvas");
+const ctx = cv.getContext("2d");
+const tip = document.getElementById("pTip");
+let PLOT = null, hoverI = -1;
+
+function matchMask(){
+  const N = PX.dates.length, m = new Uint8Array(N);
+  for(let i=0;i<N;i++){
+    const c = PX.code[i];
+    m[i] = (FILT[0]==="" || c[0]===FILT[0]) &&
+           (FILT[1]==="" || c[1]===FILT[1]) &&
+           (FILT[2]==="" || c[2]===FILT[2]) ? 1 : 0;
+  }
+  return m;
+}
+
+function updateFilterUI(){
+  document.querySelectorAll(".seg.lmh").forEach(seg=>{
+    const k = +seg.dataset.idx;
+    seg.querySelectorAll("button").forEach(b=>{
+      b.setAttribute("aria-pressed", (b.dataset.v||"") === FILT[k]);
+    });
+  });
+}
+
+function readout(mask){
+  let n=0; for(const v of mask) n+=v;
+  const el = document.getElementById("pfRead");
+  const anyOn = FILT.some(v=>v!=="");
+  const parts = IDX3.map((nm,k)=> FILT[k]==="" ? null : `${nm} ${LVL[FILT[k]]}`).filter(Boolean);
+  const lead = anyOn ? parts.join(" · ") : "No filter — all 1,648 days";
+  let rets = "";
+  IDX3.forEach((nm,k)=>{
+    let s=0,c=0; const arr=PX.ret[nm];
+    for(let i=0;i<mask.length;i++){ if(mask[i] && arr[i]!=null){ s+=arr[i]; c++; } }
+    const mean = c? s/c : null;
+    const col = mean==null ? "var(--ink-faint)" : mean>=0 ? "var(--pos-ink)" : "var(--neg-ink)";
+    const swatch = getComputedStyle(document.documentElement).getPropertyValue(SERIES_TOK[k]).trim();
+    const val = mean==null ? "—" : (mean>=0?"+":"")+mean.toFixed(2)+"%";
+    rets += `<span class="r"><i style="background:${swatch}"></i>${nm} <b style="color:${col}">${val}</b></span>`;
+  });
+  el.innerHTML =
+    `<span class="lead">${anyOn?"◆ ":""}${lead}</span>` +
+    `<span class="days">${n.toLocaleString()} day${n===1?"":"s"}${anyOn?` of 1,648 · mean 1-mo fwd →`:""}</span>` +
+    (anyOn ? `<span class="rets">${rets}</span>` : "");
+}
+
+function niceTicks(min,max,n){
+  const span=max-min, step0=span/n, mag=Math.pow(10,Math.floor(Math.log10(step0)));
+  const norm=step0/mag, step=(norm<1.5?1:norm<3?2:norm<7?5:10)*mag;
+  const out=[]; for(let t=Math.ceil(min/step)*step; t<=max+1e-9; t+=step) out.push(t);
+  return out;
+}
+
+function sizeCanvas(){
+  const dpr = Math.min(2, window.devicePixelRatio||1);
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w,h};
+}
+
+function draw(){
+  const {w,h} = sizeCanvas();
+  const cs = getComputedStyle(document.documentElement);
+  const col = k => cs.getPropertyValue(k).trim();
+  const line=col("--line"), soft=col("--line-soft"), faint=col("--ink-faint"),
+        dim=col("--ink-dim"), accRGB=col("--acc-rgb");
+  const sc = SERIES_TOK.map(col);
+  ctx.clearRect(0,0,w,h);
+
+  const pad={l:50,r:14,t:12,b:26};
+  const pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
+  const N=PX.dates.length;
+  let mn=Infinity,mx=-Infinity;
+  for(const nm of IDX3){ for(const v of PX.px[nm]){ if(v<mn)mn=v; if(v>mx)mx=v; } }
+  const padv=(mx-mn)*0.05; mn-=padv; mx+=padv;
+  const xF = i => pad.l + (N<2?0:i/(N-1))*pw;
+  const yF = v => pad.t + (1-(v-mn)/(mx-mn))*ph;
+  PLOT={pad,pw,ph,N,xF,yF};
+
+  ctx.font = "11px ui-monospace, Menlo, monospace";
+  ctx.textBaseline="middle";
+  // y grid + labels
+  ctx.textAlign="right";
+  niceTicks(mn,mx,5).forEach(t=>{
+    const y=yF(t);
+    ctx.strokeStyle=soft; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l,y+.5); ctx.lineTo(w-pad.r,y+.5); ctx.stroke();
+    ctx.fillStyle=faint; ctx.fillText(Math.round(t), pad.l-8, y);
+  });
+  // x year ticks
+  ctx.textAlign="center";
+  let prevYr=null;
+  for(let i=0;i<N;i++){
+    const yr=PX.dates[i].slice(0,4);
+    if(yr!==prevYr){ prevYr=yr;
+      if(i>0){ const x=xF(i);
+        ctx.strokeStyle=soft; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(x+.5,pad.t); ctx.lineTo(x+.5,pad.t+ph); ctx.stroke();
+        ctx.fillStyle=faint; ctx.fillText(yr, x, pad.t+ph+14);
+      }
+    }
+  }
+  // regime bands
+  const mask=matchMask();
+  ctx.fillStyle=`rgba(${accRGB},.42)`;
+  const bw=Math.max(1.4, pw/N + 0.6);
+  for(let i=0;i<N;i++){ if(mask[i]){ ctx.fillRect(xF(i)-bw/2, pad.t, bw, ph); } }
+
+  // price lines
+  ctx.lineJoin="round"; ctx.lineCap="round";
+  IDX3.forEach((nm,k)=>{
+    const arr=PX.px[nm];
+    ctx.strokeStyle=sc[k]; ctx.lineWidth=1.7; ctx.globalAlpha=1;
+    ctx.beginPath();
+    for(let i=0;i<N;i++){ const x=xF(i), y=yF(arr[i]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+    ctx.stroke();
+    // endpoint dot
+    ctx.fillStyle=sc[k];
+    ctx.beginPath(); ctx.arc(xF(N-1), yF(arr[N-1]), 3, 0, 7); ctx.fill();
+  });
+
+  // hover crosshair
+  if(hoverI>=0 && hoverI<N){
+    const x=xF(hoverI);
+    ctx.strokeStyle=dim; ctx.globalAlpha=.5; ctx.lineWidth=1;
+    ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(x+.5,pad.t); ctx.lineTo(x+.5,pad.t+ph); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+    IDX3.forEach((nm,k)=>{
+      const y=yF(PX.px[nm][hoverI]);
+      ctx.fillStyle=col("--surface"); ctx.strokeStyle=sc[k]; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(x,y,3.6,0,7); ctx.fill(); ctx.stroke();
+    });
+  }
+}
+
+function showTip(clientX){
+  if(!PLOT) return;
+  const rect=cv.getBoundingClientRect();
+  const px=clientX-rect.left;
+  let i=Math.round((px-PLOT.pad.l)/PLOT.pw*(PLOT.N-1));
+  i=Math.max(0,Math.min(PLOT.N-1,i));
+  hoverI=i; draw();
+  const c=PX.code[i];
+  const swatch=k=>getComputedStyle(document.documentElement).getPropertyValue(SERIES_TOK[k]).trim();
+  tip.innerHTML =
+    `<div class="d">${PX.dates[i]}</div>`+
+    `<div class="rg">N ${LVL[c[0]]} · S ${LVL[c[1]]} · I ${LVL[c[2]]}</div>`+
+    IDX3.map((nm,k)=>`<div class="rw"><span><i style="background:${swatch(k)}"></i>${nm}</span><b>${PX.px[nm][i].toFixed(1)}</b></div>`).join("");
+  tip.style.opacity=1;
+  const wrap=cv.parentElement.getBoundingClientRect();
+  let tx=PLOT.xF(i)+14; if(tx> wrap.width-170) tx=PLOT.xF(i)-tip.offsetWidth-14;
+  tip.style.left=Math.max(6,tx)+"px";
+  tip.style.top="18px";
+}
+cv.addEventListener("pointermove", e=>showTip(e.clientX));
+cv.addEventListener("pointerleave", ()=>{ hoverI=-1; tip.style.opacity=0; draw(); });
+
+function refresh(){ updateFilterUI(); readout(matchMask()); draw(); }
+
+document.querySelectorAll(".seg.lmh").forEach(seg=>{
+  const k=+seg.dataset.idx;
+  seg.querySelectorAll("button").forEach(b=>{
+    b.addEventListener("click", ()=>{ FILT[k]=b.dataset.v||""; refresh(); });
+  });
+});
+document.getElementById("pfReset").addEventListener("click", ()=>{ FILT=["","",""]; refresh(); });
+
+// heatmap rows drive the filter
+const L3={Low:"L",Mid:"M",High:"H"};
+document.getElementById("hmBody").addEventListener("click", e=>{
+  const tr=e.target.closest("tr[data-reg]"); if(!tr) return;
+  const m={}; tr.dataset.reg.split(",").forEach(p=>{const[a,b]=p.split("=");m[a]=b;});
+  FILT=[L3[m.N],L3[m.S],L3[m.I]]; refresh();
+  document.querySelector(".chart-wrap").scrollIntoView({behavior:"smooth", block:"center"});
+});
+
+let rAF=null;
+window.addEventListener("resize", ()=>{ cancelAnimationFrame(rAF); rAF=requestAnimationFrame(draw); });
+new MutationObserver(()=>{ readout(matchMask()); draw(); })
+  .observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+
+/* ===== bind computed figures from META (keeps the page correct as data refreshes) ===== */
+function applyMeta(){
+  if(typeof META==="undefined" || !META) return;
+  const pc = x => (x>=0?"+":"")+(+x).toFixed(2)+"%";
+  const set = (id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
+  set("mRange", META.range);
+  ["mNdays","mNdays2","mNdays3","mNdays4"].forEach(id=>set(id, META.n_days.toLocaleString()));
+  set("mIndep", META.n_indep); set("mNreg", META.n_reg); set("mBuilt", META.built);
+  // hero feature stat cards
+  document.querySelectorAll("#heroCard .stat").forEach(st=>{
+    const k=st.dataset.k, s=META.feature.stats[k]; if(!s) return;
+    st.querySelector(".big").dataset.count = s[0];
+    st.querySelector(".s-med").textContent = "med "+pc(s[1]);
+    st.querySelector(".s-hit").textContent = "hit "+Math.round(s[2])+"%";
+    st.querySelector(".s-delta").textContent = (s[3]>=0?"+":"")+s[3].toFixed(2)+" pp vs base";
+    st.querySelector(".bar").dataset.w = Math.round(s[2]);
+  });
+  // baseline cells
+  document.querySelectorAll(".base .cell").forEach(c=>{
+    const k=c.dataset.k, b=META.baseline[k]; if(!b) return;
+    c.querySelector(".v").textContent = pc(b[0]);
+    c.querySelector(".m").innerHTML = "median "+pc(b[1])+" &nbsp;·&nbsp; hit "+Math.round(b[2])+"%";
+  });
+  // findings figures
+  const f=META.find||{};
+  set("fComov", f.comov); set("fIwmVal", f.iwmVal); set("fIwmHit", f.iwmHit); set("fFeat", f.feat);
+  set("fBestVal", f.bestVal); set("fBestHit", f.bestHit); set("fBestReg", f.bestReg);
+}
+applyMeta();
+refresh();
+
+</script>
