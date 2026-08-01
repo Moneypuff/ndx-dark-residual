@@ -11,13 +11,24 @@ timestamp to US/Eastern classifies each report as:
     amc       accepted at/after 16:00 ET (news out after the close)
     intraday  accepted during the session (rarer; flagged)
 
-Output CSV columns: ticker, report_date (filing date), accept_et, timing.
+Output CSV columns: ticker, report_date (filing date), accept_et, timing, source.
 This is a drop-in replacement for the hand-curated earnings_dates.csv.
+
+Foreign private issuers (ASML, ARM, PDD, ...) never file 8-K/2.02 -- their
+results go out as 6-K filings mixed in with every other press release. For any
+ticker with no 8-K earnings events we fall back to a 6-K heuristic: within each
+calendar quarter's expected reporting window (5-80 days after quarter end),
+candidate 6-Ks are scored by their filing-index contents (an EX-99 exhibit,
+earnings-keyword document names) and the best-scoring one becomes that
+quarter's event (`source=6k`). Heuristic by construction -- flagged in the
+study's caveats -- but it recovers the quarterly cadence for the six foreign
+NDX names that were previously dropped.
 
     python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
     python fetch_earnings_edgar.py --tickers AAPL,MSFT,PEP --start 2018-01-01
 """
 import argparse
+import re
 import sys
 import time
 from datetime import datetime, time as dtime
@@ -63,6 +74,86 @@ def classify(accept_iso):
     else:
         timing = "intraday"
     return dt.strftime("%Y-%m-%d"), dt.strftime("%Y-%m-%d %H:%M ET"), timing
+
+
+FILING_INDEX_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/index.json"
+# document-name / exhibit-type hints that a 6-K carries quarterly results
+EARN_NAME_RE = re.compile(
+    r"(press|results|earning|interim|quarter|[._-]q[1-4]|fy\d{2})", re.IGNORECASE)
+
+
+def _six_k_score(session, cik, accession):
+    """Score a 6-K filing by its index contents: +2 if any document name looks
+    like an earnings release, +1 if it carries an EX-99 exhibit. Returns 0 on
+    any fetch problem (the filing is then only used as a last resort)."""
+    acc = accession.replace("-", "")
+    try:
+        r = session.get(FILING_INDEX_URL.format(cik=int(cik[3:]), acc=acc),
+                        headers=HEADERS, timeout=30)
+        if r.status_code != 200:
+            return 0
+        items = r.json().get("directory", {}).get("item", [])
+    except Exception:  # noqa: BLE001
+        return 0
+    score = 0
+    names = " ".join(str(it.get("name", "")) for it in items)
+    types = " ".join(str(it.get("type", "")) for it in items).upper()
+    if EARN_NAME_RE.search(names):
+        score += 2
+    if "EX-99" in types:
+        score += 1
+    return score
+
+
+def foreign_6k_events(session, cik, start=None, pause=0.12):
+    """Quarterly earnings events for a foreign private issuer via its 6-K trail.
+
+    For each calendar quarter, candidate 6-Ks accepted 5-80 days after the
+    quarter end are scored (`_six_k_score`); the best scorer wins the quarter
+    (earliest on ties). A lone candidate in the window is accepted even when
+    unscored -- many foreign filers name their documents blandly. Returns rows
+    shaped like `earnings_for_cik`'s.
+    """
+    cands = []
+    for blk in _iter_filing_blocks(session, cik):
+        forms = blk.get("form", [])
+        for i in range(len(forms)):
+            if forms[i] != "6-K":
+                continue
+            accept = blk["acceptanceDateTime"][i]
+            try:
+                adate, et, timing = classify(accept)
+            except Exception:  # noqa: BLE001
+                adate, et, timing = blk["filingDate"][i], "", ""
+            cands.append({"adate": adate, "fdate": blk["filingDate"][i], "et": et,
+                          "timing": timing, "acc": blk["accessionNumber"][i]})
+    if not cands:
+        return []
+    cands.sort(key=lambda c: c["adate"])
+    lo = pd.Timestamp(start) if start else pd.Timestamp("2018-01-01")
+    qends = pd.date_range(lo.normalize() - pd.offsets.QuarterEnd(),
+                          pd.Timestamp.today() + pd.offsets.QuarterEnd(), freq="QE")
+    score_cache = {}
+    picked = {}
+    for qe in qends:
+        win = [c for c in cands
+               if qe + pd.Timedelta(days=5) <= pd.Timestamp(c["adate"])
+               <= qe + pd.Timedelta(days=80)]
+        best, best_score = None, -1
+        for c in win:
+            if c["acc"] not in score_cache:
+                time.sleep(pause)
+                score_cache[c["acc"]] = _six_k_score(session, cik, c["acc"])
+            s = score_cache[c["acc"]]
+            if s > best_score:
+                best, best_score = c, s
+        if best is None:
+            continue
+        if best_score >= 1 or len(win) == 1:
+            picked[best["acc"]] = best
+    return [(c["adate"], c["fdate"], c["et"], c["timing"])
+            for c in sorted(picked.values(), key=lambda c: c["adate"])
+            if not (start and c["adate"] < start)]
 
 
 def _iter_filing_blocks(session, cik):
@@ -152,13 +243,20 @@ def main():
             continue
         time.sleep(args.pause)
         evs = earnings_for_cik(session, cik, start=args.start)
+        source = "8k"
+        if not evs:
+            # foreign private issuers (ASML, ARM, PDD, ...) publish results as
+            # 6-Ks instead of 8-K/2.02 -- recover them heuristically
+            evs = foreign_6k_events(session, cik, start=args.start, pause=args.pause)
+            source = "6k"
         if not evs:
             no_earn.append(tk)
             continue
         for adate, fdate, et, timing in evs:
             out_rows.append({"ticker": tk, "report_date": adate, "filing_date": fdate,
-                             "accept_et": et, "timing": timing})
-        print(f"  {tk:6s} {cik}  {len(evs):3d} earnings 8-Ks", file=sys.stderr)
+                             "accept_et": et, "timing": timing, "source": source})
+        print(f"  {tk:6s} {cik}  {len(evs):3d} earnings "
+              f"{'8-Ks' if source == '8k' else '6-Ks (heuristic)'}", file=sys.stderr)
 
     df = pd.DataFrame(out_rows).sort_values(["ticker", "report_date"])
     # de-dupe: occasionally an 8-K/A amendment repeats a date
