@@ -232,6 +232,8 @@ def build_events(earnings, panels, horizons=HORIZONS, dpi_windows=(5, 10), ancho
             "has_data": int(np.isfinite(rets["next_day_ret"])),
         })
     ev = pd.DataFrame(rows)
+    if ev.empty:                                # no event produced a row: nothing to rank
+        return ev
     # within-name DPI percentile ranks (0..1): "is this event's run-in DPI high
     # *for this name*?" -- removes cross-sectional level differences between names
     for w in dpi_windows:
