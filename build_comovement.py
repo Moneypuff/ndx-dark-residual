@@ -13,9 +13,12 @@ Yahoo loader), and computes:
     (powers the filterable price chart)
   * baseline / requested-regime / headline figures -> `META`
     (so the prose figures stay correct as the dashboard refreshes)
+  * an NDX-DIX5 x IWM-DIX5 quintile grid of SPX 1-month forward returns,
+    plus SPX-DIX-level facets and one-gauge marginals -> `HEAT`
+    (powers the pairwise heatmaps)
 
-The HTML shell lives in comovement_template.html with three placeholders
-(/*__DATA__*/, /*__PX__*/ and /*__META__*/). Mirrors build_report.py.
+The HTML shell lives in comovement_template.html with four placeholders
+(/*__DATA__*/, /*__PX__*/, /*__META__*/ and /*__HEAT__*/). Mirrors build_report.py.
 
     python build_comovement.py --docs-out docs/comovement.html --cache-dir .ndx_dark_cache
 """
@@ -106,6 +109,45 @@ def build_data(A):
         rows.append([reg, int(len(g)), n, s, i])
     rows.sort(key=lambda r: -r[1])
     return rows
+
+
+def cell_stats(r):
+    """[mean, median, hit%, n] for a Series of forward returns, or None if empty."""
+    r = r.dropna()
+    if not len(r):
+        return None
+    return [round(float(r.mean()), 2), round(float(r.median()), 2),
+            round(float((r > 0).mean() * 100)), int(len(r))]
+
+
+def build_heat(A, q=5):
+    """NDX-DIX5 x IWM-DIX5 quintile grid of the SPX 1-month forward return -> `HEAT`.
+
+    pair   : q x q grid (rows = IWM quintile, cols = NDX quintile) of SPX_ret stats
+    facet  : the same grid sliced by SPX's own DIX level (L/M/H deciles, as elsewhere)
+    margx/y: one-gauge marginals (all IWM rows collapsed / all NDX cols collapsed)
+    edges  : the DIX5 quintile boundaries, for tooltips
+    """
+    x = pd.qcut(A["NDX_dix5"], q, labels=False, duplicates="drop")
+    y = pd.qcut(A["IWM_dix5"], q, labels=False, duplicates="drop")
+    r = A["SPX_ret"]
+
+    def grid(mask):
+        return [[cell_stats(r[mask & (x == i) & (y == j)]) for i in range(q)]
+                for j in range(q)]
+
+    every = pd.Series(True, index=A.index)
+    qs = [i / q for i in range(q + 1)]
+    return {
+        "q": q,
+        "pair": grid(every),
+        "facet": {z: grid(A["SPX_z"] == z) for z in ("L", "M", "H")},
+        "margx": [cell_stats(r[x == i]) for i in range(q)],
+        "margy": [cell_stats(r[y == j]) for j in range(q)],
+        "all": cell_stats(r),
+        "edges": {"NDX": [round(float(v), 3) for v in A["NDX_dix5"].quantile(qs)],
+                  "IWM": [round(float(v), 3) for v in A["IWM_dix5"].quantile(qs)]},
+    }
 
 
 def build_px(A):
@@ -208,11 +250,13 @@ def main():
     data = build_data(A)
     px = build_px(A)
     meta = build_meta(A, data, P)
+    heat = build_heat(A)
 
     body = (Path(args.template).read_text(encoding="utf-8")
             .replace("/*__DATA__*/", json.dumps(data, separators=(",", ":")))
             .replace("/*__PX__*/", json.dumps(px, separators=(",", ":")))
-            .replace("/*__META__*/", json.dumps(meta, separators=(",", ":"))))
+            .replace("/*__META__*/", json.dumps(meta, separators=(",", ":")))
+            .replace("/*__HEAT__*/", json.dumps(heat, separators=(",", ":"))))
     doc = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
            '<meta name="viewport" content="width=device-width,initial-scale=1">'
            '<title>DIX Comovement → 1-Month Forward Returns</title></head>'

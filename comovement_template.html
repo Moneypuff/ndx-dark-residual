@@ -262,6 +262,46 @@ tr.feat .reg-cell::before{content:"◆"; color:var(--accent); font-size:10px; ma
   display:flex; gap:8px; align-items:baseline}
 .chart-cap b{color:var(--ink-dim); font-weight:500}
 
+/* ---- pairwise DIX heatmap ---- */
+.hxwrap{border:1px solid var(--line); border-radius:14px; background:var(--surface);
+  box-shadow:var(--shadow); padding:20px 22px 16px; overflow-x:auto}
+.hxtitle{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-dim); margin:0 0 14px; display:flex; align-items:center; gap:9px}
+.hxtitle .sw{width:9px; height:9px; border-radius:2px; display:inline-block;
+  background:rgba(var(--acc-rgb),.55); border:1px solid var(--accent-line)}
+.hxgrid{display:grid; gap:5px; min-width:560px}
+.hxgrid.sm{min-width:0}
+.hxc{border-radius:7px; min-height:54px; display:flex; flex-direction:column; align-items:flex-end;
+  justify-content:center; padding:7px 10px; font-family:var(--mono); position:relative;
+  border:1px solid transparent}
+.hxc b{font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.01em}
+.hxc span{font-size:10px; color:var(--ink-faint); margin-top:2px}
+.hxc.empty{border:1px dashed var(--line-soft)}
+.hxc.thin b{opacity:.6}
+.hxc.thin::after{content:"~"; position:absolute; top:4px; left:8px; font-size:10px;
+  color:var(--ink-faint)}
+.hxc.mx{margin-left:9px}
+.hxc.my{margin-top:9px}
+.hxc.marg{border:1px dashed var(--line)}
+.hxgrid.sm{gap:3px}
+.hxgrid.sm .hxc{min-height:38px; padding:2px 4px; align-items:center; justify-content:center}
+.hxgrid.sm .hxc b{font-size:11px}
+.hxgrid.sm .hxc span{display:none}
+.hxgrid.sm .hxc.thin::after{display:none}
+.hxfacets .hxwrap{padding:16px 14px 12px}
+.hxlab{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); display:flex;
+  align-items:center; justify-content:center; text-align:center; white-space:nowrap}
+.hxlab.y{justify-content:flex-end; padding-right:9px}
+.hxlab.my{margin-top:9px}
+.hxaxis{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint); margin-top:12px; text-align:center}
+.hxfhead{margin:40px 0 18px}
+.hxfhead h3{margin:0 0 8px; font-size:18px; font-weight:700; letter-spacing:-.01em}
+.hxfhead p{margin:0; font-size:14.5px; color:var(--ink-dim); max-width:70ch}
+.hxfhead p b{color:var(--ink)}
+.hxfacets{display:grid; grid-template-columns:repeat(3,1fr); gap:14px}
+@media (max-width:860px){ .hxfacets{grid-template-columns:1fr} }
+
 /* ---- findings ---- */
 .finds{display:grid; gap:14px}
 .find{
@@ -456,7 +496,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     </div>
 
     <div class="controls">
-      <div class="seg" role="group" aria-label="cell metric">
+      <div class="seg" id="tblSeg" role="group" aria-label="cell metric">
         <button data-m="mean" aria-pressed="true">Mean return</button>
         <button data-m="med" aria-pressed="false">Median</button>
         <button data-m="hit" aria-pressed="false">Hit-rate</button>
@@ -489,6 +529,54 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     <div class="sec-h">
       <span class="n">05</span>
       <div>
+        <h2>The pairwise map — NDX DIX × IWM DIX, coloured by SPX's next month</h2>
+        <p class="h-sub">Each gauge's 5-day DIX is split into quintiles over the common sample
+          (Q1&nbsp;=&nbsp;coldest fifth, Q5&nbsp;=&nbsp;hottest). Every cell is the <b>S&amp;P&nbsp;500's own 1-month
+          forward return</b> on the days that combination held. The dashed strips are the one-gauge
+          marginals — the bottom strip is the direct test of whether a strong or weak NDX DIX,
+          on its own, dictates the forward return.</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="seg" id="hxSeg" role="group" aria-label="heatmap metric">
+        <button data-m="mean" aria-pressed="true">Mean return</button>
+        <button data-m="med" aria-pressed="false">Median</button>
+        <button data-m="hit" aria-pressed="false">Hit-rate</button>
+      </div>
+      <div class="legend"><span id="hxLgL">−4%</span><span class="scale"></span><span id="hxLgR">+4%</span></div>
+    </div>
+
+    <div class="hxwrap">
+      <p class="hxtitle">All days · heat = SPX 1-mo forward</p>
+      <div id="hxPair"></div>
+      <p class="hxaxis">NDX DIX quintile — low → high</p>
+    </div>
+    <p class="hm-note" id="hxMargNote"></p>
+
+    <div class="hxfhead">
+      <h3>Adding the third gauge — the cube, sliced</h3>
+      <p>Three DIX axes plus a colour won't fit in one panel, so the third dimension is
+        <b>sliced instead of plotted</b>: the same NDX&nbsp;×&nbsp;IWM map is drawn three times, once for each
+        level of SPX's own DIX (Low / Mid / High, the decile bands used everywhere above). Think of them
+        as three floors of a cube — pick the floor that matches today's SPX DIX, then read the
+        NDX&nbsp;×&nbsp;IWM cell you're in. Cells marked <b>~</b> hold fewer than 10 days; blank
+        cells never occurred.</p>
+    </div>
+    <div class="hxfacets">
+      <div class="hxwrap"><p class="hxtitle"><span class="sw" style="background:rgba(var(--acc-rgb),.09)"></span>SPX DIX Low</p><div id="hxF_L"></div></div>
+      <div class="hxwrap"><p class="hxtitle"><span class="sw" style="background:rgba(var(--acc-rgb),.34)"></span>SPX DIX Mid</p><div id="hxF_M"></div></div>
+      <div class="hxwrap"><p class="hxtitle"><span class="sw" style="background:rgba(var(--acc-rgb),.78)"></span>SPX DIX High</p><div id="hxF_H"></div></div>
+    </div>
+    <p class="hm-note"><b>Caveat:</b> slicing 1,600-odd overlapping sessions three ways leaves many
+      cells thin — treat single cells as suggestive and lean on the marginals and the full-sample map
+      for anything you'd act on.</p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">06</span>
+      <div>
         <h2>What the pattern says</h2>
         <p class="h-sub">Four reads that hold across the table.</p>
       </div>
@@ -518,7 +606,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
 
   <section>
     <div class="sec-h">
-      <span class="n">06</span>
+      <span class="n">07</span>
       <div><h2>Read with these in mind</h2></div>
     </div>
     <div class="cav">
@@ -625,10 +713,10 @@ function render(){
     body.appendChild(tr);
   });
 }
-document.querySelectorAll(".seg button").forEach(b=>{
+document.querySelectorAll("#tblSeg button").forEach(b=>{
   b.addEventListener("click", ()=>{
     METRIC = b.dataset.m;
-    document.querySelectorAll(".seg button").forEach(x=>x.setAttribute("aria-pressed", x===b));
+    document.querySelectorAll("#tblSeg button").forEach(x=>x.setAttribute("aria-pressed", x===b));
     const lg = document.getElementById("retLegend");
     document.getElementById("lgL").textContent = METRIC==="hit" ? "20%" : "−4%";
     document.getElementById("lgR").textContent = METRIC==="hit" ? "80%" : "+4%";
@@ -855,6 +943,98 @@ let rAF=null;
 window.addEventListener("resize", ()=>{ cancelAnimationFrame(rAF); rAF=requestAnimationFrame(draw); });
 new MutationObserver(()=>{ readout(matchMask()); draw(); })
   .observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+
+/* ===== pairwise DIX heatmaps (section 05) ===== */
+const HEAT = /*__HEAT__*/;
+let HXM = "mean";                       // heatmap metric, independent of the table's
+const HQ = HEAT.q;
+
+function hxTile(st, extra, name, small){
+  const d = document.createElement("div");
+  d.className = "hxc" + (extra ? " " + extra : "");
+  if(!st){ d.classList.add("empty"); d.title = (name||"") + " — no days in sample"; return d; }
+  const v = st[MI[HXM]];
+  const {bg, ink} = retStyle(v, HXM);
+  d.style.background = bg;
+  if(st[3] < 10) d.classList.add("thin");
+  const lab = (small && HXM !== "hit") ? (v>=0?"+":"") + v.toFixed(1) + "%" : fmt(v, HXM);
+  d.innerHTML = `<b style="color:${ink}">${lab}</b>`
+              + `<span style="color:${ink};opacity:.62">${st[3]}d</span>`;
+  d.title = `${name} · ${st[3]} day${st[3]===1?"":"s"} · SPX 1-mo fwd — mean ${fmt(st[0],"mean")}`
+          + ` · median ${fmt(st[1],"med")} · hit ${st[2]}%`;
+  return d;
+}
+function hxLab(txt, extra){
+  const d = document.createElement("div");
+  d.className = "hxlab" + (extra ? " " + extra : "");
+  d.textContent = txt;
+  return d;
+}
+function qRange(k, i){
+  const e = (HEAT.edges||{})[k];
+  return e ? ` [${e[i].toFixed(3)}–${e[i+1].toFixed(3)}]` : "";
+}
+
+function renderPair(){
+  const g = document.createElement("div");
+  g.className = "hxgrid";
+  g.style.gridTemplateColumns = `58px repeat(${HQ},1fr) minmax(64px,.85fr)`;
+  for(let j = HQ-1; j >= 0; j--){                       // IWM hot at the top
+    g.appendChild(hxLab("IWM Q"+(j+1), "y"));
+    for(let i = 0; i < HQ; i++)
+      g.appendChild(hxTile(HEAT.pair[j][i], "",
+        `NDX Q${i+1}${qRange("NDX",i)} × IWM Q${j+1}${qRange("IWM",j)}`));
+    g.appendChild(hxTile(HEAT.margy[j], "marg mx", `IWM Q${j+1} alone — any NDX`));
+  }
+  g.appendChild(hxLab("all IWM", "y my"));
+  for(let i = 0; i < HQ; i++)
+    g.appendChild(hxTile(HEAT.margx[i], "marg my", `NDX Q${i+1} alone — any IWM`));
+  g.appendChild(hxTile(HEAT.all, "marg mx my", "All days — unconditional"));
+  g.appendChild(hxLab("", ""));
+  for(let i = 0; i < HQ; i++) g.appendChild(hxLab("NDX Q"+(i+1)));
+  g.appendChild(hxLab("all NDX"));
+  document.getElementById("hxPair").replaceChildren(g);
+}
+
+function renderFacet(z){
+  const g = document.createElement("div");
+  g.className = "hxgrid sm";
+  g.style.gridTemplateColumns = `46px repeat(${HQ},1fr)`;
+  const grid = HEAT.facet[z], nm = {L:"Low",M:"Mid",H:"High"}[z];
+  for(let j = HQ-1; j >= 0; j--){
+    g.appendChild(hxLab("I·Q"+(j+1), "y"));
+    for(let i = 0; i < HQ; i++)
+      g.appendChild(hxTile(grid[j][i], "", `SPX DIX ${nm} · NDX Q${i+1} × IWM Q${j+1}`, true));
+  }
+  g.appendChild(hxLab("", ""));
+  for(let i = 0; i < HQ; i++) g.appendChild(hxLab("N·Q"+(i+1)));
+  document.getElementById("hxF_"+z).replaceChildren(g);
+}
+
+function hxNote(){
+  const el = document.getElementById("hxMargNote");
+  const bot = HEAT.margx[0], top = HEAT.margx[HQ-1];
+  const yb = HEAT.margy[0], yt = HEAT.margy[HQ-1];
+  if(!bot || !top || !yb || !yt){ el.textContent = ""; return; }
+  el.innerHTML = `<b>The marginals say:</b>&nbsp;NDX DIX alone — coldest quintile
+    → SPX ${fmt(bot[0],"mean")} mean month (hit ${bot[2]}%), hottest → ${fmt(top[0],"mean")}
+    (hit ${top[2]}%). IWM DIX alone — coldest → ${fmt(yb[0],"mean")}, hottest → ${fmt(yt[0],"mean")}.`;
+}
+
+function renderHeatAll(){ renderPair(); ["L","M","H"].forEach(renderFacet); hxNote(); }
+document.querySelectorAll("#hxSeg button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    HXM = b.dataset.m;
+    document.querySelectorAll("#hxSeg button").forEach(x=>x.setAttribute("aria-pressed", x===b));
+    document.getElementById("hxLgL").textContent = HXM==="hit" ? "20%" : "−4%";
+    document.getElementById("hxLgR").textContent = HXM==="hit" ? "80%" : "+4%";
+    renderHeatAll();
+  });
+});
+renderHeatAll();
+new MutationObserver(renderHeatAll)
+  .observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", renderHeatAll);
 
 /* ===== bind computed figures from META (keeps the page correct as data refreshes) ===== */
 function applyMeta(){
