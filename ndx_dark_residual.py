@@ -1454,7 +1454,8 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
 
     sectors_payload = (build_sector_payload(sector_data["members"], sector_data["short"],
                                             sector_data["total"], sector_data["close"],
-                                            sector_data["d"], keep)
+                                            sector_data["d"], keep,
+                                            etf_px=sector_data.get("etf_px"))
                        if sector_data else None)
     # Decile source for the sector drill-down: pack raw-D + forward returns for just the names
     # actually shown in the sector modals (top constituents by dark-dollar share), from the
@@ -1678,12 +1679,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="legend"><span id="relLegend"></span></div>
   </div>
   <div class="controls" id="ctl-idx" style="display:none">
-    <div class="seg" id="idxSel" title="which index DIX-vs-return views to show -- toggle any combination (one or several)">
+    <div class="seg" id="idxSel" title="which DIX-vs-return views to show -- toggle any combination (one or several)">
       <button data-i="ndx" class="on">NDX-100</button>
       <button data-i="spx">S&amp;P 500</button>
       <button data-i="iwm">IWM</button>
+      <button data-i="sec">Sectors</button>
     </div>
-    <span class="sub" style="align-self:center">toggle one or several indices to compare</span>
+    <span class="sub" style="align-self:center">toggle one or several views to compare</span>
+  </div>
+  <div class="controls" id="ctl-sec" style="display:none">
+    <label class="chk" title="which sector / industry fund's reconstructed DIX to plot against its own ETF's forward return">sector ETF
+      <select id="secSel" style="margin-left:4px"></select>
+    </label>
+    <label class="chk" title="force all three horizon panels onto one shared y-axis (and scatter x/y range) so the magnitude of the effect is directly comparable across 1mo / 2mo / 3mo"><input type="checkbox" id="secShared"/> shared axis · sector panels</label>
   </div>
   <div class="controls" id="ctl-contrib" style="display:none">
     <div class="seg" id="contribSel" title="which index's dollar-DIX to decompose into per-name contributions">
@@ -1834,6 +1842,43 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
   </div>
 </div>
+<div class="rel-wrap" id="secWrap" style="display:none">
+  <div class="sub" id="secSub" style="margin:0 22px 4px"></div>
+  <div class="vanilla-grid" id="secGrid">
+    <div class="rel-card">
+      <h2 id="secH21">Sector DIX vs 1-month forward return <span style="color:var(--mut);font-weight:400">(21 trading days)</span></h2>
+      <svg id="cBars21" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+      <svg id="cScatter21" class="scatter" viewBox="0 0 800 320" preserveAspectRatio="none"></svg>
+      <div class="panel-stats" id="cStats21"></div>
+    </div>
+    <div class="rel-card">
+      <h2 id="secH42">Sector DIX vs 2-month forward return <span style="color:var(--mut);font-weight:400">(42 trading days)</span></h2>
+      <svg id="cBars42" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+      <svg id="cScatter42" class="scatter" viewBox="0 0 800 320" preserveAspectRatio="none"></svg>
+      <div class="panel-stats" id="cStats42"></div>
+    </div>
+    <div class="rel-card">
+      <h2 id="secH63">Sector DIX vs 3-month forward return <span style="color:var(--mut);font-weight:400">(63 trading days)</span></h2>
+      <svg id="cBars63" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+      <svg id="cScatter63" class="scatter" viewBox="0 0 800 320" preserveAspectRatio="none"></svg>
+      <div class="panel-stats" id="cStats63"></div>
+    </div>
+  </div>
+  <div class="rel-card" style="margin:20px 22px 0">
+    <h2>All sector / industry funds &middot; DIX vs own-ETF forward return, at a glance</h2>
+    <div id="secTbl" style="overflow-x:auto"></div>
+    <div class="sub" style="margin-top:10px;font-size:11px;line-height:1.55">
+      Each fund's reconstructed dollar-DIX (5-day MA, &Sigma;$ short &divide; &Sigma;$ off-exchange
+      across its own constituents &mdash; the identical construction to the Sector DIX tab) paired
+      with <b>its own ETF's</b> forward return on the same day. <b>r</b> = Pearson correlation per
+      horizon; <b>D10&minus;D1</b> = mean 1-month forward return in the fund's highest DIX decile
+      minus its lowest (the size of the effect, in return points); <b>now</b> = which decile of its
+      own history today's DIX sits in. Daily observations of overlapping h-day returns are heavily
+      autocorrelated, so judge magnitudes by the effective-N stats in the panels above, not raw n.
+      <b>Click a row</b> to load that fund into the decile / scatter panels.
+    </div>
+  </div>
+</div>
 <div class="rel-wrap" id="contribWrap" style="display:none">
   <div class="sub" id="contribSub" style="margin:0 22px 4px"></div>
   <div class="rel-card" style="margin:0 22px 14px">
@@ -1950,7 +1995,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     between the broad GICS sectors and finer SPDR S&amp;P industry funds (e.g. Homebuilders,
     Retail, Oil&nbsp;&amp;&nbsp;Gas&nbsp;E&amp;P, Regional Banks), which use the identical
     construction. Cross-sector correlation is moderate (~0.5) &mdash; sectors
-    share a common dark-flow component but carry distinct signals.
+    share a common dark-flow component but carry distinct signals. For each fund's DIX plotted
+    against <b>its own ETF's forward return</b> (deciles, scatter, correlations), see
+    <b>DIX vs Return &rarr; Sectors</b>.
   </div>
 </div>
 <div class="rel-wrap" id="spxtblWrap" style="display:none">
@@ -2926,6 +2973,134 @@ function renderIwm(){
 document.getElementById('iwmShared').addEventListener('change', e=>{
   iwmShared = e.target.checked;
   renderIwm();
+});
+
+// -------------------------------------------------------------------------
+// DIX vs Return -> Sectors: each sector / industry fund's reconstructed
+// dollar-DIX (the 5d-MA series already packed for the Sector DIX tab) against
+// ITS OWN ETF's forward return (r21/r42/r63 packed per item). Same layout and
+// add-ons as the NDX/SPX/IWM views, plus a cross-sector summary table.
+// -------------------------------------------------------------------------
+let secShared = false, secCur = null, secWired = false;
+function secItems(){
+  const S = P.sectors;
+  if(!S || !S.items) return [];
+  return S.items.filter(it => it.r21 && it.r21.some(v => v != null));
+}
+function secPairs(it, h){
+  const d = it.series, rs = it['r' + h], out = [];
+  if(!d || !rs) return out;
+  const n = Math.min(d.length, rs.length);
+  for(let i=0;i<n;i++){
+    if(d[i]==null || rs[i]==null) continue;
+    out.push([d[i], rs[i]]);
+  }
+  return out;
+}
+function secSpread(it){
+  // D10-D1: mean 1-month forward return in the fund's top DIX decile minus its bottom one
+  const bk = deciles(secPairs(it, '21'), 10);
+  if(!bk || !bk[0] || !bk[9]) return null;
+  return bk[9].rMean - bk[0].rMean;
+}
+function secTodayDecile(it){
+  const bk = deciles(secPairs(it, '21'), 10), today = lastNonNull(it.series);
+  if(today==null || !bk) return -1;
+  for(let b=0;b<bk.length;b++){ if(bk[b] && today>=bk[b].dLo && today<=bk[b].dHi) return b; }
+  return (bk[9] && today>bk[9].dHi) ? 9 : 0;
+}
+function renderSecTable(items){
+  const rows = items.map(it => {
+    const r = {};
+    for(const h of ['21','42','63']) r['r'+h] = pearson(secPairs(it, h));
+    return { it, ...r, spread: secSpread(it), dec: secTodayDecile(it) };
+  }).sort((a,b) => (b.spread==null?-Infinity:b.spread) - (a.spread==null?-Infinity:a.spread));
+  const fr = v => v==null ? '·' : v.toFixed(3);
+  const cls = v => v==null ? 'na' : v>=0 ? 'pos' : 'neg';
+  let h = '<table class="dtbl"><thead><tr><th>Fund</th><th>level</th><th>names</th>'
+        + '<th title="latest 5d-MA reconstructed DIX">DIX now</th>'
+        + '<th title="percentile of today\'s DIX within the fund\'s trailing year">1y %ile</th>'
+        + '<th title="which decile of its own full-window history today\'s DIX sits in">now dec</th>'
+        + '<th title="Pearson correlation, DIX vs own-ETF 1-month forward return">r 1mo</th>'
+        + '<th>r 2mo</th><th>r 3mo</th>'
+        + '<th title="mean 1-month forward return in the top DIX decile minus the bottom one">D10−D1 1mo</th>'
+        + '</tr></thead><tbody>';
+  for(const row of rows){
+    const it = row.it, on = it.etf===secCur ? ' style="outline:1.5px solid var(--accent);outline-offset:-2px"' : '';
+    h += `<tr data-etf="${it.etf}" style="cursor:pointer"${it.etf===secCur?' class="cur"':''}>`
+       + `<td class="tk"${on}>${it.etf} <span style="color:var(--mut);font-weight:500">${it.name}</span></td>`
+       + `<td class="now">${it.level==='subsector' ? (it.parent||'subsector') : 'sector'}</td>`
+       + `<td>${it.n}</td><td>${it.cur.toFixed(3)}</td><td>${it.pct}%</td>`
+       + `<td class="now">${row.dec>=0 ? 'D'+(row.dec+1) : '--'}</td>`
+       + `<td class="${cls(row.r21)}"><span class="m">${fr(row.r21)}</span></td>`
+       + `<td class="${cls(row.r42)}"><span class="m">${fr(row.r42)}</span></td>`
+       + `<td class="${cls(row.r63)}"><span class="m">${fr(row.r63)}</span></td>`
+       + `<td class="${cls(row.spread)}"><span class="m">${row.spread==null?'·':fmtPct(row.spread)}</span></td>`
+       + '</tr>';
+  }
+  document.getElementById('secTbl').innerHTML = h + '</tbody></table>';
+}
+function renderSec(){
+  const items = secItems();
+  const sub = document.getElementById('secSub');
+  if(!items.length){
+    sub.textContent = 'no sector DIX-vs-return data in this payload (live builds only; regenerate the dashboard to add the sector ETF forward returns)';
+    document.getElementById('secGrid').innerHTML = '<div class="modal-empty">No sector DIX-vs-return data available.</div>';
+    document.getElementById('secTbl').innerHTML = '';
+    return;
+  }
+  const sel = document.getElementById('secSel');
+  if(!secWired){
+    const opt = it => `<option value="${it.etf}">${it.etf} · ${it.name}</option>`;
+    const broad = items.filter(it => (it.level || 'sector') === 'sector');
+    const fine = items.filter(it => it.level === 'subsector');
+    sel.innerHTML = `<optgroup label="Sectors">${broad.map(opt).join('')}</optgroup>`
+      + (fine.length ? `<optgroup label="Subsectors">${fine.map(opt).join('')}</optgroup>` : '');
+    sel.addEventListener('change', ()=>{ secCur = sel.value; renderSec(); });
+    document.getElementById('secTbl').addEventListener('click', e=>{
+      const tr = e.target.closest('tr[data-etf]'); if(!tr) return;
+      secCur = tr.dataset.etf; sel.value = secCur; renderSec();
+    });
+    secWired = true;
+  }
+  if(!secCur || !items.some(it => it.etf === secCur)) secCur = items[0].etf;
+  sel.value = secCur;
+  const it = items.find(x => x.etf === secCur);
+  const dates = P.sectors.dates;
+  sub.textContent =
+    `${it.etf} · ${it.name}${it.parent ? ' (' + it.parent + ')' : ''} — reconstructed dollar-DIX `
+    + `(5d MA, Σ$short/Σ$off-exch across ${it.n} constituents) vs ${it.etf}'s own forward return`
+    + ` · ${dates.length.toLocaleString()} days · ${dates[0]} → ${dates[dates.length-1]}`
+    + (secShared ? ' · shared axis' : '');
+  for(const h of ['21','42','63']){
+    const el = document.getElementById('secH'+h);
+    if(el) el.firstChild.textContent = `${it.etf} DIX vs ${h==='21'?'1':h==='42'?'2':'3'}-month ${it.etf} forward return `;
+  }
+  const panels = ['21','42','63'].map(h => {
+    const pts = secPairs(it, h);
+    return { h, hn: parseInt(h, 10), pts, buckets: deciles(pts, 10) };
+  });
+  const forcedA = secShared
+    ? Math.max(...panels.map(p => barsAxisExtent(p.buckets, p.hn))) : null;
+  const forcedRaw = secShared ? ptsBounds(panels.map(p => p.pts)) : null;
+  const dToday = lastNonNull(it.series);
+  for(const {h, hn, pts, buckets} of panels){
+    const r = pearson(pts), rho = spearman(pts);
+    const ci = pts.length > 200 ? blockBootstrapCI(pts, hn) : null;
+    const nEff = Math.round(pts.length / hn);
+    const ciTxt = ci ? ` [95% CI ${ci[0].toFixed(3)}, ${ci[1].toFixed(3)}]` : '';
+    document.getElementById('cBars' + h).innerHTML = renderBars(buckets, hn, forcedA, dToday);
+    document.getElementById('cScatter' + h).innerHTML = renderScatter(pts, 10, forcedRaw, dToday);
+    document.getElementById('cStats' + h).innerHTML =
+      `<span>n = <b>${pts.length.toLocaleString()}</b> (&asymp;<b>${nEff.toLocaleString()}</b> indep.)</span>` +
+      `<span>Pearson r = <b>${r==null?'--':r.toFixed(3)}</b>${ciTxt}</span>` +
+      `<span>Spearman &rho; = <b>${rho==null?'--':rho.toFixed(3)}</b></span>`;
+  }
+  renderSecTable(items);
+}
+document.getElementById('secShared').addEventListener('change', e=>{
+  secShared = e.target.checked;
+  renderSec();
 });
 
 // -------------------------------------------------------------------------
@@ -4152,14 +4327,16 @@ document.getElementById('spxtblFilter').addEventListener('input', renderSpxTable
 // -------------------------------------------------------------------------
 // Top-level tab switching
 // -------------------------------------------------------------------------
-let spxRendered = false, ndxRendered = false, iwmRendered = false, sectorsRendered = false;
+let spxRendered = false, ndxRendered = false, iwmRendered = false, sectorsRendered = false,
+    secRendered = false;
 // Unified "DIX vs Return" tab: a multi-toggle selects any combination of the
-// NDX / SPX / IWM reconstructed-DIX views, each keeping its own wrap, controls
-// and render function untouched.
+// NDX / SPX / IWM / sector reconstructed-DIX views, each keeping its own wrap,
+// controls and render function untouched.
 function updateIdx(){
   const active = [...document.querySelectorAll('#idxSel button')]
     .filter(x => x.classList.contains('on')).map(x => x.dataset.i);
-  [['ndx','ndxWrap','ctl-ndx'],['spx','spxWrap','ctl-spx'],['iwm','iwmWrap','ctl-iwm']].forEach(([i,w,c])=>{
+  [['ndx','ndxWrap','ctl-ndx'],['spx','spxWrap','ctl-spx'],['iwm','iwmWrap','ctl-iwm'],
+   ['sec','secWrap','ctl-sec']].forEach(([i,w,c])=>{
     const on = active.includes(i);
     document.getElementById(w).style.display = on ? '' : 'none';
     document.getElementById(c).style.display = on ? '' : 'none';
@@ -4167,6 +4344,7 @@ function updateIdx(){
       if(i==='ndx' && !ndxRendered){ renderNdx(); ndxRendered = true; }
       if(i==='spx' && !spxRendered){ renderSpx(); spxRendered = true; }
       if(i==='iwm' && !iwmRendered){ renderIwm(); iwmRendered = true; }
+      if(i==='sec' && !secRendered){ renderSec(); secRendered = true; }
     }
   });
 }
@@ -4191,7 +4369,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('grid').style.display = t==='grid' ? '' : 'none';
   document.getElementById('relWrap').style.display = t==='rel' ? '' : 'none';
   // index wraps + their controls are governed by the idx multi-toggle; hide them off-tab
-  if(t!=='idx'){ ['spxWrap','ndxWrap','iwmWrap','ctl-spx','ctl-ndx','ctl-iwm']
+  if(t!=='idx'){ ['spxWrap','ndxWrap','iwmWrap','secWrap','ctl-spx','ctl-ndx','ctl-iwm','ctl-sec']
     .forEach(id=>document.getElementById(id).style.display='none'); }
   document.getElementById('contribWrap').style.display = t==='contrib' ? '' : 'none';
   document.getElementById('xsWrap').style.display = t==='xs' ? '' : 'none';
@@ -4201,7 +4379,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('footHint').textContent = t==='rel'
     ? 'whiskers = ±1 SE on the overlap-adjusted (effective-N) mean; r CI via block bootstrap; overlapping daily returns → n far exceeds independent obs'
     : t==='idx'
-    ? 'reconstructed dollar-weighted DIX per index (NDX-100 / S&P 500 / Russell 2000) vs that index\'s own forward return -- toggle any combination of indices to compare'
+    ? 'reconstructed dollar-weighted DIX per index (NDX-100 / S&P 500 / Russell 2000) or per sector ETF vs its own forward return -- toggle any combination of views to compare'
     : t==='contrib'
     ? 'per-name decomposition of each index\'s dollar-DIX -- contribution = dark-$ weight x own dark ratio (DPI); the contributions sum to the DIX'
     : t==='xs'
@@ -4253,7 +4431,8 @@ function wireDecileHover(barsId, scatterId){
 [['barsSvg','scatterSvg'],
  ['sBars21','sScatter21'], ['sBars42','sScatter42'], ['sBars63','sScatter63'],
  ['nBars21','nScatter21'], ['nBars42','nScatter42'], ['nBars63','nScatter63'],
- ['wBars21','wScatter21'], ['wBars42','wScatter42'], ['wBars63','wScatter63']].forEach(([b, s]) => wireDecileHover(b, s));
+ ['wBars21','wScatter21'], ['wBars42','wScatter42'], ['wBars63','wScatter63'],
+ ['cBars21','cScatter21'], ['cBars42','cScatter42'], ['cBars63','cScatter63']].forEach(([b, s]) => wireDecileHover(b, s));
 </script>
 </body>
 </html>
@@ -4678,7 +4857,7 @@ def build_breadth_payload(etf_px, keep):
 
 
 def build_sector_payload(members, short, total, close, d, keep, hist_win=252, min_names=8,
-                         top_names=30):
+                         top_names=30, etf_px=None):
     """One reconstructed dollar-DIX per sector over `keep`, plus the latest level, its percentile
     within the trailing `hist_win` sessions (dark accumulation vs its own recent history), its
     20-session change, the trailing-year 80th/20th percentile band (`p80`/`p20`) with the dates it
@@ -4686,7 +4865,11 @@ def build_sector_payload(members, short, total, close, d, keep, hist_win=252, mi
     breakdown of which names are receiving the dark flow.
     `members` is [(etf, name, [tickers]), ...]; short/total/close/`d` are the shared union panels
     (`d` = per-name 5d-MA dark ratio). Same Sum($ short)/Sum($ off-exch) DIX construction as the
-    SPX/IWM tabs, computed over each sector's own constituents."""
+    SPX/IWM tabs, computed over each sector's own constituents.
+    `etf_px` (optional) is a wide adjclose panel of the sector ETFs themselves; when a fund's
+    price history is present, its own 1/2/3-month forward returns (`r21`/`r42`/`r63`, percent,
+    aligned to `keep`) are packed per item so the dashboard can plot sector DIX vs the sector
+    ETF's forward return -- the same view the NDX/SPX/IWM index tabs give."""
     if not members:
         return None
     items = []
@@ -4753,10 +4936,22 @@ def build_sector_payload(members, short, total, close, d, keep, hist_win=252, mi
             names.append({"t": c, "d": round(dcur, 3), "dd": round(dchg, 3),
                           "w": round(100.0 * float(dark_dollar[c]) / tot, 2)})
         names.sort(key=lambda x: x["w"], reverse=True)
+        # The sector ETF's own forward returns, aligned to `keep`. Computed on the fund's
+        # full price history FIRST (like build_index_payload) so dates near the left edge
+        # of the plot window still see their futures; the trailing ~h sessions are None.
+        rets = {}
+        if etf_px is not None and etf in etf_px.columns:
+            px = etf_px[etf].dropna()
+            if len(px) > 63:
+                fwd = px.to_frame("CLOSE")
+                for key, h in (("r21", 21), ("r42", 42), ("r63", 63)):
+                    r = compute_forward_return(fwd, h)["CLOSE"].reindex(keep)
+                    rets[key] = [round(float(x), 4) if pd.notna(x) else None
+                                 for x in r.values]
         items.append({"etf": etf, "name": name, "n": len(cols), "cur": round(cur, 4),
                       "pct": pct, "d20": d20, "series": series, "names": names[:top_names],
                       "p80": p80, "p20": p20, "cross": crosses, "last_cross": last_cross,
-                      "level": level, "parent": parent})
+                      "level": level, "parent": parent, **rets})
     if not items:
         return None
     return {"dates": [dt.strftime("%Y-%m-%d") for dt in keep], "items": items}
@@ -4973,9 +5168,15 @@ def main():
             SEC = build_universe_panels(sec_union, start, end, workers=args.workers,
                                         cache_dir=cache_dir, ns="sector", refresh=args.refresh,
                                         label="sector")
+            # The sector ETFs' own (split/dividend-adjusted) prices, for each fund's forward
+            # returns in the "DIX vs Return -> Sectors" view.
+            sec_etf_px = load_yahoo_panels([etf for etf, *_ in sec_members], start, end,
+                                           workers=4, cache_dir=cache_dir,
+                                           refresh=args.refresh, label="sector ETF")["adjclose"]
             sector_data = {"members": sec_members, "short": SEC["short"],
                            "total": SEC["total"], "close": SEC["close"], "d": SEC["d"],
-                           "dpi": SEC["dpi"], "adjclose": SEC["adjclose"]}
+                           "dpi": SEC["dpi"], "adjclose": SEC["adjclose"],
+                           "etf_px": sec_etf_px}
 
     if BENCH not in panel.columns or panel.shape[1] < 3:
         sys.exit(f"Insufficient data (got {panel.shape[1]} names incl. bench).")
