@@ -1583,7 +1583,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .dot.dim{opacity:0.06}
   .dot.hi{opacity:1;transform-box:fill-box;transform-origin:center;transform:scale(2.4);stroke:var(--ink);stroke-width:0.6}
   .vanilla-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
-  .ev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:22px;padding:0 22px}
+  .ev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr));gap:22px;padding:0 22px}
   .ev-table{border-collapse:collapse;font-size:11.5px;width:100%;min-width:480px}
   .ev-table th,.ev-table td{padding:5px 12px;text-align:right;border-bottom:1px solid var(--grid);
                             font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1.25}
@@ -1643,6 +1643,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .today .chip .mut{color:var(--mut)}
   .today a.chip{text-decoration:none}
   .today a.chip:hover{border-color:var(--accent)}
+  /* ---- small screens: keep the layout inside the device viewport ---- */
+  @media (max-width:700px){
+    body{overflow-x:hidden;overflow-x:clip}
+    header{position:static;padding:14px 14px 8px}
+    .controls{gap:10px}
+    .seg{flex-wrap:wrap}
+    .legend{flex-wrap:wrap;row-gap:4px}
+    .today .chip{white-space:normal;line-height:1.6}
+    input[type=search],select,input[type=number]{font-size:16px}
+    .tabs button,.tabs a.tablink{padding:8px 2px}
+    .grid{padding:14px 14px 24px}
+    .rel-wrap{padding:14px 14px 24px}
+    .rel-wrap>*{margin-left:0!important;margin-right:0!important}
+    .stats{margin:4px 14px 0;flex-wrap:wrap;gap:6px 14px}
+    .ev-grid{padding:0}
+    .panel-stats{gap:8px 14px}
+    footer{position:static;flex-direction:column;gap:3px;padding:8px 14px}
+    .overlay{padding:12px 8px}
+    .modal{padding:14px 12px 16px}
+  }
 </style>
 </head>
 <body>
