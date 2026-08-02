@@ -44,6 +44,11 @@
   .legend span{display:inline-flex;align-items:center;gap:6px;}
   .sw{width:11px;height:11px;border-radius:3px;display:inline-block;}
   .chart-wrap{overflow-x:auto;}
+  .scan-tbl{width:100%;border-collapse:collapse;font-size:.85rem;font-variant-numeric:tabular-nums;}
+  .scan-tbl th{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600;padding:4px 10px;text-align:right;white-space:nowrap;}
+  .scan-tbl td{padding:5px 10px;border-top:1px solid var(--grid);text-align:right;white-space:nowrap;}
+  .scan-tbl .tkbtn{cursor:pointer;color:var(--accent);font-weight:650;}
+  .scan-tbl .tkbtn:hover{text-decoration:underline;}
   svg{display:block;max-width:100%;}
   text{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;}
   .tick{fill:var(--muted);font-size:11px;} .axlab{fill:var(--text-secondary);font-size:12px;}
@@ -62,6 +67,16 @@
   <div class="kpis" id="kpis"></div>
 
   <div class="note-card" id="headline"></div>
+
+  <div id="scanSec" style="display:none">
+    <h2>Scanner: who goes into earnings with high / low dark-pool positioning</h2>
+    <p>Each name's <b class="k">current 10-day DPI</b> — the exact run-in signal the study uses — classified against the terciles of its <em>own</em> pre-earnings DPI history. The high tercile is the cohort that has historically skewed the post-earnings month bullish; the low tercile the reverse. Next report dates are <em>estimated</em> from each name's 8-K cadence (last report + median gap between reports) — confirm the actual date before acting on it.</p>
+    <div class="card">
+      <div class="fbtns" id="scanWin"></div>
+      <div id="scanBody"></div>
+      <div class="foot" id="scanFoot" style="margin-top:10px"></div>
+    </div>
+  </div>
 
   <h2>Sort events by DPI into the report → forward return climbs</h2>
   <p>Events split into terciles by each name's <em>own</em> DPI history (so "high" means high for that stock). Bars are the average return in each bucket, at four holding periods after the report.</p>
@@ -174,6 +189,44 @@ const pct=v=>(v>=0?"+":"")+v.toFixed(2)+"%"; const r3=v=>(v>=0?"+":"")+v.toFixed
    <span class="pos">${pct(t.hi*100)}</span> over the next month vs <span class="pos">${pct(t.lo*100)}</span> for the lowest third — a
    <span class="pos">${pct(t.diff*100)}</span> spread (t=${t.t.toFixed(1)}, p&lt;0.001), and ${(t.hi_up*100).toFixed(0)}% of high-DPI events were up vs ${(t.lo_up*100).toFixed(0)}% of low-DPI ones.${
    DATA.xm1?` <b>Net of the market</b> (each event's return minus QQQ's over the identical window, with p-values clustered by earnings season): the 1-month spread is <span class="${DATA.xm1.spread>=0?'pos':'neg'}">${pct(DATA.xm1.spread*100)}</span> (95% CI ${pct(DATA.xm1.ci[0]*100)} to ${pct(DATA.xm1.ci[1]*100)}, p=${DATA.xm1.p<0.001?'<0.001':DATA.xm1.p.toFixed(3)} across ${DATA.xm1.quarters} seasons)${DATA.xm1.exp?`, and it ${Math.sign(DATA.xm1.exp.spread)===Math.sign(DATA.xm1.spread)?'survives':'does not survive'} real-time (expanding, no-look-ahead) DPI ranking at <span class="${DATA.xm1.exp.spread>=0?'pos':'neg'}">${pct(DATA.xm1.exp.spread*100)}</span> (p=${DATA.xm1.exp.p<0.001?'<0.001':DATA.xm1.exp.p.toFixed(3)})`:''}.`:''}</p>`;
+})();
+
+/* Upcoming-earnings DPI scanner */
+(function(){
+  const S=DATA.scan;
+  if(!S||!S.rows||!S.rows.length) return;
+  $("scanSec").style.display="";
+  let win=10;
+  const WINS=[[10,"next 10 days"],[21,"next 21 days"],[45,"next 45 days"],[9999,"all upcoming"]];
+  const when=r=>r.days<=0?`<b style="color:var(--accent)">due</b>`:`in <b>${r.days}d</b>`;
+  const pc=v=>(v*100).toFixed(1)+"%";
+  function table(rows,color,label,note){
+    const head=`<p style="margin:12px 0 4px"><span class="sw" style="background:${color}"></span> <b class="k">${label}</b> <span style="color:var(--muted)">· ${note}</span></p>`;
+    if(!rows.length) return head+`<p style="margin:4px 0;color:var(--muted);font-size:.85rem">none in this window.</p>`;
+    return head+`<div class="chart-wrap"><table class="scan-tbl">
+      <tr><th style="text-align:left">name</th><th>est. report</th><th></th><th>DPI10 now</th><th>own-history pctile</th><th>tercile band</th><th>events</th></tr>`+
+      rows.map(r=>`<tr>
+        <td style="text-align:left"><span class="tkbtn" data-tk="${r.tk}">${r.tk}</span></td>
+        <td>${r.est}</td><td>${when(r)}</td>
+        <td><b class="k">${pc(r.dpi10)}</b></td>
+        <td>${r.pct}<span style="color:var(--muted)">th</span></td>
+        <td style="color:var(--muted)">${pc(r.lo)} – ${pc(r.hi)}</td>
+        <td style="color:var(--muted)">${r.n}</td></tr>`).join("")+`</table></div>`;
+  }
+  function render(){
+    $("scanWin").innerHTML=WINS.map(([w,l])=>`<span class="fbtn${w===win?" active":""}" data-w="${w}">${l}</span>`).join("");
+    $("scanWin").querySelectorAll(".fbtn").forEach(b=>b.addEventListener("click",()=>{win=+b.dataset.w;render();}));
+    const rows=S.rows.filter(r=>r.days<=win);
+    const hi=rows.filter(r=>r.cls==="hi"),lo=rows.filter(r=>r.cls==="lo"),mid=rows.filter(r=>r.cls==="mid");
+    $("scanBody").innerHTML=
+      table(hi,"var(--up)","High DPI tercile into the print","the historically bullish cohort")+
+      table(lo,"var(--down)","Low DPI tercile into the print","the historically weak cohort");
+    $("scanBody").querySelectorAll(".tkbtn").forEach(el=>el.addEventListener("click",()=>{
+      if(window.selectTicker&&PATHS[el.dataset.tk]) window.selectTicker(el.dataset.tk);
+    }));
+    $("scanFoot").textContent=`as of ${S.asof} · ${rows.length} names estimated to report in this window (${mid.length} mid-tercile not shown) · DPI10 = mean daily dark ratio over the last 10 sessions, the study's run-in signal · report dates estimated from 8-K cadence, not confirmed · click a name to load its post-earnings paths below`;
+  }
+  render();
 })();
 
 /* Tercile buckets across 4 horizons */

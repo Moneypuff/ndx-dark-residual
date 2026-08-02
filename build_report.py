@@ -117,6 +117,54 @@ def build_payload(ev):
     return pay
 
 
+def build_scan(ev, earn, dpi_panel, min_events=6, max_overdue=21):
+    """Upcoming-earnings DPI scanner: each name's CURRENT 10-day mean DPI classified
+    against the terciles of its own historical pre-earnings dpi10 distribution (the
+    same within-name buckets the study uses), plus an ESTIMATED next report date
+    (last EDGAR report + the median gap between that name's recent reports).
+
+    Returns {"asof": ..., "rows": [...]} for the DATA.scan payload key, or None.
+    Rows are sorted by days-until-report; names whose estimate is more than
+    `max_overdue` days in the past are dropped (stale filer / left the universe)."""
+    if dpi_panel is None or len(dpi_panel.index) == 0:
+        return None
+    idx = dpi_panel.index
+    asof = idx.max()
+    rows = []
+    for tk, g in earn.groupby("ticker"):
+        if tk not in dpi_panel.columns:
+            continue
+        hist = ev.loc[ev.ticker == tk, "dpi10"].dropna()
+        if len(hist) < min_events:
+            continue
+        s = dpi_panel[tk]
+        last_valid = s.last_valid_index()
+        # stale series (delisted / symbol change) can't be "current positioning"
+        if last_valid is None or idx.get_loc(asof) - idx.get_loc(last_valid) > 7:
+            continue
+        seg = s.iloc[-10:]                       # mirrors dpi10: 10 sessions up to asof
+        if int(seg.notna().sum()) < 8:
+            continue
+        cur = float(seg.mean())
+        dts = g.report_date.sort_values()
+        gaps = dts.diff().dt.days.dropna()
+        gap = float(np.median(gaps.tail(8))) if len(gaps) else 91.0
+        est = dts.iloc[-1] + pd.Timedelta(days=round(gap))
+        days = int((est - asof).days)
+        if days < -max_overdue:
+            continue
+        lo, hi = float(hist.quantile(1 / 3)), float(hist.quantile(2 / 3))
+        cls = "hi" if cur >= hi else ("lo" if cur <= lo else "mid")
+        rows.append({"tk": tk, "est": est.strftime("%Y-%m-%d"), "days": days,
+                     "dpi10": round(cur, 4), "pct": int(round(100 * float((hist < cur).mean()))),
+                     "cls": cls, "lo": round(lo, 4), "hi": round(hi, 4),
+                     "n": int(len(hist)), "last": dts.iloc[-1].strftime("%Y-%m-%d")})
+    if not rows:
+        return None
+    rows.sort(key=lambda r: r["days"])
+    return {"asof": asof.strftime("%Y-%m-%d"), "rows": rows}
+
+
 def build_paths(ev, adj):
     idx = adj.index
     ev = ev.copy(); ev["base_T"] = pd.to_datetime(ev.base_T)
@@ -194,6 +242,7 @@ def main():
     panels, earn = E.merge_share_classes(panels, earn)  # match the study's universe
 
     payload = build_payload(ev)
+    payload["scan"] = build_scan(ev, earn, panels["dpi"])
     paths = build_paths(ev, panels["adjclose"])
     html = (Path(args.template).read_text()
             .replace("/*__PAYLOAD__*/", json.dumps(payload))
