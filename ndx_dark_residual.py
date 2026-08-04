@@ -185,6 +185,43 @@ WATCHLIST_SECTOR = {
     "ASTS": "Comm. Services",    # AST SpaceMobile -- satellite direct-to-cell
     "BBAI": "Technology",        # BigBear.ai
 }
+# Repo path the build reads the watchlist from (source of truth). Editing this CSV -- directly,
+# or by syncing it from a Google Sheet with sync_watchlist.py -- changes the Watchlist tab on
+# the next rebuild. No data is read at page-view time; the CSV only drives WHICH names appear.
+WATCHLIST_CSV = "data/watchlist.csv"
+
+
+def load_watchlist(path=WATCHLIST_CSV):
+    """Read the custom watchlist from a CSV (column 1 = ticker, optional column 2 = sector).
+    Returns (tickers, sector_map). Falls back to the built-in WATCHLIST / WATCHLIST_SECTOR when
+    the file is missing, empty, or unreadable, so a build never breaks on a bad sheet export.
+    A header row (first cell 'ticker'/'symbol') is skipped; tickers are upper-cased and de-duped."""
+    import csv as _csv
+    p = Path(path)
+    if not p.exists():
+        return list(WATCHLIST), dict(WATCHLIST_SECTOR)
+    try:
+        tickers, sectors, seen = [], {}, set()
+        with p.open(newline="", encoding="utf-8-sig") as f:
+            for row in _csv.reader(f):
+                if not row or not row[0].strip():
+                    continue
+                t = row[0].strip().upper()
+                if t in ("TICKER", "SYMBOL"):   # header row
+                    continue
+                if t in seen:
+                    continue
+                seen.add(t)
+                tickers.append(t)
+                if len(row) > 1 and row[1].strip():
+                    sectors[t] = row[1].strip()
+        if not tickers:
+            return list(WATCHLIST), dict(WATCHLIST_SECTOR)
+        return tickers, sectors
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! watchlist CSV {path} unreadable ({e}); using built-in default",
+              file=sys.stderr)
+        return list(WATCHLIST), dict(WATCHLIST_SECTOR)
 
 
 # Recycled tickers: a symbol whose FINRA volume history covers a PRIOR, unrelated
@@ -1374,7 +1411,7 @@ def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, wee
 def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dark_panel,
                ndx_agg=None, ndx_dix=None, spx=None, iwm=None, bench_label=None,
                spx_res=None, spx_rel=None, spx_weight_map=None, spx_weight_order=None,
-               wl_res=None, wl_rel=None,
+               wl_res=None, wl_rel=None, wl_sectors=None,
                breadth_px=None, sector_data=None, contrib=None, spx_keep_days=378,
                plot_days=378, plot_start=None,
                title=None, window=126, demo=False):
@@ -1454,7 +1491,7 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         if len(wl_keep) > spx_keep_days:
             wl_keep = _weekly_anchored(wl_keep)
         wl_sector_map = dict(TICKER_SECTOR)
-        wl_sector_map.update(WATCHLIST_SECTOR)
+        wl_sector_map.update(wl_sectors or WATCHLIST_SECTOR)
         watch_grid = build_grid_payload(wl_res, bench_label or "NDX-DIX", bench_label or "NDX-DIX",
                                         wl_keep, None, None, sector_map=wl_sector_map)
 
@@ -5490,6 +5527,10 @@ def main():
                     help="OPTIONAL: local IWM holdings file (SpreadsheetML/Excel-XML, CSV or a "
                          "plain ticker list) for the Russell 2000 universe. Auto-fetched from "
                          "BlackRock when omitted.")
+    ap.add_argument("--watchlist-csv", dest="watchlist_csv", default=WATCHLIST_CSV,
+                    help=f"CSV driving the custom Watchlist small-multiples tab (column 1 = "
+                         f"ticker, optional column 2 = sector). Default: {WATCHLIST_CSV}. Falls "
+                         f"back to the built-in list when the file is missing/unreadable.")
     args = ap.parse_args()
 
     cache_dir = args.cache_dir or None
@@ -5497,6 +5538,13 @@ def main():
     end = pd.Timestamp.today().normalize()
     start = pd.Timestamp(args.dark_start) if args.dark_start else pd.Timestamp("2018-08-01")
     ndx_syms = [BENCH] + [t for t in NDX100 if t != BENCH]
+    # Custom watchlist tickers + sector labels: from the CSV (source of truth), built-in fallback.
+    wl_tickers, wl_sectors = load_watchlist(args.watchlist_csv)
+    if wl_tickers:
+        print(f"Watchlist: {len(wl_tickers)} names from "
+              f"{args.watchlist_csv if Path(args.watchlist_csv).exists() else 'built-in default'} "
+              f"({', '.join(wl_tickers[:6])}{'...' if len(wl_tickers) > 6 else ''})",
+              file=sys.stderr)
 
     if args.demo:
         print("DEMO mode: synthetic data (no network)...", file=sys.stderr)
@@ -5528,7 +5576,7 @@ def main():
         # Custom watchlist grid: synthesize D / raw-D / close panels for the WATCHLIST names so
         # the tab renders in --demo too (residualized against the demo NDX-DIX below). The QQQ
         # bench column demo_panel adds is dropped -- the watchlist has no ticker of its own.
-        wldata = demo_panel(WATCHLIST, BENCH, start=args.plot_start or "2020-01-01", seed=23)
+        wldata = demo_panel(wl_tickers, BENCH, start=args.plot_start or "2020-01-01", seed=23)
         wl_d = wldata["d"].drop(columns=[BENCH], errors="ignore")
         wl_dpi = wldata["raw_dark"].drop(columns=[BENCH], errors="ignore")
         wl_adj = wldata["close"].drop(columns=[BENCH], errors="ignore")
@@ -5594,10 +5642,10 @@ def main():
         # A sparse, curated universe (hot names outside the index), so heal_frac=1.0 heals only
         # all-NaN rows -- like the Russell fetch. Residualized against the NDX-DIX further below.
         wl_d = wl_dpi = wl_adj = None
-        if WATCHLIST:
-            print(f"Building watchlist panel ({len(WATCHLIST)} names) from FINRA + Yahoo...",
+        if wl_tickers:
+            print(f"Building watchlist panel ({len(wl_tickers)} names) from FINRA + Yahoo...",
                   file=sys.stderr)
-            WL = build_universe_panels(WATCHLIST, start, end, workers=args.workers,
+            WL = build_universe_panels(wl_tickers, start, end, workers=args.workers,
                                        cache_dir=cache_dir, ns="watchlist", refresh=args.refresh,
                                        label="watchlist", heal_frac=1.0)
             wl_d, wl_dpi, wl_adj = WL["d"], WL["dpi"], WL["adjclose"]
@@ -5742,7 +5790,7 @@ def main():
                        raw_dark_panel, ndx_agg=ndx_agg, ndx_dix=ndx_dix, spx=spx_payload,
                        iwm=iwm_payload, bench_label=bench_label, spx_res=spx_res, spx_rel=spx_rel,
                        spx_weight_map=spx_weight_map, spx_weight_order=spx_weight_order,
-                       wl_res=wl_res, wl_rel=wl_rel,
+                       wl_res=wl_res, wl_rel=wl_rel, wl_sectors=wl_sectors,
                        breadth_px=breadth_px, sector_data=sector_data, contrib=contrib,
                        plot_days=args.plot_days, plot_start=plot_start, window=args.window,
                        demo=args.demo)
