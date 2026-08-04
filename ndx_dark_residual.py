@@ -159,6 +159,33 @@ TICKER_SECTOR = {
     "SPCX": "Industrials", "HONA": "Industrials",
 }
 
+# Custom watchlist: "hot" names outside the NDX-100 / S&P 500, shown as their own
+# Small-multiples universe (the "Watchlist" button on the grid). Each name's dark ratio D
+# is residualized against the SAME reconstructed NDX-DIX (broad-market dark flow) the NDX-100
+# grid uses, so a positive residual = this name is accumulating off-exchange flow ABOVE the
+# market's. These trade outside the index, so there is no weight table -- the panels fall back
+# to divergence order. Edit this list (and WATCHLIST_SECTOR below) to change the watchlist;
+# any liquid ticker with FINRA off-exchange volume and Yahoo prices works.
+WATCHLIST = [
+    "UMAC", "AAOI", "SKM", "MIAX", "SOUN", "IONQ",
+    "RGTI", "QBTS", "QUBT", "LUNR", "ASTS", "BBAI",
+]
+# GICS sector per watchlist name for the cell footer (labels match SECTOR_ETFS / TICKER_SECTOR).
+WATCHLIST_SECTOR = {
+    "UMAC": "Industrials",       # Unusual Machines -- drones
+    "AAOI": "Technology",        # Applied Optoelectronics -- fiber optics
+    "SKM": "Comm. Services",     # SK Telecom
+    "MIAX": "Financials",        # Miami International Holdings -- exchange operator
+    "SOUN": "Technology",        # SoundHound AI
+    "IONQ": "Technology",        # IonQ -- quantum computing
+    "RGTI": "Technology",        # Rigetti Computing -- quantum
+    "QBTS": "Technology",        # D-Wave Quantum
+    "QUBT": "Technology",        # Quantum Computing Inc.
+    "LUNR": "Industrials",       # Intuitive Machines -- space
+    "ASTS": "Comm. Services",    # AST SpaceMobile -- satellite direct-to-cell
+    "BBAI": "Technology",        # BigBear.ai
+}
+
 
 # Recycled tickers: a symbol whose FINRA volume history covers a PRIOR, unrelated
 # security before the current company started trading under it. FINRA's daily files are
@@ -1347,6 +1374,7 @@ def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, wee
 def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dark_panel,
                ndx_agg=None, ndx_dix=None, spx=None, iwm=None, bench_label=None,
                spx_res=None, spx_rel=None, spx_weight_map=None, spx_weight_order=None,
+               wl_res=None, wl_rel=None,
                breadth_px=None, sector_data=None, contrib=None, spx_keep_days=378,
                plot_days=378, plot_start=None,
                title=None, window=126, demo=False):
@@ -1413,6 +1441,22 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         spx_grid = build_grid_payload(spx_res, "SPX-DIX", "SPX-DIX", spx_keep,
                                       spx_weight_map, spx_weight_order,
                                       sector_map=spx_sector_map)
+
+    # Custom watchlist Small-multiples grid: the WATCHLIST names residualized against the SAME
+    # reconstructed NDX-DIX benchmark the NDX-100 grid uses (see wl_res in main()). No index
+    # weights (these trade outside the index), so the panels fall back to divergence order.
+    # Sector labels come from WATCHLIST_SECTOR, supplemented by the static GICS map for any
+    # overlap. Same full-history window as the other grids (downsampled to weekly when long).
+    watch_grid = None
+    if wl_res is not None and not wl_res["reg"].dropna(how="all").empty:
+        widx = wl_res["reg"].index
+        wl_keep = widx[widx >= plot_start] if plot_start is not None else widx
+        if len(wl_keep) > spx_keep_days:
+            wl_keep = _weekly_anchored(wl_keep)
+        wl_sector_map = dict(TICKER_SECTOR)
+        wl_sector_map.update(WATCHLIST_SECTOR)
+        watch_grid = build_grid_payload(wl_res, bench_label or "NDX-DIX", bench_label or "NDX-DIX",
+                                        wl_keep, None, None, sector_map=wl_sector_map)
 
     # Relationship tab: x-axis is the raw (unsmoothed) 1-day dark ratio derived from
     # FINRA's daily off-exchange volume, NOT the 5-day-MA `D` used everywhere else --
@@ -1482,6 +1526,9 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         "sector_map": ndx_sector_map,
         "spx_grid": spx_grid,
         "spx_rel": spx_rel,
+        # Custom watchlist grid + its per-name raw-D/forward-return decile source (cell modal).
+        "watch_grid": watch_grid,
+        "watch_rel": wl_rel,
         "sectors": sectors_payload,
         # Per-name raw-D -> forward-return deciles for the constituents shown in the sector
         # drill-down modals, so an individual stock there opens the same 1/2/3-month decile
@@ -1700,9 +1747,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <a class="tablink" href="comovement.html" target="_blank" rel="noopener" title="Cross-index DIX comovement (NDX/SPX/IWM) vs 1-month forward returns -- opens the comovement study in a new tab">Comovement &#8599;</a>
   </div>
   <div class="controls" id="ctl-grid" style="display:none">
-    <div class="seg" id="univ" title="which index's constituents to show as small multiples">
+    <div class="seg" id="univ" title="which universe's constituents to show as small multiples">
       <button data-u="ndx" class="on">NDX-100</button>
       <button data-u="spx">S&amp;P 500</button>
+      <button data-u="watch">Watchlist</button>
     </div>
     <div class="seg" id="mode">
       <button data-m="reg" class="on">Regression residual</button>
@@ -2129,8 +2177,12 @@ const P = await (async () => {
 })();
 const grid = document.getElementById('grid');
 let mode = 'reg', shared = true, filter = '', sortMode = 'weight';
-let gridUniv = 'ndx';                                    // 'ndx' | 'spx' small-multiples grid
-function GS(){ return (gridUniv === 'spx' && P.spx_grid) ? P.spx_grid : P; }  // active grid source
+let gridUniv = 'ndx';                                    // 'ndx' | 'spx' | 'watch' small-multiples grid
+function GS(){                                            // active grid source
+  if(gridUniv === 'spx' && P.spx_grid) return P.spx_grid;
+  if(gridUniv === 'watch' && P.watch_grid) return P.watch_grid;
+  return P;
+}
 
 function fmt(x, m){ return m==='raw' ? x.toFixed(3) : (x>=0?'+':'') + x.toFixed(3); }
 
@@ -2197,7 +2249,7 @@ function spark(vals, ylo, yhi, m, w=204, h=64, pad=4, overlay=null){
 
 function updateChrome(){
   const S = GS();
-  const uni = gridUniv === 'spx' ? 'S&P 500' : 'NDX-100';
+  const uni = gridUniv === 'spx' ? 'S&P 500' : gridUniv === 'watch' ? 'Watchlist' : 'NDX-100';
   const hasW = S.weights && Object.keys(S.weights).length;
   const sortTxt = sortMode==='weight' ? (hasW ? 'ordered by index weight' : 'ordered by latest divergence')
     : mode==='raw' ? 'ordered by highest raw D'
@@ -2216,6 +2268,10 @@ function updateChrome(){
 function render(){
   if(gridUniv === 'spx' && !P.spx_grid){
     grid.innerHTML = '<div class="modal-empty" style="padding:40px 22px">S&amp;P 500 small multiples require a live build (run without --demo, and without --no-spx).</div>';
+    return;
+  }
+  if(gridUniv === 'watch' && !P.watch_grid){
+    grid.innerHTML = '<div class="modal-empty" style="padding:40px 22px">Watchlist small multiples are unavailable in this build (no FINRA / price data for the watchlist names).</div>';
     return;
   }
   const S = GS();
@@ -2293,7 +2349,11 @@ const overlay = document.getElementById('overlay');
 // forward-return-by-decile bars for one name at one horizon (uses the raw-D relationship
 // panel, which exists for the NDX-100 universe; S&P-only names have no per-name history).
 // the per-name raw-D source for the modal: S&P grid cells use P.spx_rel, NDX cells P.rel
-function modalRel(){ return (gridUniv === 'spx' && P.spx_rel) ? P.spx_rel : P.rel; }
+function modalRel(){
+  if(gridUniv === 'spx' && P.spx_rel) return P.spx_rel;
+  if(gridUniv === 'watch' && P.watch_rel) return P.watch_rel;
+  return P.rel;
+}
 
 // Trailing (no-look-ahead) decile machinery: each day's D ranked against only
 // that name's PREVIOUS `win` observations (min `minObs`), then forward returns
@@ -5465,6 +5525,13 @@ def main():
         spx_rel = None
         spx_weight_map = {}
         spx_weight_order = None
+        # Custom watchlist grid: synthesize D / raw-D / close panels for the WATCHLIST names so
+        # the tab renders in --demo too (residualized against the demo NDX-DIX below). The QQQ
+        # bench column demo_panel adds is dropped -- the watchlist has no ticker of its own.
+        wldata = demo_panel(WATCHLIST, BENCH, start=args.plot_start or "2020-01-01", seed=23)
+        wl_d = wldata["d"].drop(columns=[BENCH], errors="ignore")
+        wl_dpi = wldata["raw_dark"].drop(columns=[BENCH], errors="ignore")
+        wl_adj = wldata["close"].drop(columns=[BENCH], errors="ignore")
         breadth_px = None
         sector_data = None   # sector-DIX tab is a live-data feature (empty in --demo)
     else:
@@ -5522,6 +5589,18 @@ def main():
                 spx_rel = pack_name_rel(SP["dpi"], SP["adjclose"], plot_start=plot_start)
                 print(f"S&P 500 grid: residualized {spx_res['reg'].notna().any().sum()} names "
                       f"vs the S&P 500 DIX", file=sys.stderr)
+
+        # ---- Custom watchlist small-multiples: FINRA DPI + Yahoo prices for WATCHLIST names ----
+        # A sparse, curated universe (hot names outside the index), so heal_frac=1.0 heals only
+        # all-NaN rows -- like the Russell fetch. Residualized against the NDX-DIX further below.
+        wl_d = wl_dpi = wl_adj = None
+        if WATCHLIST:
+            print(f"Building watchlist panel ({len(WATCHLIST)} names) from FINRA + Yahoo...",
+                  file=sys.stderr)
+            WL = build_universe_panels(WATCHLIST, start, end, workers=args.workers,
+                                       cache_dir=cache_dir, ns="watchlist", refresh=args.refresh,
+                                       label="watchlist", heal_frac=1.0)
+            wl_d, wl_dpi, wl_adj = WL["d"], WL["dpi"], WL["adjclose"]
 
         # ---- IWM tab: Russell 2000 dollar-DIX (IWM constituents) vs IWM forward return ----
         print("Building IWM DIX from Russell 2000 (IWM) constituents...", file=sys.stderr)
@@ -5634,6 +5713,18 @@ def main():
                             min_periods=args.min_periods, smooth=args.smooth,
                             bench_series=bench_series)
 
+    # Custom watchlist grid: residualize the WATCHLIST names against the SAME NDX-DIX benchmark
+    # (needs bench_series -- there is no watchlist-native index DIX). wl_rel feeds the cell modal.
+    wl_res = None
+    wl_rel = None
+    if wl_d is not None and bench_series is not None and not wl_d.dropna(how="all").empty:
+        wl_res = compute_residuals(wl_d, bench_label, window=args.window,
+                                   min_periods=args.min_periods, smooth=args.smooth,
+                                   bench_series=bench_series)
+        wl_rel = pack_name_rel(wl_dpi, wl_adj, plot_start=plot_start)
+        print(f"Watchlist grid: residualized {int(wl_res['reg'].notna().any().sum())} names "
+              f"vs {bench_label}", file=sys.stderr)
+
     if spx_payload:
         print(f"SPX DIX: {len(spx_payload['dates'])} dates "
               f"({spx_payload['range'][0]} -> {spx_payload['range'][1]})", file=sys.stderr)
@@ -5651,6 +5742,7 @@ def main():
                        raw_dark_panel, ndx_agg=ndx_agg, ndx_dix=ndx_dix, spx=spx_payload,
                        iwm=iwm_payload, bench_label=bench_label, spx_res=spx_res, spx_rel=spx_rel,
                        spx_weight_map=spx_weight_map, spx_weight_order=spx_weight_order,
+                       wl_res=wl_res, wl_rel=wl_rel,
                        breadth_px=breadth_px, sector_data=sector_data, contrib=contrib,
                        plot_days=args.plot_days, plot_start=plot_start, window=args.window,
                        demo=args.demo)
