@@ -79,6 +79,14 @@ jobs:
           restore-keys: |
             ndx-dark-cache-
 
+      # Optional: refresh data/watchlist.csv (the Watchlist tab's ticker list) from a published
+      # Google Sheet before building. Skipped unless the repo variable WATCHLIST_SHEET_CSV_URL is
+      # set (Settings -> Secrets and variables -> Actions -> Variables). Until then the build
+      # uses the committed data/watchlist.csv. A failed sync leaves the CSV untouched.
+      - name: Sync watchlist from Google Sheet (optional)
+        if: ${{ vars.WATCHLIST_SHEET_CSV_URL != '' }}
+        run: python sync_watchlist.py --url "${{ vars.WATCHLIST_SHEET_CSV_URL }}"
+
       - name: Build dashboard
         run: >
           python ndx_dark_residual.py
@@ -99,6 +107,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html docs/comovement.html
+          git add docs/index.html docs/comovement.html data/watchlist.csv
           git diff --staged --quiet && echo "No changes to commit" || git commit -m "Refresh dashboard $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push
