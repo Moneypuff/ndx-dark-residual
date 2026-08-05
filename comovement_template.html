@@ -261,6 +261,11 @@ tr.feat .reg-cell::before{content:"◆"; color:var(--accent); font-size:10px; ma
 .chart-cap{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin:12px 2px 0;
   display:flex; gap:8px; align-items:baseline}
 .chart-cap b{color:var(--ink-dim); font-weight:500}
+.zoom-reset{position:absolute; top:10px; right:10px; z-index:4;
+  font-family:var(--mono); font-size:11.5px; color:var(--ink-dim);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+  padding:6px 12px; cursor:pointer; transition:.15s}
+.zoom-reset:hover{color:var(--ink); border-color:var(--accent-line)}
 
 /* ---- findings ---- */
 .finds{display:grid; gap:14px}
@@ -321,17 +326,18 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     <h1>When dark flow <span class="g">pulls apart</span>, the next month pays.</h1>
     <p class="lede">Across <b><span id="mNdays">1,648</span> sessions</b>, a 5-day moving average of each index's dollar-DIX
       is ranked into deciles, then read against that index's own 1-month forward return. The signal
-      lives in the <b>divergences</b> — not the joint level. Here is the requested one: <b>S&amp;P&nbsp;500
-      and NDX-100 DIX in their lower deciles while Russell&nbsp;2000 (IWM) DIX runs hot.</b></p>
+      lives in the <b>divergences</b> — not the joint level. The card below scores <b>today's
+      regime — <span id="heroRegime">the comovement state on the latest session</span></b> — and what
+      the next month has historically paid inside it.</p>
 
     <div class="regime-card" id="heroCard">
       <div class="regime-head">
-        <span class="tag">Requested regime</span>
-        <span class="desc">Large-cap dark flow cooled, small-cap dark flow elevated</span>
+        <span class="tag">Today's regime</span>
+        <span class="desc" id="heroDesc">The comovement regime on the latest session</span>
         <div class="dixset">
-          <span class="dixchip">NDX DIX <span class="lvl" style="color:var(--ink-dim)">Low</span></span>
-          <span class="dixchip">SPX DIX <span class="lvl" style="color:var(--ink-dim)">Low</span></span>
-          <span class="dixchip">IWM DIX <span class="lvl" style="color:var(--accent)">High</span></span>
+          <span class="dixchip">NDX DIX <span class="lvl" style="color:var(--ink-dim)">—</span></span>
+          <span class="dixchip">SPX DIX <span class="lvl" style="color:var(--ink-dim)">—</span></span>
+          <span class="dixchip">IWM DIX <span class="lvl" style="color:var(--ink-dim)">—</span></span>
         </div>
       </div>
       <div class="stat-grid">
@@ -438,10 +444,12 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     </div>
     <div class="chart-wrap">
       <canvas id="pxCanvas"></canvas>
+      <button class="zoom-reset" id="zoomReset" hidden>Reset zoom</button>
       <div class="ptip" id="pTip"></div>
     </div>
     <p class="chart-cap"><b>Tip:</b> rebased to 100 at the start; hover for the level and that day's
-      regime. Rows in the table below are clickable — they set this filter.</p>
+      regime. Scroll or pinch to zoom the year axis, drag to pan, double-click to reset.
+      Rows in the table below are clickable — they set this filter.</p>
   </section>
 
   <section>
@@ -482,7 +490,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
       </table>
     </div>
     <p class="hm-note"><b>Reading it:</b> the three amber tiles are the input regime (N / S / I);
-      the three right cells are the forward return of each index. The ◆ row is the requested regime.</p>
+      the three right cells are the forward return of each index. The ◆ row is today's regime.</p>
   </section>
 
   <section>
@@ -505,7 +513,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
           <span class="neg">slightly negative</span> (<b id="fIwmVal">−0.20%</b>, hit <span id="fIwmHit">46%</span>) —
           a contrarian, mean-reverting tell.</p></div></div>
       <div class="find"><span class="mk">◆</span><div>
-        <h3>…but the requested combination flips it bullish</h3>
+        <h3>…but the Low/Low/High divergence flips it bullish</h3>
         <p>Pair that hot IWM DIX with <b>Low</b> SPX <i>and</i> NDX DIX and all three indices run
           <span class="pos">above baseline</span> (<span id="fFeat">+2.2% to +2.9%</span>), IWM lifting most vs. its own norm.
           The divergence, not the IWM level, is what matters.</p></div></div>
@@ -550,7 +558,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
 
 <script>
 const DATA = /*__DATA__*/;
-const FEATURE = "N=Low,S=Low,I=High";
+let FEATURE = "";   // set from the latest session's regime once PX is read (bottom of script)
 const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
 
 function dixAlpha(lvl){ return lvl==="Low"?0.09 : lvl==="Mid"?0.34 : 0.78; }
@@ -635,7 +643,7 @@ document.querySelectorAll(".seg button").forEach(b=>{
     render();
   });
 });
-render();
+// (initial render happens at the bottom of the script, once FEATURE is derived from PX)
 
 // re-render on theme toggle so tints resolve against the active tokens
 new MutationObserver(render).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]});
@@ -647,12 +655,14 @@ function animateHero(){
   document.querySelectorAll("#heroCard .bar").forEach(b=>{ b.style.width = b.dataset.w+"%"; });
   document.querySelectorAll("#heroCard .big").forEach(el=>{
     const target = parseFloat(el.dataset.count);
-    if(reduce){ el.textContent = "+"+target.toFixed(2)+"%"; return; }
+    if(!isFinite(target)) return;             // regime too young for forward returns
+    const f = v => (v>=0?"+":"")+v.toFixed(2)+"%";
+    if(reduce){ el.textContent = f(target); return; }
     const dur = 1000, t0 = performance.now();
     (function step(now){
       const p = Math.min(1, (now-t0)/dur);
       const e = 1 - Math.pow(1-p, 3);
-      el.textContent = "+"+(target*e).toFixed(2)+"%";
+      el.textContent = f(target*e);
       if(p<1) requestAnimationFrame(step);
     })(performance.now());
   });
@@ -670,12 +680,26 @@ const META = /*__META__*/;
 const IDX3 = ["NDX","SPX","IWM"];
 const SERIES_TOK = ["--sNDX","--sSPX","--sIWM"];
 const LVL = {L:"Low", M:"Mid", H:"High"};
-let FILT = ["L","L","H"];               // default: the requested regime
+let FILT = ["","",""];                  // set to today's regime at the bottom of the script
 
 const cv = document.getElementById("pxCanvas");
 const ctx = cv.getContext("2d");
 const tip = document.getElementById("pTip");
 let PLOT = null, hoverI = -1;
+
+/* x-axis zoom window: {i0,i1} fractional indices into PX.dates; null = full range */
+let VIEW = null;
+function setView(i0, i1){
+  const maxI = PX.dates.length-1, minSpan = Math.min(15, maxI);
+  let span = Math.max(minSpan, Math.min(maxI, i1-i0));
+  if(i1-i0 !== span){ const c=(i0+i1)/2; i0=c-span/2; i1=c+span/2; }
+  if(i0<0){ i1-=i0; i0=0; }
+  if(i1>maxI){ i0-=(i1-maxI); i1=maxI; }
+  i0=Math.max(0,i0); i1=Math.min(maxI,i1);
+  VIEW = (i0<=0.001 && i1>=maxI-0.001) ? null : {i0,i1};
+  document.getElementById("zoomReset").hidden = !VIEW;
+  draw();
+}
 
 function matchMask(){
   const N = PX.dates.length, m = new Uint8Array(N);
@@ -702,7 +726,8 @@ function readout(mask){
   const el = document.getElementById("pfRead");
   const anyOn = FILT.some(v=>v!=="");
   const parts = IDX3.map((nm,k)=> FILT[k]==="" ? null : `${nm} ${LVL[FILT[k]]}`).filter(Boolean);
-  const lead = anyOn ? parts.join(" · ") : "No filter — all 1,648 days";
+  const nAll = PX.dates.length.toLocaleString();
+  const lead = anyOn ? parts.join(" · ") : `No filter — all ${nAll} days`;
   let rets = "";
   IDX3.forEach((nm,k)=>{
     let s=0,c=0; const arr=PX.ret[nm];
@@ -715,7 +740,7 @@ function readout(mask){
   });
   el.innerHTML =
     `<span class="lead">${anyOn?"◆ ":""}${lead}</span>` +
-    `<span class="days">${n.toLocaleString()} day${n===1?"":"s"}${anyOn?` of 1,648 · mean 1-mo fwd →`:""}</span>` +
+    `<span class="days">${n.toLocaleString()} day${n===1?"":"s"}${anyOn?` of ${nAll} · mean 1-mo fwd →`:""}</span>` +
     (anyOn ? `<span class="rets">${rets}</span>` : "");
 }
 
@@ -746,16 +771,19 @@ function draw(){
   const pad={l:50,r:14,t:12,b:26};
   const pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
   const N=PX.dates.length;
+  const v0 = VIEW ? VIEW.i0 : 0, v1 = VIEW ? VIEW.i1 : N-1;
+  const lo = Math.max(0, Math.floor(v0)), hi = Math.min(N-1, Math.ceil(v1));
   let mn=Infinity,mx=-Infinity;
-  for(const nm of IDX3){ for(const v of PX.px[nm]){ if(v<mn)mn=v; if(v>mx)mx=v; } }
+  for(const nm of IDX3){ const a=PX.px[nm];
+    for(let i=lo;i<=hi;i++){ const v=a[i]; if(v<mn)mn=v; if(v>mx)mx=v; } }
   const padv=(mx-mn)*0.05; mn-=padv; mx+=padv;
-  const xF = i => pad.l + (N<2?0:i/(N-1))*pw;
+  const xF = i => pad.l + (v1<=v0?0:(i-v0)/(v1-v0))*pw;
   const yF = v => pad.t + (1-(v-mn)/(mx-mn))*ph;
-  PLOT={pad,pw,ph,N,xF,yF};
+  PLOT={pad,pw,ph,N,xF,yF,v0,v1};
 
   ctx.font = "11px ui-monospace, Menlo, monospace";
   ctx.textBaseline="middle";
-  // y grid + labels
+  // y grid + labels (rescaled to the visible window)
   ctx.textAlign="right";
   niceTicks(mn,mx,5).forEach(t=>{
     const y=yF(t);
@@ -763,40 +791,55 @@ function draw(){
     ctx.beginPath(); ctx.moveTo(pad.l,y+.5); ctx.lineTo(w-pad.r,y+.5); ctx.stroke();
     ctx.fillStyle=faint; ctx.fillText(Math.round(t), pad.l-8, y);
   });
-  // x year ticks
+  // x ticks: years zoomed out, quarters/months as the window narrows
   ctx.textAlign="center";
-  let prevYr=null;
-  for(let i=0;i<N;i++){
-    const yr=PX.dates[i].slice(0,4);
-    if(yr!==prevYr){ prevYr=yr;
-      if(i>0){ const x=xF(i);
-        ctx.strokeStyle=soft; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.moveTo(x+.5,pad.t); ctx.lineTo(x+.5,pad.t+ph); ctx.stroke();
-        ctx.fillStyle=faint; ctx.fillText(yr, x, pad.t+ph+14);
-      }
-    }
+  const MONW=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const bounds=[]; let prevYM=PX.dates[lo].slice(0,7);
+  for(let i=lo+1;i<=hi;i++){
+    const ym=PX.dates[i].slice(0,7);
+    if(ym!==prevYM){ prevYM=ym; bounds.push(i); }
   }
+  let firstLab=true;
+  bounds.forEach(i=>{
+    const m=+PX.dates[i].slice(5,7);
+    if(bounds.length>26 && m!==1) return;                       // years only
+    if(bounds.length>12 && bounds.length<=26 && (m-1)%3!==0) return; // quarter starts
+    const x=xF(i); if(x<pad.l-1 || x>w-pad.r+1) return;
+    ctx.strokeStyle=soft; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x+.5,pad.t); ctx.lineTo(x+.5,pad.t+ph); ctx.stroke();
+    ctx.fillStyle=faint;
+    const lab = m===1 ? PX.dates[i].slice(0,4)
+              : firstLab ? MONW[m-1]+" ’"+PX.dates[i].slice(2,4) : MONW[m-1];
+    ctx.fillText(lab, x, pad.t+ph+14);
+    firstLab=false;
+  });
+  // everything inside the plot area clips to it (matters when zoomed)
+  ctx.save();
+  ctx.beginPath(); ctx.rect(pad.l,pad.t,pw,ph); ctx.clip();
   // regime bands
   const mask=matchMask();
   ctx.fillStyle=`rgba(${accRGB},.42)`;
-  const bw=Math.max(1.4, pw/N + 0.6);
-  for(let i=0;i<N;i++){ if(mask[i]){ ctx.fillRect(xF(i)-bw/2, pad.t, bw, ph); } }
+  const bw=Math.max(1.4, pw/(v1-v0+1) + 0.6);
+  for(let i=lo;i<=hi;i++){ if(mask[i]){ ctx.fillRect(xF(i)-bw/2, pad.t, bw, ph); } }
 
   // price lines
   ctx.lineJoin="round"; ctx.lineCap="round";
+  const a0=Math.max(0,lo-1), a1=Math.min(N-1,hi+1);
   IDX3.forEach((nm,k)=>{
     const arr=PX.px[nm];
     ctx.strokeStyle=sc[k]; ctx.lineWidth=1.7; ctx.globalAlpha=1;
     ctx.beginPath();
-    for(let i=0;i<N;i++){ const x=xF(i), y=yF(arr[i]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+    for(let i=a0;i<=a1;i++){ const x=xF(i), y=yF(arr[i]); i>a0?ctx.lineTo(x,y):ctx.moveTo(x,y); }
     ctx.stroke();
     // endpoint dot
-    ctx.fillStyle=sc[k];
-    ctx.beginPath(); ctx.arc(xF(N-1), yF(arr[N-1]), 3, 0, 7); ctx.fill();
+    if(hi===N-1){
+      ctx.fillStyle=sc[k];
+      ctx.beginPath(); ctx.arc(xF(N-1), yF(arr[N-1]), 3, 0, 7); ctx.fill();
+    }
   });
 
   // hover crosshair
-  if(hoverI>=0 && hoverI<N){
+  if(hoverI>=lo && hoverI<=hi){
     const x=xF(hoverI);
     ctx.strokeStyle=dim; ctx.globalAlpha=.5; ctx.lineWidth=1;
     ctx.setLineDash([3,3]);
@@ -808,13 +851,14 @@ function draw(){
       ctx.beginPath(); ctx.arc(x,y,3.6,0,7); ctx.fill(); ctx.stroke();
     });
   }
+  ctx.restore();
 }
 
 function showTip(clientX){
   if(!PLOT) return;
   const rect=cv.getBoundingClientRect();
   const px=clientX-rect.left;
-  let i=Math.round((px-PLOT.pad.l)/PLOT.pw*(PLOT.N-1));
+  let i=Math.round(PLOT.v0 + (px-PLOT.pad.l)/PLOT.pw*(PLOT.v1-PLOT.v0));
   i=Math.max(0,Math.min(PLOT.N-1,i));
   hoverI=i; draw();
   const c=PX.code[i];
@@ -829,8 +873,63 @@ function showTip(clientX){
   tip.style.left=Math.max(6,tx)+"px";
   tip.style.top="18px";
 }
-cv.addEventListener("pointermove", e=>showTip(e.clientX));
-cv.addEventListener("pointerleave", ()=>{ hoverI=-1; tip.style.opacity=0; draw(); });
+/* hover, drag-pan, wheel + pinch zoom */
+const ptrs = new Map();
+let panLast = null, pinch0 = null;
+
+cv.addEventListener("pointerdown", e=>{
+  ptrs.set(e.pointerId, e.clientX);
+  cv.setPointerCapture(e.pointerId);
+  if(ptrs.size===1){ panLast = e.clientX; }
+  else if(ptrs.size===2 && PLOT){
+    panLast = null; hoverI=-1; tip.style.opacity=0;
+    const xs=[...ptrs.values()];
+    pinch0 = {d:Math.max(12,Math.abs(xs[0]-xs[1])), v0:PLOT.v0, v1:PLOT.v1,
+              cx:(xs[0]+xs[1])/2};
+  }
+});
+cv.addEventListener("pointermove", e=>{
+  if(ptrs.has(e.pointerId)) ptrs.set(e.pointerId, e.clientX);
+  if(ptrs.size===2 && pinch0 && PLOT){
+    const xs=[...ptrs.values()];
+    const span0=pinch0.v1-pinch0.v0;
+    const span=span0*pinch0.d/Math.max(12,Math.abs(xs[0]-xs[1]));
+    const rect=cv.getBoundingClientRect();
+    const f=Math.max(0,Math.min(1,(pinch0.cx-rect.left-PLOT.pad.l)/PLOT.pw));
+    const anchor=pinch0.v0+f*span0;
+    setView(anchor-f*span, anchor+(1-f)*span);
+    return;
+  }
+  if(panLast!=null && VIEW && PLOT){
+    const di=(e.clientX-panLast)/PLOT.pw*(PLOT.v1-PLOT.v0);
+    panLast=e.clientX;
+    if(di){ hoverI=-1; tip.style.opacity=0; setView(PLOT.v0-di, PLOT.v1-di); return; }
+  }
+  showTip(e.clientX);
+});
+function endPtr(e){
+  ptrs.delete(e.pointerId);
+  if(ptrs.size<2) pinch0=null;
+  if(ptrs.size===0) panLast=null;
+  else if(ptrs.size===1) panLast=[...ptrs.values()][0];
+}
+cv.addEventListener("pointerup", endPtr);
+cv.addEventListener("pointercancel", endPtr);
+cv.addEventListener("pointerleave", ()=>{ if(!ptrs.size){ hoverI=-1; tip.style.opacity=0; draw(); } });
+
+cv.addEventListener("wheel", e=>{
+  if(!PLOT) return;
+  e.preventDefault();
+  const rect=cv.getBoundingClientRect();
+  const f=Math.max(0,Math.min(1,(e.clientX-rect.left-PLOT.pad.l)/PLOT.pw));
+  const span=PLOT.v1-PLOT.v0;
+  const ns=span*Math.exp(Math.max(-0.4,Math.min(0.4, e.deltaY*0.002)));
+  const anchor=PLOT.v0+f*span;
+  setView(anchor-f*ns, anchor+(1-f)*ns);
+}, {passive:false});
+
+cv.addEventListener("dblclick", ()=>setView(0, PX.dates.length-1));
+document.getElementById("zoomReset").addEventListener("click", ()=>setView(0, PX.dates.length-1));
 
 function refresh(){ updateFilterUI(); readout(matchMask()); draw(); }
 
@@ -864,15 +963,6 @@ function applyMeta(){
   set("mRange", META.range);
   ["mNdays","mNdays2","mNdays3","mNdays4"].forEach(id=>set(id, META.n_days.toLocaleString()));
   set("mIndep", META.n_indep); set("mNreg", META.n_reg); set("mBuilt", META.built);
-  // hero feature stat cards
-  document.querySelectorAll("#heroCard .stat").forEach(st=>{
-    const k=st.dataset.k, s=META.feature.stats[k]; if(!s) return;
-    st.querySelector(".big").dataset.count = s[0];
-    st.querySelector(".s-med").textContent = "med "+pc(s[1]);
-    st.querySelector(".s-hit").textContent = "hit "+Math.round(s[2])+"%";
-    st.querySelector(".s-delta").textContent = (s[3]>=0?"+":"")+s[3].toFixed(2)+" pp vs base";
-    st.querySelector(".bar").dataset.w = Math.round(s[2]);
-  });
   // baseline cells
   document.querySelectorAll(".base .cell").forEach(c=>{
     const k=c.dataset.k, b=META.baseline[k]; if(!b) return;
@@ -884,6 +974,48 @@ function applyMeta(){
   set("fComov", f.comov); set("fIwmVal", f.iwmVal); set("fIwmHit", f.iwmHit); set("fFeat", f.feat);
   set("fBestVal", f.bestVal); set("fBestHit", f.bestHit); set("fBestReg", f.bestReg);
 }
+
+/* ===== today's regime: derived from the last session in PX, so the hero card,
+   the ◆ table marker and the default chart filter always track the data ===== */
+const CUR = PX.code[PX.code.length-1];
+FEATURE = `N=${LVL[CUR[0]]},S=${LVL[CUR[1]]},I=${LVL[CUR[2]]}`;
+FILT = [CUR[0], CUR[1], CUR[2]];
+
+function applyCurrent(){
+  const words = [LVL[CUR[0]], LVL[CUR[1]], LVL[CUR[2]]];
+  const pc = v => (v>=0?"+":"")+v.toFixed(2)+"%";
+  const rg = document.getElementById("heroRegime");
+  if(rg) rg.textContent = `NDX ${words[0]} · SPX ${words[1]} · IWM ${words[2]}`;
+  const dc = document.getElementById("heroDesc");
+  if(dc) dc.textContent = "In effect on the latest session · " + PX.end;
+  document.querySelectorAll("#heroCard .dixchip .lvl").forEach((el,k)=>{
+    el.textContent = words[k];
+    el.style.color = words[k]==="High" ? "var(--accent)" : "var(--ink-dim)";
+  });
+  const row = DATA.find(r=>r[0]===FEATURE);
+  const stats = row ? {NDX:row[2], SPX:row[3], IWM:row[4]} : null;
+  document.querySelectorAll("#heroCard .stat").forEach(st=>{
+    const k=st.dataset.k, s=stats && stats[k];
+    const b=(META && META.baseline || {})[k];
+    const big=st.querySelector(".big");
+    if(!s || s[0]==null){ big.dataset.count=""; big.textContent="—"; return; }
+    big.dataset.count = s[0];
+    big.style.color = s[0]>=0 ? "var(--pos-ink)" : "var(--neg-ink)";
+    st.querySelector(".s-med").textContent = "med "+pc(s[1]);
+    st.querySelector(".s-hit").textContent = "hit "+Math.round(s[2])+"%";
+    if(b){
+      const dv=s[0]-b[0], d=st.querySelector(".s-delta");
+      d.textContent = (dv>=0?"+":"")+dv.toFixed(2)+" pp vs base";
+      d.style.color = dv>=0 ? "var(--pos-ink)" : "var(--neg-ink)";
+    }
+    const bar=st.querySelector(".bar");
+    bar.dataset.w = Math.round(s[2]);
+    bar.style.background = s[0]>=0 ? "var(--pos)" : "var(--neg)";
+  });
+}
+
+applyCurrent();
+render();
 applyMeta();
 refresh();
 
