@@ -67,7 +67,12 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+
+      # Gate the refresh on the unit tests: a logic regression must not be
+      # committed to the published dashboard. Deterministic and offline (~seconds).
+      - name: Run tests
+        run: python -m pytest
 
       # Persist FINRA/Yahoo cache between runs so each refresh only fetches new days,
       # matching the script's incremental caching design.
