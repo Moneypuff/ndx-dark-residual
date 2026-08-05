@@ -2464,12 +2464,23 @@ document.getElementById('mBasis').addEventListener('change', e=>{
   if(curModal) for(const h of ['21','42','63']) renderModalDeciles(h, curModal.tkr, curModal.R);
 });
 
-function openCellModal(tkr){
-  const S = GS();
-  const vals = S.data[mode][tkr];
+function openCellModal(tkr, univHint){
+  // Resolve which grid holds this name. Grid-cell clicks pass no hint (use the active grid);
+  // Today's pooled divergence rows pass their universe ('NDX'/'SPX'/'WL'). If the chosen source
+  // lacks the name, search all grids so a name from any universe still opens.
+  const has = g => g && g.data && (['reg','diff','raw'].some(m => g.data[m] && (tkr in g.data[m])));
+  let S = univHint ? gridForU(univHint) : GS();
+  let rel = univHint ? relForU(univHint) : modalRel();
+  if(!has(S)){
+    for(const u of ['ndx','spx','watch']){ const g = gridForU(u); if(has(g)){ S=g; rel=relForU(u); break; } }
+  }
+  if(!has(S)) return;
+  // Prefer the active grid mode; fall back to the residual (reg -> diff -> raw) the name has.
+  let vmode = mode, vals = S.data[mode] && S.data[mode][tkr];
+  if(!vals){ for(const m of ['reg','diff','raw']){ if(S.data[m] && S.data[m][tkr]){ vals=S.data[m][tkr]; vmode=m; break; } } }
   if(!vals) return;
   let lo, hi;
-  if(mode === 'raw'){
+  if(vmode === 'raw'){
     let mn=Infinity, mx=-Infinity;
     for(const v of vals){ if(v!=null){ mn=Math.min(mn,v); mx=Math.max(mx,v); } }
     if(mn===Infinity){ mn=0; mx=1; }
@@ -2480,23 +2491,23 @@ function openCellModal(tkr){
     lo=-a; hi=a;
   }
   const last = [...vals].reverse().find(v=>v!=null);
-  const wt = S.weights[tkr];
+  const wt = (S.weights||{})[tkr];
 
   document.getElementById('mTkr').textContent = tkr===S.bench ? (S.bench_label || S.bench) : tkr;
   const mVal = document.getElementById('mVal');
-  mVal.textContent = last==null ? '--' : fmt(last, mode);
-  mVal.className = 'val' + (mode==='raw' ? '' : (last>=0?' p':' n'));
+  mVal.textContent = last==null ? '--' : fmt(last, vmode);
+  mVal.className = 'val' + (vmode==='raw' ? '' : (last>=0?' p':' n'));
   document.getElementById('mSub').innerHTML =
     `<span>${tkr===S.bench ? 'benchmark (reconstructed constituent DIX)' : (wt!=null ? 'index weight '+wt.toFixed(2)+'%' : '')}</span>` +
     `<span>${S.dates[0]} &rarr; ${S.dates[S.dates.length-1]}</span>`;
-  document.getElementById('mSpark').innerHTML = spark(vals, lo, hi, mode, 860, 170, 10);
+  document.getElementById('mSpark').innerHTML = spark(vals, lo, hi, vmode, 860, 170, 10);
 
-  // forward-return-by-decile for this name (NDX cells use P.rel; S&P cells use P.spx_rel)
-  const hasRel = !!((modalRel().d||{})[tkr]);
+  // forward-return-by-decile for this name, from the matching universe's rel panel
+  const hasRel = !!(((rel && rel.d) || {})[tkr]);
   document.getElementById('mRel').style.display = hasRel ? '' : 'none';
   document.getElementById('mBasisWrap').style.display = hasRel ? 'inline-flex' : 'none';
-  curModal = hasRel ? {tkr, R: null} : null;
-  if(hasRel){ renderModalDeciles('21', tkr); renderModalDeciles('42', tkr); renderModalDeciles('63', tkr); }
+  curModal = hasRel ? {tkr, R: rel} : null;
+  if(hasRel){ renderModalDeciles('21', tkr, rel); renderModalDeciles('42', tkr, rel); renderModalDeciles('63', tkr, rel); }
 
   overlay.classList.add('on');
 }
@@ -2560,6 +2571,96 @@ if(P.demo){
 // client-side from the payload already on the page.
 // -------------------------------------------------------------------------
 const todayWrap = document.getElementById('todayWrap');
+
+// -------- Today "top / bottom divergences": pooled NDX + S&P 500 by default, with a
+// Watchlist toggle. Rendered into #todayDivBody by renderTodayDiv() so the toggle can
+// re-render just this section without rebuilding the whole tab. --------
+let todayDivMode = 'index';        // 'index' (NDX + S&P 500, pooled) | 'watch'
+let todayStreakTks = new Set();    // NDX active-streak tickers, for the row dot (set in renderToday)
+
+function gridForU(u){ return (u==='SPX'||u==='spx') ? P.spx_grid
+                           : (u==='WL'||u==='watch') ? P.watch_grid : P; }
+function relForU(u){ return (u==='SPX'||u==='spx') ? P.spx_rel
+                          : (u==='WL'||u==='watch') ? P.watch_rel : P.rel; }
+
+// latest raw-D 1y percentile per name from a rel.d panel (same rule as the breadth tile)
+function dpctFrom(relD){
+  const out = {};
+  if(!relD) return out;
+  for(const tk in relD){
+    const s = relD[tk], vals = s.filter(v=>v!=null);
+    if(vals.length < 250) continue;
+    const cur = lastNonNull(s);
+    const wnd = s.slice(-252).filter(v=>v!=null);
+    if(cur!=null && wnd.length >= 60) out[tk] = 100*wnd.filter(v=>v<cur).length/wnd.length;
+  }
+  return out;
+}
+
+// latest-divergence entries from one grid (skips its benchmark cell + stale series)
+function divEntries(grid, rel, univ){
+  const out = [];
+  if(!grid || !grid.data || !grid.data.reg) return out;
+  const reg = grid.data.reg, dp = dpctFrom(rel && rel.d);
+  for(const tk in reg){
+    if(tk === grid.bench) continue;
+    const s = reg[tk];
+    let last=null, at=-1;
+    for(let i=s.length-1;i>=0;i--){ if(s[i]!=null){ last=s[i]; at=i; break; } }
+    if(last==null || at < s.length-10) continue;   // stale series shouldn't headline "today"
+    out.push({tk, v:last, s, univ, wt:(grid.weights||{})[tk],
+              sec:(grid.sector_map||{})[tk]||'', dp: dp[tk]});
+  }
+  return out;
+}
+
+// pooled NDX + S&P 500 entries, deduped by ticker preferring the NDX residual (its home index)
+function indexDivEntries(){
+  const seen = new Set(), out = [];
+  for(const e of divEntries(P, P.rel, 'NDX')){ seen.add(e.tk); out.push(e); }
+  for(const e of divEntries(P.spx_grid, P.spx_rel, 'SPX')){ if(!seen.has(e.tk)){ seen.add(e.tk); out.push(e); } }
+  return out;
+}
+
+function renderTodayDiv(){
+  const body = document.getElementById('todayDivBody');
+  if(!body) return;
+  const entries = todayDivMode==='watch' ? divEntries(P.watch_grid, P.watch_rel, 'WL')
+                                         : indexDivEntries();
+  entries.sort((a,b)=>b.v-a.v);
+  const top = entries.filter(x=>x.v>0).slice(0,10);
+  const bot = entries.filter(x=>x.v<0).slice(-10).reverse();
+  const sgn = x => (x>=0?'+':'') + x.toFixed(3);
+  const uBadge = u => u==='NDX' ? '' :
+    `<span class="mut" title="${u==='SPX'?'S&P 500 (residual vs SPX-DIX)':u==='WL'?'watchlist (residual vs NDX-DIX)':u}" style="font-size:10px;border:1px solid var(--line);border-radius:3px;padding:0 3px;margin-left:4px">${u==='SPX'?'S&amp;P':u==='WL'?'watch':u}</span>`;
+  const divRow = (x,i) => {
+    const s = x.s.slice(-63);
+    let a=0.01; for(const v of s){ if(v!=null) a=Math.max(a,Math.abs(v)); }
+    return `<tr data-tkr="${x.tk}" data-td-univ="${x.univ}" style="cursor:pointer">
+      <td>${i+1}</td>
+      <td>${x.tk}${todayStreakTks.has(x.tk)?' <span title="active D-streak" style="color:var(--accent)">&#9679;</span>':''}${uBadge(x.univ)}${x.wt!=null?` <span class="mut">${x.wt.toFixed(1)}%</span>`:''}</td>
+      <td style="text-align:left;font-weight:400;color:var(--mut)">${x.sec}</td>
+      <td><div class="cspark">${spark(s, -a, a, 'reg', 204, 24, 3)}</div></td>
+      <td><span class="${x.v>=0?'p':'n'}">${sgn(x.v)}</span></td>
+      <td>${x.dp==null?'<span class="mut">--</span>':`<span style="color:${x.dp>=50?'var(--pos)':'var(--neg)'}">${x.dp.toFixed(0)}%</span>`}</td>
+    </tr>`;
+  };
+  const divTbl = (rows, label, sub) => `<div class="rel-card">
+    <h2>${label}</h2>
+    <div class="sub" style="font-size:11px;margin-bottom:8px">${sub}</div>
+    <div style="overflow-x:auto"><table class="ev-table" style="min-width:420px">
+      <thead><tr><th>#</th><th style="text-align:left">name</th><th style="text-align:left">sector</th><th>residual &middot; 3mo</th><th>latest</th><th>raw-D %ile 1y</th></tr></thead>
+      <tbody>${rows.length ? rows.map(divRow).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--mut)">none</td></tr>`}</tbody>
+    </table></div></div>`;
+  const scope = todayDivMode==='watch'
+    ? 'across the custom watchlist &middot; each name&rsquo;s D vs NDX-DIX'
+    : `across NDX-100${P.spx_grid?' + S&amp;P 500':''} &middot; each name&rsquo;s D vs its index DIX`;
+  body.innerHTML =
+    divTbl(top, 'Top 10 divergences &middot; dark accumulation',
+           `largest positive regression residual &middot; ${scope} &middot; click a row for detail`) +
+    divTbl(bot, 'Bottom 10 divergences &middot; distribution',
+           `most negative residual &middot; ${scope} &middot; click a row for detail`);
+}
 
 function renderToday(){
   try{
@@ -2717,47 +2818,20 @@ function renderToday(){
       ${streakRow(streakLo, false)}
     </div>`);
 
-    // ---- top / bottom 10 divergences (latest regression residual, NDX grid) ----
-    const reg = P.data.reg || {};
-    const latest = [];
-    for(const tk in reg){
-      const s = reg[tk];
-      let last = null, at = -1;
-      for(let i=s.length-1;i>=0;i--){ if(s[i]!=null){ last=s[i]; at=i; break; } }
-      if(last==null || at < s.length-10) continue;   // stale series shouldn't headline "today"
-      latest.push({tk, v:last});
-    }
-    latest.sort((a,b)=>b.v-a.v);
-    const topDiv = latest.filter(x=>x.v>0).slice(0,10);
-    const botDiv = latest.filter(x=>x.v<0).slice(-10).reverse();
-    const streakSet = new Set([...streakHi, ...streakLo].map(x=>x.tk));
-    const divRow = (x,i) => {
-      const s = reg[x.tk].slice(-63);
-      let a=0.01; for(const v of s){ if(v!=null) a=Math.max(a,Math.abs(v)); }
-      const wt = P.weights[x.tk], sec = (P.sector_map||{})[x.tk] || '';
-      const dp = dpct1y[x.tk];
-      return `<tr data-tkr="${x.tk}" style="cursor:pointer">
-        <td>${i+1}</td>
-        <td>${x.tk}${streakSet.has(x.tk)?' <span title="active D-streak" style="color:var(--accent)">&#9679;</span>':''}${wt!=null?` <span class="mut">${wt.toFixed(1)}%</span>`:''}</td>
-        <td style="text-align:left;font-weight:400;color:var(--mut)">${sec}</td>
-        <td><div class="cspark">${spark(s, -a, a, 'reg', 204, 24, 3)}</div></td>
-        <td><span class="${x.v>=0?'p':'n'}">${signed(x.v)}</span></td>
-        <td>${dp==null?'<span class="mut">--</span>':`<span style="color:${dp>=50?'var(--pos)':'var(--neg)'}">${dp.toFixed(0)}%</span>`}</td>
-      </tr>`;
-    };
-    const divTbl = (rows, label, sub) => `<div class="rel-card">
-      <h2>${label}</h2>
-      <div class="sub" style="font-size:11px;margin-bottom:8px">${sub}</div>
-      <div style="overflow-x:auto"><table class="ev-table" style="min-width:420px">
-        <thead><tr><th>#</th><th style="text-align:left">name</th><th style="text-align:left">sector</th><th>residual &middot; 3mo</th><th>latest</th><th>raw-D %ile 1y</th></tr></thead>
-        <tbody>${rows.length ? rows.map(divRow).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--mut)">none</td></tr>`}</tbody>
-      </table></div></div>`;
-    html.push(`<div class="vanilla-grid">
-      ${divTbl(topDiv, 'Top 10 divergences &middot; dark accumulation',
-               `largest positive regression residual of the name's D vs ${P.bench_label||P.bench} -- darker than its usual co-movement implies &middot; click a row for detail`)}
-      ${divTbl(botDiv, 'Bottom 10 divergences &middot; distribution',
-               `most negative residual -- less dark than its usual co-movement implies &middot; click a row for detail`)}
-    </div>`);
+    // ---- top / bottom divergences: pooled NDX + S&P 500 (default) with a Watchlist toggle.
+    //      The actual rows are drawn by renderTodayDiv() after the innerHTML flush so the toggle
+    //      can re-render just this section. The row streak-dot uses the NDX streak scan above. ----
+    todayStreakTks = new Set([...streakHi, ...streakLo].map(x=>x.tk));
+    html.push(`<div class="rel-card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <h2 style="margin:0">Top / bottom divergences &middot; today</h2>
+        <div class="seg" id="todayDivSeg" title="which universe to rank today's divergences over">
+          <button data-td="index"${todayDivMode==='index'?' class="on"':''}>NDX + S&amp;P 500</button>
+          ${P.watch_grid ? `<button data-td="watch"${todayDivMode==='watch'?' class="on"':''}>Watchlist</button>` : ''}
+        </div>
+      </div>
+    </div>
+    <div id="todayDivBody" class="vanilla-grid"></div>`);
 
     // ---- sector dark-flow stats ----
     if(P.sectors && P.sectors.items && P.sectors.items.length){
@@ -2819,22 +2893,33 @@ function renderToday(){
     html.push(`<div class="sub" style="font-size:11px;line-height:1.55">
       Everything above is derived from the same payload as the other tabs: gauges are the reconstructed
       dollar-DIX per index (5-day MA), the regime is each gauge's position vs the bottom/top 30% of its own
-      history, divergences are the latest rolling-regression residual of each name's D against
-      ${P.bench_label||P.bench}, streaks use each name's own full-history decile cutoffs, and sector rows
+      history, divergences are the latest rolling-regression residual of each name's D against its
+      index DIX (pooled across NDX-100 + S&amp;P 500, or the custom watchlist via the toggle),
+      streaks use each name's own full-history decile cutoffs, and sector rows
       match the Sector DIX tab. Historical 1-month stats pool overlapping windows &mdash; context, not forecasts.
     </div>`);
     todayWrap.innerHTML = html.join('');
+    renderTodayDiv();   // fill the divergence tables (pooled NDX + S&P 500, or the watchlist)
   }catch(err){
     console.warn('today overview unavailable:', err);
     todayWrap.innerHTML = '<div class="modal-empty">Today overview unavailable for this build.</div>';
   }
 }
 
-// click-through: a name opens the same detail modal as its grid cell; a sector
-// row / industry chip opens the sector drill-down
+// click-through: the divergence-universe toggle re-renders just that section; a name opens the
+// same detail modal as its grid cell (passing the row's universe so pooled S&P / watchlist names
+// resolve to the right grid); a sector row / industry chip opens the sector drill-down
 todayWrap.addEventListener('click', e=>{
+  const td = e.target.closest('[data-td]');
+  if(td){
+    todayDivMode = td.dataset.td;
+    const seg = document.getElementById('todayDivSeg');
+    if(seg) [...seg.children].forEach(b=>b.classList.toggle('on', b===td));
+    renderTodayDiv();
+    return;
+  }
   const n = e.target.closest('[data-tkr]');
-  if(n){ openCellModal(n.dataset.tkr); return; }
+  if(n){ openCellModal(n.dataset.tkr, n.dataset.tdUniv); return; }
   const s = e.target.closest('[data-etf]');
   if(s) openSectorModal(s.dataset.etf);
 });
