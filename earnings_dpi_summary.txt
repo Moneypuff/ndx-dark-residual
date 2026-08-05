@@ -1,85 +1,85 @@
 ==============================================================================
 DPI-INTO-EARNINGS  vs  POST-EARNINGS PERFORMANCE
 ==============================================================================
-Events: 2987   Names: 100   T+1 looks like a real earnings reaction: 1383/2987 (46%)
+Events: 2958   Names: 100   T+1 looks like a real earnings reaction: 1388/2958 (47%)
 
---- NEXT-DAY (T->T+1) ---   n=2984
-    mean +0.50%   median +0.23%   std 7.27%   %positive 52%
-    EXCESS vs QQQ: mean +0.41%   median +0.23%   %positive 52%
-    DPI5   Pearson r=+0.013 (p=0.487, n=2764)   Spearman r=-0.000 (p=0.995)   within-name r=-0.012 (p=0.535)
-    DPI10  Pearson r=+0.014 (p=0.472, n=2755)   Spearman r=-0.001 (p=0.941)   within-name r=-0.018 (p=0.342)
-    DPI5  vs EXCESS  r=+0.011 (p=0.563)   season-cluster boot: r=+0.011 [95% CI -0.019,+0.040] p=0.449 (33 quarters)
-    DPI10 vs EXCESS  r=+0.010 (p=0.584)   season-cluster boot: r=+0.010 [95% CI -0.024,+0.041] p=0.495 (33 quarters)
+--- NEXT-DAY (T->T+1) ---   n=2955
+    mean +0.52%   median +0.23%   std 7.34%   %positive 52%
+    EXCESS vs QQQ: mean +0.45%   median +0.24%   %positive 52%
+    DPI5   Pearson r=+0.015 (p=0.445, n=2738)   Spearman r=+0.002 (p=0.926)   within-name r=-0.010 (p=0.593)
+    DPI10  Pearson r=+0.012 (p=0.523, n=2729)   Spearman r=-0.005 (p=0.798)   within-name r=-0.020 (p=0.304)
+    DPI5  vs EXCESS  r=+0.012 (p=0.527)   season-cluster boot: r=+0.012 [95% CI -0.019,+0.042] p=0.406 (33 quarters)
+    DPI10 vs EXCESS  r=+0.009 (p=0.645)   season-cluster boot: r=+0.009 [95% CI -0.025,+0.039] p=0.564 (33 quarters)
 
---- 1-WEEK (T->T+5) ---   n=2963
-    mean +1.03%   median +0.39%   std 9.46%   %positive 52%
-    EXCESS vs QQQ: mean +0.56%   median -0.05%   %positive 50%
-    DPI5   Pearson r=+0.014 (p=0.469, n=2743)   Spearman r=+0.003 (p=0.880)   within-name r=-0.022 (p=0.259)
-    DPI10  Pearson r=+0.013 (p=0.481, n=2734)   Spearman r=+0.001 (p=0.959)   within-name r=-0.029 (p=0.125)
-    DPI5  vs EXCESS  r=+0.008 (p=0.657)   season-cluster boot: r=+0.008 [95% CI -0.023,+0.042] p=0.589 (33 quarters)
-    DPI10 vs EXCESS  r=+0.002 (p=0.913)   season-cluster boot: r=+0.002 [95% CI -0.031,+0.035] p=0.869 (33 quarters)
+--- 1-WEEK (T->T+5) ---   n=2937
+    mean +1.07%   median +0.38%   std 9.53%   %positive 52%
+    EXCESS vs QQQ: mean +0.58%   median -0.05%   %positive 50%
+    DPI5   Pearson r=+0.014 (p=0.475, n=2720)   Spearman r=+0.003 (p=0.864)   within-name r=-0.022 (p=0.250)
+    DPI10  Pearson r=+0.011 (p=0.554, n=2711)   Spearman r=-0.002 (p=0.927)   within-name r=-0.031 (p=0.102)
+    DPI5  vs EXCESS  r=+0.007 (p=0.698)   season-cluster boot: r=+0.007 [95% CI -0.024,+0.040] p=0.631 (33 quarters)
+    DPI10 vs EXCESS  r=+0.000 (p=0.996)   season-cluster boot: r=+0.000 [95% CI -0.032,+0.032] p=0.954 (33 quarters)
 
---- 2-WEEK (T->T+10) ---   n=2950
-    mean +1.50%   median +0.79%   std 11.10%   %positive 54%
-    EXCESS vs QQQ: mean +0.61%   median -0.15%   %positive 49%
-    DPI5   Pearson r=+0.035 (p=0.067, n=2730)   Spearman r=+0.031 (p=0.101)   within-name r=+0.007 (p=0.728)
-    DPI10  Pearson r=+0.035 (p=0.070, n=2721)   Spearman r=+0.030 (p=0.120)   within-name r=-0.002 (p=0.935)
-    DPI5  vs EXCESS  r=+0.020 (p=0.292)   season-cluster boot: r=+0.020 [95% CI -0.006,+0.046] p=0.123 (33 quarters)
-    DPI10 vs EXCESS  r=+0.010 (p=0.609)   season-cluster boot: r=+0.010 [95% CI -0.021,+0.040] p=0.500 (33 quarters)
+--- 2-WEEK (T->T+10) ---   n=2916
+    mean +1.50%   median +0.80%   std 11.16%   %positive 54%
+    EXCESS vs QQQ: mean +0.62%   median -0.15%   %positive 49%
+    DPI5   Pearson r=+0.035 (p=0.066, n=2699)   Spearman r=+0.032 (p=0.100)   within-name r=+0.007 (p=0.710)
+    DPI10  Pearson r=+0.034 (p=0.075, n=2690)   Spearman r=+0.028 (p=0.141)   within-name r=-0.002 (p=0.924)
+    DPI5  vs EXCESS  r=+0.020 (p=0.293)   season-cluster boot: r=+0.020 [95% CI -0.007,+0.046] p=0.117 (33 quarters)
+    DPI10 vs EXCESS  r=+0.009 (p=0.630)   season-cluster boot: r=+0.009 [95% CI -0.021,+0.039] p=0.514 (33 quarters)
 
---- 1-MONTH (T->T+21) ---   n=2942
-    mean +2.37%   median +1.24%   std 14.33%   %positive 55%
-    EXCESS vs QQQ: mean +0.81%   median -0.09%   %positive 50%
-    DPI5   Pearson r=+0.042 (p=0.027, n=2722)   Spearman r=+0.038 (p=0.048)   within-name r=+0.016 (p=0.402)
-    DPI10  Pearson r=+0.051 (p=0.008, n=2713)   Spearman r=+0.043 (p=0.024)   within-name r=+0.017 (p=0.375)
-    DPI5  vs EXCESS  r=+0.019 (p=0.325)   season-cluster boot: r=+0.019 [95% CI -0.016,+0.053] p=0.274 (32 quarters)
-    DPI10 vs EXCESS  r=+0.011 (p=0.553)   season-cluster boot: r=+0.011 [95% CI -0.025,+0.046] p=0.546 (32 quarters)
+--- 1-MONTH (T->T+21) ---   n=2908
+    mean +2.38%   median +1.22%   std 14.39%   %positive 55%
+    EXCESS vs QQQ: mean +0.82%   median -0.08%   %positive 50%
+    DPI5   Pearson r=+0.042 (p=0.029, n=2691)   Spearman r=+0.037 (p=0.054)   within-name r=+0.015 (p=0.430)
+    DPI10  Pearson r=+0.049 (p=0.012, n=2682)   Spearman r=+0.040 (p=0.038)   within-name r=+0.015 (p=0.442)
+    DPI5  vs EXCESS  r=+0.019 (p=0.334)   season-cluster boot: r=+0.019 [95% CI -0.017,+0.054] p=0.283 (32 quarters)
+    DPI10 vs EXCESS  r=+0.010 (p=0.595)   season-cluster boot: r=+0.010 [95% CI -0.027,+0.045] p=0.585 (32 quarters)
 
 --- TERCILE BUCKETS on within-name DPI percentile ---
-  DPI5:  low-DPI n=875   high-DPI n=974
-     next_day: high +0.47% (52% up)   low +0.67% (54% up)   high-low -0.20pp (t=-0.60, p=0.550)
-     w1      : high +0.93% (52% up)   low +1.42% (54% up)   high-low -0.49pp (t=-1.09, p=0.277)
-     w2      : high +1.57% (54% up)   low +1.35% (53% up)   high-low +0.22pp (t=+0.42, p=0.676)
-     m1      : high +2.54% (55% up)   low +2.01% (54% up)   high-low +0.53pp (t=+0.79, p=0.432)
-  DPI10:  low-DPI n=874   high-DPI n=973
-     next_day: high +0.26% (50% up)   low +0.57% (54% up)   high-low -0.31pp (t=-0.91, p=0.360)
-     w1      : high +0.60% (51% up)   low +1.39% (53% up)   high-low -0.80pp (t=-1.75, p=0.081)
-     w2      : high +1.27% (54% up)   low +1.33% (53% up)   high-low -0.06pp (t=-0.11, p=0.916)
-     m1      : high +2.32% (54% up)   low +1.83% (53% up)   high-low +0.49pp (t=+0.71, p=0.480)
+  DPI5:  low-DPI n=867   high-DPI n=966
+     next_day: high +0.51% (52% up)   low +0.69% (54% up)   high-low -0.18pp (t=-0.51, p=0.610)
+     w1      : high +1.01% (52% up)   low +1.47% (54% up)   high-low -0.46pp (t=-1.01, p=0.312)
+     w2      : high +1.58% (54% up)   low +1.32% (53% up)   high-low +0.26pp (t=+0.49, p=0.623)
+     m1      : high +2.52% (54% up)   low +2.01% (54% up)   high-low +0.51pp (t=+0.75, p=0.453)
+  DPI10:  low-DPI n=865   high-DPI n=964
+     next_day: high +0.28% (50% up)   low +0.61% (54% up)   high-low -0.33pp (t=-0.94, p=0.347)
+     w1      : high +0.67% (51% up)   low +1.47% (53% up)   high-low -0.80pp (t=-1.73, p=0.085)
+     w2      : high +1.29% (53% up)   low +1.34% (53% up)   high-low -0.05pp (t=-0.08, p=0.934)
+     m1      : high +2.32% (53% up)   low +1.87% (53% up)   high-low +0.45pp (t=+0.64, p=0.524)
 
 --- HEADLINE SPREADS, EXCESS vs QQQ + season-cluster bootstrap ---
   DPI10 terciles on full-history pct (look-ahead):
-     next_day: high-low -0.35pp excess   [95% CI -0.92,+0.18] cluster p=0.224   (n hi/lo=973/874, 33 quarters)
-     w1      : high-low -0.92pp excess   [95% CI -1.62,-0.25] cluster p=0.007   (n hi/lo=963/868, 33 quarters)
-     w2      : high-low -0.75pp excess   [95% CI -1.55,+0.07] cluster p=0.075   (n hi/lo=955/867, 33 quarters)
-     m1      : high-low -0.67pp excess   [95% CI -1.63,+0.29] cluster p=0.181   (n hi/lo=954/862, 32 quarters)
+     next_day: high-low -0.35pp excess   [95% CI -0.93,+0.18] cluster p=0.228   (n hi/lo=964/865, 33 quarters)
+     w1      : high-low -0.94pp excess   [95% CI -1.59,-0.31] cluster p=0.003   (n hi/lo=957/858, 33 quarters)
+     w2      : high-low -0.73pp excess   [95% CI -1.54,+0.09] cluster p=0.084   (n hi/lo=944/855, 33 quarters)
+     m1      : high-low -0.69pp excess   [95% CI -1.69,+0.30] cluster p=0.182   (n hi/lo=943/850, 32 quarters)
   DPI10 terciles on EXPANDING pct (>= 8 prior events; tradable):
-     next_day: high-low -0.01pp excess   [95% CI -0.78,+0.71] cluster p=0.997   (n hi/lo=874/541, 26 quarters)
-     w1      : high-low -0.45pp excess   [95% CI -1.28,+0.33] cluster p=0.285   (n hi/lo=864/535, 26 quarters)
-     w2      : high-low -0.47pp excess   [95% CI -1.43,+0.46] cluster p=0.331   (n hi/lo=856/534, 26 quarters)
-     m1      : high-low -1.08pp excess   [95% CI -2.09,-0.11] cluster p=0.030   (n hi/lo=856/529, 25 quarters)
+     next_day: high-low -0.03pp excess   [95% CI -0.81,+0.69] cluster p=0.941   (n hi/lo=862/540, 26 quarters)
+     w1      : high-low -0.54pp excess   [95% CI -1.38,+0.22] cluster p=0.179   (n hi/lo=856/533, 26 quarters)
+     w2      : high-low -0.52pp excess   [95% CI -1.52,+0.43] cluster p=0.296   (n hi/lo=843/530, 26 quarters)
+     m1      : high-low -1.12pp excess   [95% CI -2.14,-0.12] cluster p=0.029   (n hi/lo=843/525, 25 quarters)
 
 --- DOUBLE SORT: pre-earnings momentum terciles x DPI10 terciles ---
     (cells = mean 1-month EXCESS return; momentum = 21 sessions into T)
-     momentum down  (avg run-in -7.7%, n=904): loD +0.50%  midD +2.46%  hiD +0.45%   hi-lo -0.04pp (p=0.972)
-     momentum flat  (avg run-in +2.3%, n=904): loD -0.15%  midD -0.01%  hiD -0.23%   hi-lo -0.08pp (p=0.930)
-     momentum up    (avg run-in +14.5%, n=904): loD +2.09%  midD +2.52%  hiD +0.15%   hi-lo -1.93pp (p=0.155)
+     momentum down  (avg run-in -7.8%, n=894): loD +0.49%  midD +2.51%  hiD +0.42%   hi-lo -0.08pp (p=0.951)
+     momentum flat  (avg run-in +2.3%, n=893): loD -0.12%  midD -0.08%  hiD -0.14%   hi-lo -0.02pp (p=0.982)
+     momentum up    (avg run-in +14.5%, n=894): loD +2.13%  midD +2.54%  hiD +0.13%   hi-lo -2.00pp (p=0.144)
 
 --- GAP-DIRECTION SPLIT: post-reaction drift (T+1 -> T+21) by DPI10 ---
     ('informed dark accumulation' would show up as high-DPI names recovering after a down gap)
-     gap DOWN < -2%   n= 879: drift hiD +2.36% vs loD +0.19%  (+2.17pp, p=0.015)   corr(DPI10, drift) r=+0.092 (p=0.006)
-     flat +/-2%       n= 854: drift hiD +1.53% vs loD +1.35%  (+0.18pp, p=0.826)   corr(DPI10, drift) r=+0.024 (p=0.482)
-     gap UP > +2%     n= 980: drift hiD +2.06% vs loD +1.73%  (+0.33pp, p=0.767)   corr(DPI10, drift) r=+0.047 (p=0.138)
+     gap DOWN < -2%   n= 882: drift hiD +2.36% vs loD +0.18%  (+2.18pp, p=0.014)   corr(DPI10, drift) r=+0.092 (p=0.006)
+     flat +/-2%       n= 818: drift hiD +1.43% vs loD +1.43%  (-0.01pp, p=0.993)   corr(DPI10, drift) r=+0.020 (p=0.572)
+     gap UP > +2%     n= 982: drift hiD +2.08% vs loD +1.71%  (+0.36pp, p=0.742)   corr(DPI10, drift) r=+0.048 (p=0.133)
 
 --- REALIZED VOLATILITY (annualized) over each post-earnings window ---
-  NEXT-DAY (T->T+1)    mean  81.4%  median  59.1%   DPI10 corr r=+0.061 (p=0.001)   high-DPI 86.5% vs low-DPI 78.3%
-  1-WEEK (T->T+5)      mean  53.3%  median  44.1%   DPI10 corr r=+0.060 (p=0.002)   high-DPI 54.7% vs low-DPI 53.6%
-  2-WEEK (T->T+10)     mean  45.3%  median  38.3%   DPI10 corr r=+0.059 (p=0.002)   high-DPI 46.1% vs low-DPI 46.1%
-  1-MONTH (T->T+21)    mean  39.9%  median  34.2%   DPI10 corr r=+0.058 (p=0.003)   high-DPI 40.3% vs low-DPI 41.2%
+  NEXT-DAY (T->T+1)    mean  82.6%  median  60.5%   DPI10 corr r=+0.059 (p=0.002)   high-DPI 87.9% vs low-DPI 79.6%
+  1-WEEK (T->T+5)      mean  53.7%  median  44.4%   DPI10 corr r=+0.060 (p=0.002)   high-DPI 55.2% vs low-DPI 54.0%
+  2-WEEK (T->T+10)     mean  45.5%  median  38.5%   DPI10 corr r=+0.060 (p=0.002)   high-DPI 46.4% vs low-DPI 46.4%
+  1-MONTH (T->T+21)    mean  40.2%  median  34.4%   DPI10 corr r=+0.060 (p=0.002)   high-DPI 40.6% vs low-DPI 41.5%
 
 --- ROBUSTNESS: DPI10 vs next-day across cuts ---
-    timing = amc         r=+0.021 (p=0.395, n=1647)
-    timing = bmo         r=+0.008 (p=0.810, n=869)
-    reports <= 2022      r=+0.013 (p=0.630, n=1411)
-    reports >  2022      r=+0.016 (p=0.555, n=1344)
+    timing = amc         r=+0.019 (p=0.428, n=1681)
+    timing = bmo         r=+0.006 (p=0.862, n=839)
+    reports <= 2022      r=+0.012 (p=0.648, n=1394)
+    reports >  2022      r=+0.013 (p=0.629, n=1335)
 ==============================================================================
