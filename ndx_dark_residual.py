@@ -1050,8 +1050,10 @@ def _iwm_tickers_from_csv_text(text):
     if "Asset Class" in df.columns:
         df = df[df["Asset Class"].astype(str).str.strip().str.lower() == "equity"]
     tickers, seen = [], set()
-    for t in df["Ticker"].astype(str):
-        s = t.strip().upper()
+    for t in df["Ticker"]:
+        if pd.isna(t):                          # blank ticker cell (disclaimer/trailer row)
+            continue
+        s = str(t).strip().upper()
         if not re.match(r"^[A-Z][A-Z0-9.\-]{0,6}$", s):  # skip cash/derivative/blank rows
             continue
         if s in seen:
@@ -5236,6 +5238,8 @@ def _ssga_tickers_from_xlsx(raw):
         col = col.iloc[:, 0]
     out, seen = [], set()
     for t in col.tolist():
+        if pd.isna(t):                          # blank ticker cell (disclaimer/trailer row)
+            continue
         u = str(t).strip().upper()
         if _TICKER_RE.match(u) and u not in seen:
             seen.add(u); out.append(u)
