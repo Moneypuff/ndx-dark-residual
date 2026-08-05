@@ -2135,8 +2135,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     between the broad GICS sectors and finer SPDR S&amp;P industry funds (e.g. Homebuilders,
     Retail, Oil&nbsp;&amp;&nbsp;Gas&nbsp;E&amp;P, Regional Banks), which use the identical
     construction. Cross-sector correlation is moderate (~0.5) &mdash; sectors
-    share a common dark-flow component but carry distinct signals. For each fund's DIX plotted
-    against <b>its own ETF's forward return</b> (deciles, scatter, correlations), see
+    share a common dark-flow component but carry distinct signals. <b>Click a sector</b> to zoom
+    into its trailing DIX plot and see <b>its forward return by DIX decile</b> (1&thinsp;/&thinsp;2&thinsp;/&thinsp;3-month,
+    today's decile highlighted) &mdash; the same view single stocks get &mdash; over the constituent
+    dark-flow breakdown. For that fund's DIX with the full scatter and correlations too, see
     <b>DIX vs Return &rarr; Sectors</b>.
   </div>
 </div>
@@ -2198,6 +2200,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button class="modal-close" id="secmClose" aria-label="close">&times;</button>
     </div>
     <div class="modal-sub" id="secmSub"></div>
+    <div id="secmSpark"></div>
+    <label class="chk" id="secmBasisWrap" style="display:inline-flex;margin:8px 0 0" title="rank each day's DIX against only this fund's PREVIOUS 252 sessions (min 120) instead of its full window -- the decile that was actually knowable in real time"><input type="checkbox" id="secmBasis"/>&nbsp;trailing deciles (no look-ahead)</label>
+    <div id="secmRel" class="modal-rel">
+      <div>
+        <h3>Forward return by decile of this fund's DIX &middot; 1mo</h3>
+        <svg id="secmDec21" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+        <div class="stat" id="secmStat21"></div>
+      </div>
+      <div>
+        <h3>2mo</h3>
+        <svg id="secmDec42" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+        <div class="stat" id="secmStat42"></div>
+      </div>
+      <div>
+        <h3>3mo</h3>
+        <svg id="secmDec63" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+        <div class="stat" id="secmStat63"></div>
+      </div>
+    </div>
+    <h3 id="secmConstHdr" style="margin:24px 0 4px;font-size:11px;color:var(--mut);font-weight:650;text-transform:uppercase;letter-spacing:.3px">Who is receiving the dark flow &middot; constituents</h3>
     <svg id="secmBars" viewBox="0 0 900 640" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto"></svg>
     <div class="sub" id="secmNote" style="font-size:11px;line-height:1.5;margin-top:6px"></div>
   </div>
@@ -4760,7 +4782,7 @@ function renderSectors(){
       : ` <span style="color:var(--neg)">▼${Math.abs(it.d20).toFixed(3)}</span>`);
     const lcr = it.last_cross;
     const cross = lcr ? ` · <span style="color:${lcr.dir==='up'?'var(--pos)':'var(--neg)'}" title="most recent crossing into the trailing-year 80th/20th percentile band">${lcr.dir==='up'?'▲P80':'▼P20'} ${lcr.date}</span>` : '';
-    return `<div class="cell" data-etf="${it.etf}" title="click for constituent dark flow">
+    return `<div class="cell" data-etf="${it.etf}" title="click to zoom in: forward return by DIX decile + constituent dark flow">
       <div class="chead">
         <span class="tkr">${it.etf} <span style="color:var(--mut);font-weight:500;font-size:10px">${it.name}</span></span>
         <span class="val">${it.cur.toFixed(3)}</span>
@@ -4794,6 +4816,38 @@ document.getElementById('sectorLevelSeg').addEventListener('click', e=>{
   renderSectors();
 });
 
+// Forward-return-by-decile for one sector at one horizon -- the sector analog of
+// renderModalDeciles(): pairs the fund's reconstructed DIX (its "1-year trailing plot")
+// with its own ETF's forward return, buckets by DIX decile, and spotlights today's decile.
+// Shares the trailing (no-look-ahead) machinery via secModalTrail.
+let secModalTrail = false;    // sector modal decile basis toggle
+let curSecModal = null;       // the item whose sector modal is open, for re-render on toggle
+function renderSecModalDeciles(h, it){
+  const bars = document.getElementById('secmDec'+h);
+  const stat = document.getElementById('secmStat'+h);
+  const hn = parseInt(h,10), rs = it['r'+h];
+  if(!it.series || !rs || !rs.some(v=>v!=null)){
+    bars.innerHTML=''; stat.textContent='no forward-return history for this fund'; return;
+  }
+  if(secModalTrail){
+    const {buckets, todayDec} = decilesTrailing(it.series, rs);
+    const nn = buckets.reduce((s,b)=>s+(b?b.n:0), 0);
+    if(nn < 20){ bars.innerHTML=''; stat.textContent='not enough history for trailing deciles (needs 120+ prior sessions)'; return; }
+    bars.innerHTML = renderBars(buckets, hn, null, null, todayDec);
+    stat.innerHTML = `n = <b>${nn.toLocaleString()}</b> · trailing deciles (prior ${TRAIL_WIN} sessions, min ${TRAIL_MIN}) · today's DIX &rarr; highlighted decile`;
+    return;
+  }
+  const pts = secPairs(it, h);
+  if(pts.length < 20){ bars.innerHTML=''; stat.textContent='too few overlapping observations'; return; }
+  const today = lastNonNull(it.series), r = pearson(pts);
+  bars.innerHTML = renderBars(deciles(pts,10), hn, null, today);
+  stat.innerHTML = `n = <b>${pts.length.toLocaleString()}</b> · Pearson r = <b>${r==null?'--':r.toFixed(3)}</b> · today's DIX &rarr; highlighted decile`;
+}
+document.getElementById('secmBasis').addEventListener('change', e=>{
+  secModalTrail = e.target.checked;
+  if(curSecModal) for(const h of ['21','42','63']) renderSecModalDeciles(h, curSecModal);
+});
+
 function openSectorModal(etf){
   const S = P.sectors; if(!S) return;
   const it = S.items.find(x=>x.etf===etf); if(!it || !it.names || !it.names.length) return;
@@ -4801,8 +4855,27 @@ function openSectorModal(etf){
     `${it.etf} · ${it.name}` + (it.parent ? ` (${it.parent})` : '');
   document.getElementById('secmVal').textContent = `DIX ${it.cur.toFixed(3)} · ${it.pct}%ile 1y`;
   document.getElementById('secmSub').innerHTML =
-    `<span>who is receiving the dark flow — constituents by share of the sector's off-exchange short $ volume</span>`
+    `<span>this fund's DIX vs its own forward return (deciles), and which constituents are receiving the dark flow</span>`
     + `<span>top ${it.names.length} of ${it.n} names</span>`;
+
+  // Enlarged trailing DIX plot -- the sector's 1-year trailing sparkline zoomed up, with the
+  // same trailing-year 80/20 percentile band + crossing markers the small cell shows.
+  let slo=Infinity, shi=-Infinity;
+  for(const v of it.series){ if(v!=null){ if(v<slo)slo=v; if(v>shi)shi=v; } }
+  for(const arr of [it.p80, it.p20]){ if(!arr) continue; for(const v of arr){ if(v!=null){ if(v<slo)slo=v; if(v>shi)shi=v; } } }
+  if(slo===Infinity){ slo=0.35; shi=0.55; }
+  const spad=(shi-slo)*0.08||0.02; slo-=spad; shi+=spad;
+  document.getElementById('secmSpark').innerHTML =
+    spark(it.series, slo, shi, 'raw', 860, 150, 10, {p80: it.p80, p20: it.p20, cross: it.cross});
+
+  // Forward return by decile of this fund's own DIX (1/2/3-month), the same view single stocks
+  // get in the cell modal -- from the DIX series + the fund ETF's forward returns packed per item.
+  const hasRet = !!(it.series && it.r21 && it.r21.some(v => v != null));
+  document.getElementById('secmRel').style.display = hasRet ? '' : 'none';
+  document.getElementById('secmBasisWrap').style.display = hasRet ? 'inline-flex' : 'none';
+  curSecModal = hasRet ? it : null;
+  if(hasRet) for(const h of ['21','42','63']) renderSecModalDeciles(h, it);
+
   const names = it.names, rowH=20, padT=8, padL=66, padR=168, W=900;
   const maxW = Math.max(...names.map(n=>n.w), 0.01);
   const H = padT*2 + names.length*rowH;
