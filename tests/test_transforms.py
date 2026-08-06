@@ -48,6 +48,57 @@ def test_forward_return_multi_horizon_and_shape():
 
 
 # ===========================================================================
+# compute_divergence_signal (DIX-vs-price divergence, option B)
+# ===========================================================================
+def test_divergence_signal_states_and_guard():
+    idx = _idx(30)
+    # DIX rises monotonically; price falls -> bullish divergence (+1) everywhere
+    # the lookback change is defined; NaN for the first `lookback` sessions.
+    dix = pd.Series(np.linspace(0.40, 0.50, 30), index=idx)
+    close = pd.Series(np.linspace(100.0, 90.0, 30), index=idx)
+    fwd = N.compute_forward_return(pd.DataFrame({"CLOSE": close}), 5)["CLOSE"]
+    state, stats = N.compute_divergence_signal(dix, close, fwd, lookback=5)
+    assert state.iloc[:5].isna().all()          # undefined until the change exists
+    assert (state.iloc[5:] == 1.0).all()        # DIX up + price down = bullish
+    assert stats["lookback"] == 5
+    assert stats["cur"]["state"] == 1
+    assert stats["cur"]["streak"] == 25         # +1 held for every defined day
+    assert stats["cur"]["dixchg"] > 0 and stats["cur"]["pxchg"] < 0
+    assert stats["bull"]["n"] > 0 and stats["bear"]["n"] == 0
+
+
+def test_divergence_signal_bearish_and_aligned():
+    idx = _idx(12)
+    # DIX down while price up over the lookback -> bearish (-1)
+    dix = pd.Series(np.linspace(0.50, 0.44, 12), index=idx)
+    close = pd.Series(np.linspace(90.0, 100.0, 12), index=idx)
+    fwd = N.compute_forward_return(pd.DataFrame({"CLOSE": close}), 3)["CLOSE"]
+    state, stats = N.compute_divergence_signal(dix, close, fwd, lookback=3)
+    assert (state.dropna() == -1.0).all()
+    assert stats["cur"]["state"] == -1
+    # both rising -> aligned (0), no divergence in either direction
+    dix2 = pd.Series(np.linspace(0.40, 0.50, 12), index=idx)
+    state2, stats2 = N.compute_divergence_signal(dix2, close, fwd, lookback=3)
+    assert (state2.dropna() == 0.0).all()
+    assert stats2["cur"]["state"] == 0
+    assert stats2["bull"]["n"] == 0 and stats2["bear"]["n"] == 0
+
+
+def test_divergence_conditional_stats_ignore_unrealised_forward():
+    # The conditional means must use only realised (non-NaN) forward returns --
+    # the last `horizon` rows have no future close and must be excluded.
+    idx = _idx(20)
+    dix = pd.Series(np.linspace(0.40, 0.50, 20), index=idx)
+    close = pd.Series(np.linspace(100.0, 90.0, 20), index=idx)
+    fwd = N.compute_forward_return(pd.DataFrame({"CLOSE": close}), 5)["CLOSE"]
+    state, stats = N.compute_divergence_signal(dix, close, fwd, lookback=5)
+    # bullish days = index 5..19 (15), but the last 5 have NaN forward returns
+    defined_bull = int(((state == 1.0) & fwd.notna()).sum())
+    assert stats["bull"]["n"] == defined_bull
+    assert stats["bull"]["n"] == 10
+
+
+# ===========================================================================
 # finra_dpi_to_d
 # ===========================================================================
 def test_dpi_to_d_ratio_clip_and_zero_denominator():
