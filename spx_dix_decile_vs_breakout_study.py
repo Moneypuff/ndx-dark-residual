@@ -469,6 +469,219 @@ def smoothed_level_report(df, horizons=HORIZONS, split=REGIME_SPLIT):
 
 
 # ---------------------------------------------------------------------------
+# Follow-up -- normalize DIX into an OSCILLATOR
+# ---------------------------------------------------------------------------
+OSC_WIN = 126          # ~6-month window: the sweet spot found in the baseline sweep
+OSC_SMOOTH = 3         # %D smoothing (smooth the OUTPUT, never the input DIX)
+DIV_LOOKBACK = 21      # lookback for the DIX-vs-price divergence sign
+
+
+def stochastic_osc(dix, win=OSC_WIN, smooth=OSC_SMOOTH, min_frac=0.8):
+    """Stochastic %D on DIX: (DIX - min_win)/(max_win - min_win)*100, then a
+    `smooth`-session moving average. Rank/range bounding is robust to the DIX's
+    secular drift and fat tails -- the strongest normalization found here."""
+    mp = max(20, int(win * min_frac))
+    lo = dix.rolling(win, min_periods=mp).min()
+    hi = dix.rolling(win, min_periods=mp).max()
+    k = (dix - lo) / (hi - lo).replace(0, np.nan) * 100.0
+    return k.rolling(smooth, min_periods=1).mean()
+
+
+def pct_rank_osc(dix, win=OSC_WIN, min_frac=0.8):
+    """Rolling percentile-rank oscillator (0..100): where DIX sits within its own
+    trailing `win` sessions. Continuous cousin of the trailing decile."""
+    mp = max(20, int(win * min_frac))
+    return dix.rolling(win, min_periods=mp).apply(
+        lambda x: (x[:-1] < x[-1]).mean() * 100.0, raw=True)
+
+
+def rsi_osc(dix, win=14):
+    """RSI on the DIX series itself (a MOMENTUM oscillator). Documented as a
+    dead end -- DIX rate-of-change carries ~no forward-return signal."""
+    d = dix.diff()
+    up = d.clip(lower=0)
+    dn = (-d).clip(lower=0)
+    rs = up.ewm(alpha=1 / win, adjust=False).mean() / dn.ewm(alpha=1 / win, adjust=False).mean()
+    return 100 - 100 / (1 + rs)
+
+
+def macd_hist_osc(dix, fast=12, slow=26, sig=9):
+    """MACD histogram on DIX (momentum). Also a dead end -- kept so it is not
+    re-discovered."""
+    macd = dix.ewm(span=fast, adjust=False).mean() - dix.ewm(span=slow, adjust=False).mean()
+    return macd - macd.ewm(span=sig, adjust=False).mean()
+
+
+def dix_price_divergence(dix, price, lookback=DIV_LOOKBACK):
+    """DIX-vs-price divergence state over `lookback` sessions:
+        +1  DIX up   while price DOWN  (bullish divergence -- dark buying into weakness)
+        -1  DIX down while price UP    (bearish divergence)
+         0  aligned (both up / both down)
+    NaN until both changes are defined. Returns (state, dix_chg, price_chg)."""
+    dchg = dix.diff(lookback)
+    pchg = price.pct_change(lookback)
+    dc = np.sign(dchg)
+    pc = np.sign(pchg)
+    state = pd.Series(0.0, index=dix.index)
+    state[(dc > 0) & (pc < 0)] = 1.0
+    state[(dc < 0) & (pc > 0)] = -1.0
+    state[dchg.isna() | pchg.isna()] = np.nan
+    return state, dchg, pchg
+
+
+def oscillator_summary(df, horizons=HORIZONS, split=REGIME_SPLIT):
+    """Tidy summary of every oscillator/divergence construction across horizons:
+    IC, Newey-West t, and the pre/post-regime IC split. The committed results
+    artifact for Q3 (per-day series stay live/derived, not committed)."""
+    specs = [("stoch_%D_126", "osc_stoch"), ("pctrank_126", "osc_pctrank"),
+             ("rsi_dix_14", "osc_rsi"), ("macd_hist_dix", "osc_macd")]
+    rows = []
+    for h in horizons:
+        rc = f"r{h}"
+        for name, col in specs:
+            d = df[[col, rc]].dropna()
+            ic, n = spearman_ic(d[col].to_numpy(), d[rc].to_numpy())
+            _, t, _ = nw_slope(d[col].to_numpy(), d[rc].to_numpy())
+            icp, _ = spearman_ic(d[d.index < split][col].to_numpy(),
+                                 d[d.index < split][rc].to_numpy())
+            icq, _ = spearman_ic(d[d.index >= split][col].to_numpy(),
+                                 d[d.index >= split][rc].to_numpy())
+            rows.append({"horizon": h, "signal": name, "n": n, "ic": round(ic, 4),
+                         "nw_t": round(t, 3), "ic_pre2021": round(icp, 4),
+                         "ic_post2021": round(icq, 4)})
+        # GEX-gated stochastic and the bullish-divergence flag as signals too
+        g = df[["osc_stoch", "gex", rc]].dropna()
+        gm = g[g["gex"] > 0]
+        ic, n = spearman_ic(gm["osc_stoch"].to_numpy(), gm[rc].to_numpy())
+        icp, _ = spearman_ic(gm[gm.index < split]["osc_stoch"].to_numpy(),
+                             gm[gm.index < split][rc].to_numpy())
+        icq, _ = spearman_ic(gm[gm.index >= split]["osc_stoch"].to_numpy(),
+                             gm[gm.index >= split][rc].to_numpy())
+        rows.append({"horizon": h, "signal": "stoch_%D_126|GEX>0", "n": n,
+                     "ic": round(ic, 4), "nw_t": np.nan,
+                     "ic_pre2021": round(icp, 4), "ic_post2021": round(icq, 4)})
+        dd = df[["div_state", rc]].dropna()
+        bull = dd[dd["div_state"] > 0][rc]
+        base = dd[rc].mean()
+        rows.append({"horizon": h, "signal": "bullish_divergence_edge_pp",
+                     "n": int(len(bull)), "ic": round(float(bull.mean() - base), 4),
+                     "nw_t": np.nan, "ic_pre2021": np.nan, "ic_post2021": np.nan})
+    return pd.DataFrame(rows)
+
+
+def add_oscillators(df):
+    dix = df["dix"]
+    df["osc_stoch"] = stochastic_osc(dix)
+    df["osc_pctrank"] = pct_rank_osc(dix)
+    df["osc_rsi"] = rsi_osc(dix)
+    df["osc_macd"] = macd_hist_osc(dix)
+    df["div_state"], _, _ = dix_price_divergence(dix, df["price"])
+    return df
+
+
+def oscillator_report(df, ret_col, split=REGIME_SPLIT):
+    """IC / Newey-West t of each oscillator family, full sample and split across
+    the regime shift. Also confirms the response is MONOTONE (directional), not
+    mean-reverting, by printing the forward return in the top vs bottom decile."""
+    families = [
+        ("stochastic %D (126d)", "osc_stoch", True),
+        ("percentile-rank (126d)", "osc_pctrank", True),
+        ("RSI(DIX) 14 [momentum]", "osc_rsi", False),
+        ("MACD-hist(DIX) [momentum]", "osc_macd", False),
+    ]
+    lines = [f"=== OSCILLATOR families vs forward {ret_col} "
+             "(directional / level use) ===",
+             " oscillator                 |  IC    | NW t  | pre-2021 | 2021+ | "
+             "top-dec  bot-dec"]
+    for label, col, keep in families:
+        d = df[[col, ret_col]].dropna()
+        ic, _ = spearman_ic(d[col].to_numpy(), d[ret_col].to_numpy())
+        _, t, _ = nw_slope(d[col].to_numpy(), d[ret_col].to_numpy())
+        pre = d[d.index < split]
+        post = d[d.index >= split]
+        icp, _ = spearman_ic(pre[col].to_numpy(), pre[ret_col].to_numpy())
+        icq, _ = spearman_ic(post[col].to_numpy(), post[ret_col].to_numpy())
+        dec = pd.qcut(d[col], 10, labels=False, duplicates="drop") + 1
+        top = d.loc[dec == dec.max(), ret_col].mean()
+        bot = d.loc[dec == dec.min(), ret_col].mean()
+        lines.append(f" {label:26s} | {ic:+.3f} | {t:+.2f} |  {icp:+.3f}  | "
+                     f"{icq:+.3f} |  {top:+5.2f}   {bot:+5.2f}")
+    lines.append("  -> range/rank-bounded oscillators carry the signal; momentum "
+                 "(RSI/MACD) does not. Top-decile > bottom-decile => read")
+    lines.append("     the oscillator DIRECTIONALLY (high = bullish), NOT as "
+                 "overbought/oversold to fade.")
+    return "\n".join(lines)
+
+
+def gex_gating_report(df, ret_col, osc_col="osc_stoch", split=REGIME_SPLIT):
+    """Does gating the oscillator on the gamma regime help? IC of the oscillator
+    within GEX>0 vs GEX<=0, and a simple GATED long-signal net return."""
+    lines = ["=== GEX GATING: oscillator conditioned on the gamma regime ===",
+             f"  share of GEX>0 (long-gamma) days: {(df['gex'] > 0).mean() * 100:.0f}%"]
+    for lbl, mask in [("GEX>0 (long gamma)", df["gex"] > 0),
+                      ("GEX<=0 (short gamma)", df["gex"] <= 0)]:
+        d = df[[osc_col, ret_col]][mask].dropna()
+        ic, n = spearman_ic(d[osc_col].to_numpy(), d[ret_col].to_numpy())
+        pre = d[d.index < split]
+        post = d[d.index >= split]
+        icp, _ = spearman_ic(pre[osc_col].to_numpy(), pre[ret_col].to_numpy())
+        icq, _ = spearman_ic(post[osc_col].to_numpy(), post[ret_col].to_numpy())
+        lines.append(f"  {lbl:20s} n={n:4d} | IC {ic:+.3f} | pre {icp:+.3f} | "
+                     f"post {icq:+.3f}")
+    # gated vs ungated long signal: go long when %D is in its top half
+    base = df[[osc_col, ret_col, "gex"]].dropna()
+    hi = base[osc_col] >= base[osc_col].median()
+    ungated = base.loc[hi, ret_col].mean()
+    gated = base.loc[hi & (base["gex"] > 0), ret_col].mean()
+    allmean = base[ret_col].mean()
+    lines.append(f"  long when %D>median: ungated {ungated:+.2f}%  |  "
+                 f"gated on GEX>0 {gated:+.2f}%  |  all-days {allmean:+.2f}%")
+    lines.append("  -> the gate is DEFENSIVE, not additive: long-gamma is ~91% of "
+                 "days so gating barely moves the average, but it removes the")
+    lines.append("     short-gamma regime where the oscillator INVERTS "
+                 "(post-2021 GEX<=0 IC goes negative) -- which is what keeps the")
+    lines.append("     long-gamma IC the least-dead of anything post-2021.")
+    return "\n".join(lines)
+
+
+def divergence_report(df, ret_col, split=REGIME_SPLIT):
+    """DIX-vs-price divergence (option B): forward returns by the four sign cells,
+    a de-overlapped entry-event study on the bullish-divergence flag, and the
+    regime split."""
+    dix, price = df["dix"], df["price"]
+    _, dchg, pchg = dix_price_divergence(dix, price)
+    d = pd.DataFrame({"dc": np.sign(dchg), "pc": np.sign(pchg),
+                      "ret": df[ret_col]}, index=df.index).dropna()
+    lines = [f"=== DIX-vs-PRICE DIVERGENCE ({DIV_LOOKBACK}d) vs forward "
+             f"{ret_col} (option B) ==="]
+    cells = [("DIX up / price DOWN  (bullish div)", (d.dc > 0) & (d.pc < 0)),
+             ("both DOWN            (capitulation)", (d.dc < 0) & (d.pc < 0)),
+             ("both UP", (d.dc > 0) & (d.pc > 0)),
+             ("DIX down / price UP  (bearish div)", (d.dc < 0) & (d.pc > 0))]
+    base = d["ret"].mean()
+    lines.append(f"  {'cell':36s} {'n':>5}  {'mean':>6}  {'hit':>4}  vs base {base:+.2f}%")
+    for lbl, m in cells:
+        r = d.loc[m, "ret"]
+        lines.append(f"  {lbl:36s} {len(r):5d}  {r.mean():+6.2f}  "
+                     f"{(r > 0).mean() * 100:3.0f}%  ({r.mean() - base:+.2f})")
+    # de-overlapped entry-event on the bullish-divergence flag
+    state = np.where((d.dc > 0) & (d.pc < 0), 1, 0)
+    pos, _ = entry_events(pd.Series(state, index=d.index))
+    rp = d["ret"].iloc[pos].dropna()
+    lines.append(f"  entry-event (first day of bullish divergence, 21d cooldown): "
+                 f"n={len(rp)}  mean {rp.mean():+.2f}%  hit {(rp > 0).mean() * 100:.0f}%")
+    # regime split of the bullish-divergence edge
+    for lbl, sub in [(f"pre-{split[:4]}", d[d.index < split]),
+                     (f"{split[:4]}+", d[d.index >= split])]:
+        m = (sub.dc > 0) & (sub.pc < 0)
+        r = sub.loc[m, "ret"]
+        b = sub["ret"].mean()
+        lines.append(f"  {lbl}: bullish-div {r.mean():+.2f}% (n={len(r)}) vs "
+                     f"base {b:+.2f}%  -> edge {r.mean() - b:+.2f}pp")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -485,6 +698,7 @@ def main():
 
     df = load_dix(csv=args.csv, url=args.url)
     df = add_signals(df)
+    df = add_oscillators(df)
     ret_col = f"r{args.horizon}"
 
     print(f"Raw SqueezeMetrics DIX: {df.index.min().date()} -> {df.index.max().date()}  "
@@ -530,6 +744,17 @@ def main():
     print(smoothed_level_report(df))
     print()
 
+    # Follow-up -- oscillator normalization, GEX gating, DIX-vs-price divergence
+    print("=" * 78)
+    print("Q3  OSCILLATOR normalization + GEX gating + DIX-vs-price divergence")
+    print("=" * 78)
+    print(oscillator_report(df, ret_col))
+    print()
+    print(gex_gating_report(df, ret_col))
+    print()
+    print(divergence_report(df, ret_col))
+    print()
+
     # Decile ladders (real-time expanding) for the record
     print(f"=== Forward {ret_col} by EXPANDING decile of raw DIX (real-time) ===")
     for dec, mean, med, n in decile_table(df, "exp_dec", ret_col):
@@ -552,6 +777,11 @@ def main():
         sweep_path = args.out.replace(".csv", "") + "_window_sweep.csv"
         pd.concat(sweep_rows, ignore_index=True).to_csv(sweep_path, index=False)
         print(f"Wrote breakout baseline-window sweep (all horizons) -> {sweep_path}")
+
+        # compact oscillator / divergence summary table (all horizons)
+        osc_path = args.out.replace(".csv", "") + "_oscillator.csv"
+        oscillator_summary(df).to_csv(osc_path, index=False)
+        print(f"Wrote oscillator + divergence summary (all horizons) -> {osc_path}")
 
 
 if __name__ == "__main__":

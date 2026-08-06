@@ -208,6 +208,73 @@ baseline. But the level (expanding decile) is still at least as good with less
 tuning, adds the same medium-frequency information, and — like every framing
 here — has faded since 2021.
 
+## Follow-up — normalizing DIX into an oscillator (+ GEX gating + divergence)
+
+Would turning DIX into a bounded **oscillator** generate a signal? The
+breakout-z and trailing decile already *were* oscillators, so the real questions
+are which normalization, and how to read it. Tested against 1-month forward
+returns (`spx_dix_decile_vs_breakout_oscillator.csv`):
+
+| oscillator | IC | NW t | pre-2021 | 2021+ | top-dec | bot-dec |
+|---|---:|---:|---:|---:|---:|---:|
+| **stochastic %D (126d)** | **+0.139** | +2.43 | +0.209 | +0.028 | +1.82 | +0.66 |
+| percentile-rank (126d) | +0.121 | +2.69 | +0.171 | +0.039 | +1.83 | +0.53 |
+| RSI(DIX) 14 *(momentum)* | +0.034 | +0.13 | +0.055 | +0.001 | +1.02 | +0.81 |
+| MACD-hist(DIX) *(momentum)* | −0.017 | −0.34 | +0.005 | −0.051 | +1.26 | +1.54 |
+
+Three conclusions:
+
+1. **A range/rank-bounded oscillator is the best normalization found in this
+   whole study.** A smoothed **stochastic %D on a 126-day window** posts IC
+   +0.139 (pre-2021 +0.209) — edging the z-score, because min-max/rank bounding
+   is robust to exactly the drift and fat tails behind the "45% floor".
+2. **Read it directionally, not overbought/oversold.** Top decile (+1.82%) beats
+   bottom (+0.66%) and the response is monotone — DIX extremes **persist**, they
+   don't reverse. The textbook "fade the extreme" oscillator play is backwards
+   here.
+3. **Momentum oscillators on DIX are dead** — RSI ≈ 0, MACD-hist *negative*. The
+   *rate of change* of DIX carries nothing; only the *level within its range*
+   does. (Kept in the script so it isn't re-discovered.)
+
+### GEX gating — the defensive lever that survives best post-2021
+
+Conditioning the oscillator on the gamma regime (GEX is in the same file):
+
+| regime | IC | pre-2021 | 2021+ |
+|---|---:|---:|---:|
+| GEX > 0 (long gamma, ~91% of days) | **+0.148** | +0.206 | **+0.056** |
+| GEX ≤ 0 (short gamma) | +0.021 | +0.119 | −0.117 |
+
+The gate is **defensive, not additive**: long-gamma is ~91% of days, so gating
+barely moves the average return, but it removes the short-gamma regime where the
+oscillator **inverts** (post-2021 GEX≤0 IC goes negative). GEX>0 gating roughly
+*doubles* the (still-weak) post-2021 IC (+0.056 vs +0.028 ungated) and is the
+least-dead signal anywhere after 2021.
+
+### Option B — DIX-vs-price divergence (the one you flagged as useful)
+
+`sign(21d DIX change)` vs `sign(21d price change)`:
+
+| cell | n | fwd 1mo | hit | vs base (+1.07%) |
+|---|---:|---:|---:|---:|
+| **DIX up / price down** (bullish div) | 774 | **+1.53%** | 69% | +0.46 |
+| both down (capitulation buying) | 476 | +1.99% | 71% | +0.91 |
+| both up | 1,074 | +0.97% | 68% | −0.10 |
+| DIX down / price up (bearish div) | 1,472 | +0.61% | 65% | −0.46 |
+
+De-overlapped entry events on the bullish-divergence flag (84 entries, 21-day
+cool-down): **+1.61%, 70% hit**. It is a genuinely distinct signal — dark buying
+*into* price weakness — and reads intuitively. Honesty check on the regime,
+though: the bullish-divergence *edge over baseline* was **+0.72 pp pre-2021** but
+**−0.07 pp in 2021+**, so like everything else here its edge has thinned in the
+current regime even though its raw hit rate stays ~70%.
+
+**Net of the oscillator work:** the best single construction is a **126-day
+stochastic %D, read directionally, gated on GEX>0**, with **DIX-vs-price
+divergence** as a second, independent flag. It repackages the level signal more
+robustly and the GEX gate defends it best post-2021 — but none of it escapes the
+regime fade, so size it as one input, not a standalone system.
+
 ## Bottom line
 
 - **The 45% "floor" is drift, not a broken feed.** Off-exchange share rose ~0.42
