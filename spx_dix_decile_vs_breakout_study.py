@@ -224,12 +224,21 @@ def trailing_decile(s, win=TRAIL_WIN, min_obs=TRAIL_MIN):
     return pd.Series(out, index=s.index)
 
 
+def breakout_z(dix, win, min_frac=0.8):
+    """Trailing-`win`-session sigmas of DIX above/below its own rolling average:
+    (DIX - mean_win) / std_win. A shorter win reacts faster (a 3-month baseline
+    adapts within a quarter; a 1-year baseline within a year)."""
+    mp = max(20, int(win * min_frac))
+    rm = dix.rolling(win, min_periods=mp).mean()
+    rs = dix.rolling(win, min_periods=mp).std()
+    return (dix - rm) / rs
+
+
 def add_signals(df):
     dix = df["dix"]
     rm = dix.rolling(TRAIL_WIN, min_periods=TRAIL_MIN).mean()
-    rs = dix.rolling(TRAIL_WIN, min_periods=TRAIL_MIN).std()
-    df["breakout_z"] = (dix - rm) / rs            # trailing-1y sigmas above/below own average
-    df["breakout_gap"] = (dix - rm) * 100.0       # raw gap vs trailing average, pp
+    df["breakout_z"] = breakout_z(dix, TRAIL_WIN)   # trailing-1y sigmas above/below own average
+    df["breakout_gap"] = (dix - rm) * 100.0         # raw gap vs trailing average, pp
     df["exp_dec"] = expanding_decile(dix)
     df["trail_dec"] = trailing_decile(dix)
     df["raw_dix_pct"] = dix * 100.0
@@ -381,6 +390,85 @@ def subperiod_report(common, ret_col, split=REGIME_SPLIT):
 
 
 # ---------------------------------------------------------------------------
+# Follow-up -- how fast should the breakout baseline be?
+# ---------------------------------------------------------------------------
+BREAKOUT_WINDOWS = [(21, "1mo"), (42, "2mo"), (63, "3mo"), (126, "6mo"), (252, "1yr")]
+
+
+def window_sweep(df, ret_col, windows=BREAKOUT_WINDOWS, split=REGIME_SPLIT, seed=0):
+    """Sweep the BREAKOUT baseline window. A shorter baseline reacts faster; the
+    question is whether faster picks up signal or just noise. For each window,
+    reports full-sample IC / Newey-West t / long-short spread, the pre- vs
+    post-regime IC split, and the de-overlapped entry-event spread."""
+    dix = df["dix"]
+    rows = []
+    for win, lbl in windows:
+        z = breakout_z(dix, win)
+        d = pd.DataFrame({"z": z, "ret": df[ret_col]}, index=df.index).dropna()
+        ic, n = spearman_ic(d["z"].to_numpy(), d["ret"].to_numpy())
+        slope, t, _ = nw_slope(d["z"].to_numpy(), d["ret"].to_numpy())
+        q = d["z"].quantile([0.2, 0.8])
+        hi = d.loc[d["z"] >= q[0.8], "ret"]
+        lo = d.loc[d["z"] <= q[0.2], "ret"]
+        pre = d[d.index < split]
+        post = d[d.index >= split]
+        ic_pre, _ = spearman_ic(pre["z"].to_numpy(), pre["ret"].to_numpy())
+        ic_post, _ = spearman_ic(post["z"].to_numpy(), post["ret"].to_numpy())
+        state = np.where(d["z"] >= 1, 1, np.where(d["z"] <= -1, -1, 0))
+        pos, neg = entry_events(pd.Series(state, index=d.index))
+        rp = d["ret"].iloc[pos].dropna()
+        rn = d["ret"].iloc[neg].dropna()
+        rows.append({
+            "window": lbl, "win_sessions": win, "n": n, "ic": ic,
+            "nw_slope": slope, "nw_t": t,
+            "ls_spread": float(hi.mean() - lo.mean()),
+            "ic_pre": ic_pre, "ic_post": ic_post,
+            "entry_up": float(rp.mean()), "entry_dn": float(rn.mean()),
+            "entry_spread": float(rp.mean() - rn.mean()),
+            "n_up": int(len(rp)), "n_dn": int(len(rn)),
+        })
+    return pd.DataFrame(rows)
+
+
+def window_sweep_report(df, ret_col):
+    sw = window_sweep(df, ret_col)
+    lines = [f"=== BREAKOUT baseline-window sweep (forward {ret_col}) -- does a "
+             "faster baseline pick up signal or noise? ===",
+             " baseline |  IC    | NW t  | LS spread | pre-2021 IC | 2021+ IC | "
+             "entry up/dn spread"]
+    for _, r in sw.iterrows():
+        lines.append(
+            f"   {r['window']:5s}  | {r['ic']:+.3f} | {r['nw_t']:+.2f} |   "
+            f"{r['ls_spread']:+.2f}   |    {r['ic_pre']:+.3f}   |  {r['ic_post']:+.3f}  |  "
+            f"{r['entry_up']:+.2f}/{r['entry_dn']:+.2f} = {r['entry_spread']:+.2f}")
+    lines.append("  -> inverted-U in the window: too fast (1mo) is noise, too slow "
+                 "(1yr) over-de-trends; the 3-6mo baseline is the sweet spot.")
+    return "\n".join(lines)
+
+
+def smoothed_level_report(df, horizons=HORIZONS, split=REGIME_SPLIT):
+    """Contrast: smoothing the LEVEL with an N-session MA before ranking (the
+    other reading of 'rolling 3-month average'). Shown to HURT -- smoothing lags
+    and erases signal -- so 'faster' should mean a shorter baseline, not a
+    smoothed level."""
+    dix = df["dix"]
+    lines = ["=== SMOOTHED-LEVEL contrast: rank an N-session MA of DIX "
+             "(expanding decile) ==="]
+    for smth, slbl in [(1, "raw daily"), (21, "1mo MA"), (63, "3mo MA")]:
+        s = dix if smth == 1 else dix.rolling(smth, min_periods=max(1, int(smth * 0.6))).mean()
+        ed = expanding_decile(s)
+        cells = []
+        for h in horizons:
+            d = pd.DataFrame({"d": ed, "ret": df[f"r{h}"]}, index=df.index).dropna()
+            ic, _ = spearman_ic(d["d"].to_numpy(), d["ret"].to_numpy())
+            cells.append(f"r{h} IC {ic:+.3f}")
+        lines.append(f"  {slbl:9s}: " + "   ".join(cells))
+    lines.append("  -> smoothing the level lowers IC monotonically; do not "
+                 "pre-average the DIX before ranking it.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -436,6 +524,12 @@ def main():
     print(subperiod_report(common, ret_col))
     print()
 
+    # Follow-up -- how fast should the breakout baseline be?
+    print(window_sweep_report(df, ret_col))
+    print()
+    print(smoothed_level_report(df))
+    print()
+
     # Decile ladders (real-time expanding) for the record
     print(f"=== Forward {ret_col} by EXPANDING decile of raw DIX (real-time) ===")
     for dec, mean, med, n in decile_table(df, "exp_dec", ret_col):
@@ -447,9 +541,17 @@ def main():
             _, p = headline_power(df, f"r{h}")
             p.insert(0, "horizon", h)
             rows.append(p)
-        out = pd.concat(rows, ignore_index=True)
-        out.to_csv(args.out, index=False)
+        pd.concat(rows, ignore_index=True).to_csv(args.out, index=False)
         print(f"\nWrote head-to-head power table (all horizons) -> {args.out}")
+
+        sweep_rows = []
+        for h in HORIZONS:
+            sw = window_sweep(df, f"r{h}")
+            sw.insert(0, "horizon", h)
+            sweep_rows.append(sw)
+        sweep_path = args.out.replace(".csv", "") + "_window_sweep.csv"
+        pd.concat(sweep_rows, ignore_index=True).to_csv(sweep_path, index=False)
+        print(f"Wrote breakout baseline-window sweep (all horizons) -> {sweep_path}")
 
 
 if __name__ == "__main__":

@@ -156,16 +156,72 @@ weak. And that extra juice in the long-window level is *exactly* what died after
 
 ---
 
+## Follow-up — how fast should the breakout baseline be? (3-month vs 1-year)
+
+The original breakout used a **1-year (252-session)** baseline. Would a faster
+baseline "pick up signals faster"? Sweeping the baseline window (1-month forward
+return, `spx_dix_decile_vs_breakout_window_sweep.csv`):
+
+| baseline | Spearman IC | NW t | LS spread | pre-2021 IC | 2021+ IC |
+|---|---:|---:|---:|---:|---:|
+| 1-month | +0.021 | +0.69 | +0.27 | +0.048 | −0.022 |
+| 2-month | +0.078 | +1.88 | +0.65 | +0.102 | +0.041 |
+| **3-month** | **+0.096** | **+2.04** | +0.71 | +0.121 | +0.053 |
+| **6-month** | **+0.124** | **+2.57** | +1.05 | +0.173 | +0.043 |
+| 1-year (original) | +0.069 | +1.01 | +0.54 | +0.135 | −0.038 |
+
+**There is an inverted-U in the baseline window, and the instinct is right: a
+3-month baseline beats the 1-year one.** IC roughly doubles vs. the 1-month
+baseline and rises from +0.069 → +0.096 vs. the 1-year, and the Newey-West t
+crosses from insignificant (+1.01) to significant (+2.04). The peak is at
+~**6 months** (IC +0.124, t +2.57) — which roughly matches the expanding-decile
+*level* signal (+0.130). Read the ends of the curve as the two failure modes:
+
+- **1-month is too fast** — it de-trends against last month only, so the
+  "deviation" is mostly daily noise (IC +0.021, indistinguishable from zero).
+- **1-year is too slow** — it de-trends away the very medium-term level that
+  carries the signal.
+
+So the predictive information in DIX lives at a **medium frequency (≈3–6 month
+swings relative to a recent baseline)**. This holds and strengthens at the 2- and
+3-month forward horizons (6-month baseline: r42 IC +0.151, r63 IC +0.118 — the
+best cells in the whole study).
+
+Two honest qualifiers:
+
+1. **It still doesn't survive the regime.** Every window's **2021+ IC is ≤
+   +0.05** (the 1-year even goes negative). The faster baseline recovers
+   significance in the *full* sample — which is dominated by the strong pre-2021
+   era — but does **not** resurrect a live edge in the current regime. The
+   3-month is marginally the most alive recently (+0.053), which is something,
+   but it is not a signal to bet on alone.
+2. **"Rolling 3-month *average of the level*" is the wrong version of the idea.**
+   Smoothing raw DIX with a 63-session MA *before* ranking it monotonically
+   *lowers* IC (+0.130 raw → +0.040 with a 3-month MA), because smoothing lags
+   and averages the signal away. "Faster" has to mean **a shorter breakout
+   baseline**, not a smoothed level. (Contrast table in the script output.)
+
+**Revised verdict on breakout:** with a **3–6 month** baseline the
+breakout/breakdown is competitive with the level/decile framing — the earlier
+"level clearly beats breakout" gap was an artifact of using an over-long 1-year
+baseline. But the level (expanding decile) is still at least as good with less
+tuning, adds the same medium-frequency information, and — like every framing
+here — has faded since 2021.
+
 ## Bottom line
 
 - **The 45% "floor" is drift, not a broken feed.** Off-exchange share rose ~0.42
   pp/yr; 45% went from the ~88th percentile of 2019 to the ~4th–24th percentile
   of 2023–25. Stop reading raw levels; rank the DIX against its own recent
   history.
-- **Between the two relative framings, the decile (level) wins** — ~2× the IC,
-  ~2× the long-short spread, the only Newey-West t near significance, and it
-  dominates out to 3 months. A trailing-1-year breakout/breakdown adds nothing
-  on top of it (joint-regression t = −0.76).
+- **The level (decile) wins against a 1-year breakout, but the breakout's
+  weakness was mostly a baseline-length problem.** A trailing-*1-year*
+  breakout/breakdown adds nothing on top of the level (joint-regression t =
+  −0.76), but shortening the baseline to **3–6 months** roughly doubles its IC
+  and makes it competitive with the level (see the follow-up sweep). Too fast
+  (1-month) is noise; too slow (1-year) over-de-trends; DIX's information lives
+  at a **medium 3–6 month frequency**. Smoothing the level itself is
+  counterproductive.
 - **But the honest headline is that both have stopped working since ~2021.**
   The DIX→next-month relationship, in every de-trended form, is ~0 in the new
   regime. Treat pre-2021 DIX edges as regime-specific until more post-shift
