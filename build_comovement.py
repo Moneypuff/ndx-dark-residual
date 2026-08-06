@@ -21,8 +21,10 @@ The HTML shell lives in comovement_template.html with three placeholders
     python build_comovement.py --docs-out docs/comovement.html --cache-dir .ndx_dark_cache
 """
 import argparse
+import base64
 import json
 import re
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,12 +39,17 @@ LVLW = {"L": "Low", "M": "Mid", "H": "High"}
 
 
 def load_payload(html_path):
-    """Pull the `const P = {...};` payload out of the built dashboard."""
+    """Pull the payload out of the built dashboard. Handles both the legacy
+    plain `const P = {...};` blob and the current compressed
+    `const PZ = "<base64 deflate>";` form."""
     html = Path(html_path).read_text(encoding="utf-8")
     m = re.search(r"const P = (\{.*?\});", html, re.S)
-    if not m:
-        raise SystemExit(f"No embedded payload found in {html_path} -- build docs/index.html first.")
-    return json.loads(m.group(1))
+    if m:
+        return json.loads(m.group(1))
+    m = re.search(r'const PZ = "([A-Za-z0-9+/=]+)";', html)
+    if m:
+        return json.loads(zlib.decompress(base64.b64decode(m.group(1))).decode("utf-8"))
+    raise SystemExit(f"No embedded payload found in {html_path} -- build docs/index.html first.")
 
 
 def dix_and_returns(P):

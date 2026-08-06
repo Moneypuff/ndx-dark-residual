@@ -1,0 +1,29 @@
+name: Tests
+
+# Run the unit-test suite on every push and pull request so a regression in the
+# statistics, split-detection, parsing, transform, or event-construction logic
+# is caught before it can reach the scheduled dashboard/earnings refreshes
+# (which auto-commit their outputs back to the repo).
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies (runtime + test)
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest

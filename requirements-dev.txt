@@ -1,0 +1,6 @@
+# Test-only dependencies (not needed by the production pipeline).
+# scipy is used purely as an oracle to validate the repo's hand-rolled
+# statistics against a trusted reference implementation.
+-r requirements.txt
+pytest
+scipy

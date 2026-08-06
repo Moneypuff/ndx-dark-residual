@@ -52,6 +52,7 @@ Design notes
 """
 
 import argparse
+import base64
 import concurrent.futures
 import io
 import json
@@ -61,6 +62,7 @@ import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -156,6 +158,70 @@ TICKER_SECTOR = {
     "CPRT": "Industrials", "DXCM": "Health Care",
     "SPCX": "Industrials", "HONA": "Industrials",
 }
+
+# Custom watchlist: "hot" names outside the NDX-100 / S&P 500, shown as their own
+# Small-multiples universe (the "Watchlist" button on the grid). Each name's dark ratio D
+# is residualized against the SAME reconstructed NDX-DIX (broad-market dark flow) the NDX-100
+# grid uses, so a positive residual = this name is accumulating off-exchange flow ABOVE the
+# market's. These trade outside the index, so there is no weight table -- the panels fall back
+# to divergence order. Edit this list (and WATCHLIST_SECTOR below) to change the watchlist;
+# any liquid ticker with FINRA off-exchange volume and Yahoo prices works.
+WATCHLIST = [
+    "UMAC", "AAOI", "SKM", "MIAX", "SOUN", "IONQ",
+    "RGTI", "QBTS", "QUBT", "LUNR", "ASTS", "BBAI",
+]
+# GICS sector per watchlist name for the cell footer (labels match SECTOR_ETFS / TICKER_SECTOR).
+WATCHLIST_SECTOR = {
+    "UMAC": "Industrials",       # Unusual Machines -- drones
+    "AAOI": "Technology",        # Applied Optoelectronics -- fiber optics
+    "SKM": "Comm. Services",     # SK Telecom
+    "MIAX": "Financials",        # Miami International Holdings -- exchange operator
+    "SOUN": "Technology",        # SoundHound AI
+    "IONQ": "Technology",        # IonQ -- quantum computing
+    "RGTI": "Technology",        # Rigetti Computing -- quantum
+    "QBTS": "Technology",        # D-Wave Quantum
+    "QUBT": "Technology",        # Quantum Computing Inc.
+    "LUNR": "Industrials",       # Intuitive Machines -- space
+    "ASTS": "Comm. Services",    # AST SpaceMobile -- satellite direct-to-cell
+    "BBAI": "Technology",        # BigBear.ai
+}
+# Repo path the build reads the watchlist from (source of truth). Editing this CSV -- directly,
+# or by syncing it from a Google Sheet with sync_watchlist.py -- changes the Watchlist tab on
+# the next rebuild. No data is read at page-view time; the CSV only drives WHICH names appear.
+WATCHLIST_CSV = "data/watchlist.csv"
+
+
+def load_watchlist(path=WATCHLIST_CSV):
+    """Read the custom watchlist from a CSV (column 1 = ticker, optional column 2 = sector).
+    Returns (tickers, sector_map). Falls back to the built-in WATCHLIST / WATCHLIST_SECTOR when
+    the file is missing, empty, or unreadable, so a build never breaks on a bad sheet export.
+    A header row (first cell 'ticker'/'symbol') is skipped; tickers are upper-cased and de-duped."""
+    import csv as _csv
+    p = Path(path)
+    if not p.exists():
+        return list(WATCHLIST), dict(WATCHLIST_SECTOR)
+    try:
+        tickers, sectors, seen = [], {}, set()
+        with p.open(newline="", encoding="utf-8-sig") as f:
+            for row in _csv.reader(f):
+                if not row or not row[0].strip():
+                    continue
+                t = row[0].strip().upper()
+                if t in ("TICKER", "SYMBOL"):   # header row
+                    continue
+                if t in seen:
+                    continue
+                seen.add(t)
+                tickers.append(t)
+                if len(row) > 1 and row[1].strip():
+                    sectors[t] = row[1].strip()
+        if not tickers:
+            return list(WATCHLIST), dict(WATCHLIST_SECTOR)
+        return tickers, sectors
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! watchlist CSV {path} unreadable ({e}); using built-in default",
+              file=sys.stderr)
+        return list(WATCHLIST), dict(WATCHLIST_SECTOR)
 
 
 # Recycled tickers: a symbol whose FINRA volume history covers a PRIOR, unrelated
@@ -1021,8 +1087,10 @@ def _iwm_tickers_from_csv_text(text):
     if "Asset Class" in df.columns:
         df = df[df["Asset Class"].astype(str).str.strip().str.lower() == "equity"]
     tickers, seen = [], set()
-    for t in df["Ticker"].astype(str):
-        s = t.strip().upper()
+    for t in df["Ticker"]:
+        if pd.isna(t):                          # blank ticker cell (disclaimer/trailer row)
+            continue
+        s = str(t).strip().upper()
         if not re.match(r"^[A-Z][A-Z0-9.\-]{0,6}$", s):  # skip cash/derivative/blank rows
             continue
         if s in seen:
@@ -1345,6 +1413,7 @@ def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, wee
 def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dark_panel,
                ndx_agg=None, ndx_dix=None, spx=None, iwm=None, bench_label=None,
                spx_res=None, spx_rel=None, spx_weight_map=None, spx_weight_order=None,
+               wl_res=None, wl_rel=None, wl_sectors=None,
                breadth_px=None, sector_data=None, contrib=None, spx_keep_days=378,
                plot_days=378, plot_start=None,
                title=None, window=126, demo=False):
@@ -1412,6 +1481,22 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
                                       spx_weight_map, spx_weight_order,
                                       sector_map=spx_sector_map)
 
+    # Custom watchlist Small-multiples grid: the WATCHLIST names residualized against the SAME
+    # reconstructed NDX-DIX benchmark the NDX-100 grid uses (see wl_res in main()). No index
+    # weights (these trade outside the index), so the panels fall back to divergence order.
+    # Sector labels come from WATCHLIST_SECTOR, supplemented by the static GICS map for any
+    # overlap. Same full-history window as the other grids (downsampled to weekly when long).
+    watch_grid = None
+    if wl_res is not None and not wl_res["reg"].dropna(how="all").empty:
+        widx = wl_res["reg"].index
+        wl_keep = widx[widx >= plot_start] if plot_start is not None else widx
+        if len(wl_keep) > spx_keep_days:
+            wl_keep = _weekly_anchored(wl_keep)
+        wl_sector_map = dict(TICKER_SECTOR)
+        wl_sector_map.update(wl_sectors or WATCHLIST_SECTOR)
+        watch_grid = build_grid_payload(wl_res, bench_label or "NDX-DIX", bench_label or "NDX-DIX",
+                                        wl_keep, None, None, sector_map=wl_sector_map)
+
     # Relationship tab: x-axis is the raw (unsmoothed) 1-day dark ratio derived from
     # FINRA's daily off-exchange volume, NOT the 5-day-MA `D` used everywhere else --
     # so it has its own (shorter, FINRA-bounded) date index. r21/r42/r63 are reindexed to
@@ -1454,7 +1539,8 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
 
     sectors_payload = (build_sector_payload(sector_data["members"], sector_data["short"],
                                             sector_data["total"], sector_data["close"],
-                                            sector_data["d"], keep)
+                                            sector_data["d"], keep,
+                                            etf_px=sector_data.get("etf_px"))
                        if sector_data else None)
     # Decile source for the sector drill-down: pack raw-D + forward returns for just the names
     # actually shown in the sector modals (top constituents by dark-dollar share), from the
@@ -1479,6 +1565,9 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         "sector_map": ndx_sector_map,
         "spx_grid": spx_grid,
         "spx_rel": spx_rel,
+        # Custom watchlist grid + its per-name raw-D/forward-return decile source (cell modal).
+        "watch_grid": watch_grid,
+        "watch_rel": wl_rel,
         "sectors": sectors_payload,
         # Per-name raw-D -> forward-return deciles for the constituents shown in the sector
         # drill-down modals, so an individual stock there opens the same 1/2/3-month decile
@@ -1496,8 +1585,14 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         "title": title,
     }
     blob = json.dumps(payload, separators=(",", ":"))
-
-    return HTML_TEMPLATE.replace("/*__DATA__*/", blob)
+    # Embed the payload deflate-compressed + base64 instead of as a raw JSON
+    # literal: the built page drops from ~25 MB to a few MB (parse-time first
+    # paint included), stays a single self-contained file, and still works over
+    # file:// (the decoder is an inline module script -- no fetch involved).
+    # Python readers of the built page (index_comovement_study, build_comovement)
+    # understand both this and the legacy plain-JSON form.
+    comp = base64.b64encode(zlib.compress(blob.encode("utf-8"), 9)).decode("ascii")
+    return HTML_TEMPLATE.replace("/*__DATAZ__*/", comp)
 
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
@@ -1574,7 +1669,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .dot.dim{opacity:0.06}
   .dot.hi{opacity:1;transform-box:fill-box;transform-origin:center;transform:scale(2.4);stroke:var(--ink);stroke-width:0.6}
   .vanilla-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
-  .ev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:22px;padding:0 22px}
+  .ev-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr));gap:22px;padding:0 22px}
   .ev-table{border-collapse:collapse;font-size:11.5px;width:100%;min-width:480px}
   .ev-table th,.ev-table td{padding:5px 12px;text-align:right;border-bottom:1px solid var(--grid);
                             font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1.25}
@@ -1628,6 +1723,49 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .modal-rel .stat b{color:var(--ink);font-variant-numeric:tabular-nums}
   @media (max-width:900px){ .modal-rel{grid-template-columns:1fr} }
   .modal-empty{color:var(--mut);font-size:12px;padding:30px 0;text-align:center}
+  /* ---- Today overview tab ---- */
+  .today{display:flex;flex-wrap:wrap;gap:7px;font-size:11.5px;align-items:center}
+  .today .chip{border:1px solid var(--grid);border-radius:7px;padding:3px 9px;background:var(--panel2);
+               color:var(--ink);white-space:nowrap;line-height:1.5}
+  .today .chip .mut{color:var(--mut)}
+  .today a.chip{text-decoration:none}
+  .today .chip[data-tkr],.today .chip[data-etf]{cursor:pointer}
+  .today a.chip:hover,.today .chip[data-tkr]:hover,.today .chip[data-etf]:hover{border-color:var(--accent)}
+  .tile-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+  .tile{background:var(--panel);border:1px solid var(--grid);border-radius:10px;padding:10px 12px;min-width:0}
+  .tile .tl{color:var(--mut);font-size:10px;font-weight:650;letter-spacing:.5px;text-transform:uppercase}
+  .tile .tv{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:3px;line-height:1.25}
+  .tile .ts{color:var(--mut);font-size:11px;margin-top:3px;line-height:1.55}
+  .tile .ts b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .tile .tspark{margin-top:6px}
+  .tile .tspark svg{height:26px}
+  .tile a{color:inherit;text-decoration:none}
+  a.tile:hover{border-color:var(--accent)}
+  .cspark{width:110px;margin-left:auto}
+  .cspark svg{height:24px}
+  .pbar{display:inline-block;width:52px;height:6px;border-radius:3px;background:var(--panel2);
+        vertical-align:middle;margin-right:6px;overflow:hidden}
+  .pbar i{display:block;height:100%}
+  /* ---- small screens: keep the layout inside the device viewport ---- */
+  @media (max-width:700px){
+    body{overflow-x:hidden;overflow-x:clip}
+    header{position:static;padding:14px 14px 8px}
+    .controls{gap:10px}
+    .seg{flex-wrap:wrap}
+    .legend{flex-wrap:wrap;row-gap:4px}
+    .today .chip{white-space:normal;line-height:1.6}
+    input[type=search],select,input[type=number]{font-size:16px}
+    .tabs button,.tabs a.tablink{padding:8px 2px}
+    .grid{padding:14px 14px 24px}
+    .rel-wrap{padding:14px 14px 24px}
+    .rel-wrap>*{margin-left:0!important;margin-right:0!important}
+    .stats{margin:4px 14px 0;flex-wrap:wrap;gap:6px 14px}
+    .ev-grid{padding:0}
+    .panel-stats{gap:8px 14px}
+    footer{position:static;flex-direction:column;gap:3px;padding:8px 14px}
+    .overlay{padding:12px 8px}
+    .modal{padding:14px 12px 16px}
+  }
 </style>
 </head>
 <body>
@@ -1635,7 +1773,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <h1 id="ttl">NDX-100 Dark-Ratio (D) Residual vs QQQ</h1>
   <div class="sub" id="sub"></div>
   <div class="tabs" id="tabs">
-    <button data-t="grid" class="on">Small multiples</button>
+    <button data-t="today" class="on">Today</button>
+    <button data-t="grid">Small multiples</button>
     <button data-t="rel">D vs forward return</button>
     <button data-t="idx">DIX vs Return</button>
     <button data-t="contrib">Top DIX contributors</button>
@@ -1646,10 +1785,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <a class="tablink" href="earnings.html" target="_blank" rel="noopener" title="DPI into earnings vs post-earnings performance -- opens the earnings study in a new tab">Earnings DIX &#8599;</a>
     <a class="tablink" href="comovement.html" target="_blank" rel="noopener" title="Cross-index DIX comovement (NDX/SPX/IWM) vs 1-month forward returns -- opens the comovement study in a new tab">Comovement &#8599;</a>
   </div>
-  <div class="controls" id="ctl-grid">
-    <div class="seg" id="univ" title="which index's constituents to show as small multiples">
+  <div class="controls" id="ctl-grid" style="display:none">
+    <div class="seg" id="univ" title="which universe's constituents to show as small multiples">
       <button data-u="ndx" class="on">NDX-100</button>
       <button data-u="spx">S&amp;P 500</button>
+      <button data-u="watch">Watchlist</button>
     </div>
     <div class="seg" id="mode">
       <button data-m="reg" class="on">Regression residual</button>
@@ -1678,12 +1818,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="legend"><span id="relLegend"></span></div>
   </div>
   <div class="controls" id="ctl-idx" style="display:none">
-    <div class="seg" id="idxSel" title="which index DIX-vs-return views to show -- toggle any combination (one or several)">
+    <div class="seg" id="idxSel" title="which DIX-vs-return views to show -- toggle any combination (one or several)">
       <button data-i="ndx" class="on">NDX-100</button>
       <button data-i="spx">S&amp;P 500</button>
       <button data-i="iwm">IWM</button>
+      <button data-i="sec">Sectors</button>
     </div>
-    <span class="sub" style="align-self:center">toggle one or several indices to compare</span>
+    <span class="sub" style="align-self:center">toggle one or several views to compare</span>
+  </div>
+  <div class="controls" id="ctl-sec" style="display:none">
+    <label class="chk" title="which sector / industry fund's reconstructed DIX to plot against its own ETF's forward return">sector ETF
+      <select id="secSel" style="margin-left:4px"></select>
+    </label>
+    <label class="chk" title="force all three horizon panels onto one shared y-axis (and scatter x/y range) so the magnitude of the effect is directly comparable across 1mo / 2mo / 3mo"><input type="checkbox" id="secShared"/> shared axis · sector panels</label>
   </div>
   <div class="controls" id="ctl-contrib" style="display:none">
     <div class="seg" id="contribSel" title="which index's dollar-DIX to decompose into per-name contributions">
@@ -1742,7 +1889,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   </div>
   <div class="stats" id="relStats" style="display:none"></div>
 </header>
-<div class="grid" id="grid"></div>
+<div class="rel-wrap" id="todayWrap"></div>
+<div class="grid" id="grid" style="display:none"></div>
 <div class="rel-wrap" id="relWrap" style="display:none">
   <div class="rel-card">
     <h2 id="barsTitle">Average 1mo forward return by D decile</h2>
@@ -1831,6 +1979,43 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <svg id="wBars63" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
       <svg id="wScatter63" class="scatter" viewBox="0 0 800 320" preserveAspectRatio="none"></svg>
       <div class="panel-stats" id="wStats63"></div>
+    </div>
+  </div>
+</div>
+<div class="rel-wrap" id="secWrap" style="display:none">
+  <div class="sub" id="secSub" style="margin:0 22px 4px"></div>
+  <div class="vanilla-grid" id="secGrid">
+    <div class="rel-card">
+      <h2 id="secH21">Sector DIX vs 1-month forward return <span style="color:var(--mut);font-weight:400">(21 trading days)</span></h2>
+      <svg id="cBars21" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+      <svg id="cScatter21" class="scatter" viewBox="0 0 800 320" preserveAspectRatio="none"></svg>
+      <div class="panel-stats" id="cStats21"></div>
+    </div>
+    <div class="rel-card">
+      <h2 id="secH42">Sector DIX vs 2-month forward return <span style="color:var(--mut);font-weight:400">(42 trading days)</span></h2>
+      <svg id="cBars42" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+      <svg id="cScatter42" class="scatter" viewBox="0 0 800 320" preserveAspectRatio="none"></svg>
+      <div class="panel-stats" id="cStats42"></div>
+    </div>
+    <div class="rel-card">
+      <h2 id="secH63">Sector DIX vs 3-month forward return <span style="color:var(--mut);font-weight:400">(63 trading days)</span></h2>
+      <svg id="cBars63" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+      <svg id="cScatter63" class="scatter" viewBox="0 0 800 320" preserveAspectRatio="none"></svg>
+      <div class="panel-stats" id="cStats63"></div>
+    </div>
+  </div>
+  <div class="rel-card" style="margin:20px 22px 0">
+    <h2>All sector / industry funds &middot; DIX vs own-ETF forward return, at a glance</h2>
+    <div id="secTbl" style="overflow-x:auto"></div>
+    <div class="sub" style="margin-top:10px;font-size:11px;line-height:1.55">
+      Each fund's reconstructed dollar-DIX (5-day MA, &Sigma;$ short &divide; &Sigma;$ off-exchange
+      across its own constituents &mdash; the identical construction to the Sector DIX tab) paired
+      with <b>its own ETF's</b> forward return on the same day. <b>r</b> = Pearson correlation per
+      horizon; <b>D10&minus;D1</b> = mean 1-month forward return in the fund's highest DIX decile
+      minus its lowest (the size of the effect, in return points); <b>now</b> = which decile of its
+      own history today's DIX sits in. Daily observations of overlapping h-day returns are heavily
+      autocorrelated, so judge magnitudes by the effective-N stats in the panels above, not raw n.
+      <b>Click a row</b> to load that fund into the decile / scatter panels.
     </div>
   </div>
 </div>
@@ -1950,14 +2135,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     between the broad GICS sectors and finer SPDR S&amp;P industry funds (e.g. Homebuilders,
     Retail, Oil&nbsp;&amp;&nbsp;Gas&nbsp;E&amp;P, Regional Banks), which use the identical
     construction. Cross-sector correlation is moderate (~0.5) &mdash; sectors
-    share a common dark-flow component but carry distinct signals.
+    share a common dark-flow component but carry distinct signals. <b>Click a sector</b> to zoom
+    into its trailing DIX plot and see <b>its forward return by DIX decile</b> (1&thinsp;/&thinsp;2&thinsp;/&thinsp;3-month,
+    today's decile highlighted) &mdash; the same view single stocks get &mdash; over the constituent
+    dark-flow breakdown. For that fund's DIX with the full scatter and correlations too, see
+    <b>DIX vs Return &rarr; Sectors</b>.
   </div>
 </div>
 <div class="rel-wrap" id="spxtblWrap" style="display:none">
   <div class="sub" id="spxtblSub" style="margin:0 22px 4px"></div>
-  <div style="margin:0 22px 8px">
+  <div style="margin:0 22px 8px;display:flex;gap:14px;align-items:center">
     <input id="spxtblFilter" type="search" placeholder="filter ticker..." autocomplete="off"
            style="background:var(--panel);border:1px solid var(--grid);color:var(--ink);border-radius:7px;padding:5px 10px;font-size:12px;width:180px">
+    <label class="chk" title="rank each day's D against only that name's PREVIOUS 252 sessions (min 120) instead of its full history -- the decile that was actually knowable in real time. First switch recomputes all names (a moment's pause)."><input type="checkbox" id="spxtblTrail"/> trailing deciles (no look-ahead)</label>
   </div>
   <div id="spxtblBody" style="margin:0 22px 20px;max-height:72vh;overflow:auto;border:1px solid var(--grid);border-radius:8px"></div>
   <div class="sub" style="margin:2px 22px 40px;font-size:11px;line-height:1.55">
@@ -1971,7 +2161,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 <footer>
   <span id="foot"></span>
-  <span id="footHint">ordered by NDX index weight &middot; toggle Weight/Divergence to reorder &middot; hover a panel for date/value</span>
+  <span id="footHint">today's signal changes at a glance &middot; click a name or sector for detail &middot; overlapping-window stats are context, not forecasts</span>
 </footer>
 
 <div class="overlay" id="overlay">
@@ -1982,6 +2172,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
     <div class="modal-sub" id="mSub"></div>
     <div id="mSpark"></div>
+    <label class="chk" id="mBasisWrap" style="display:inline-flex;margin:8px 0 0" title="rank each day's D against only that name's PREVIOUS 252 sessions (min 120) instead of its full history -- the decile that was actually knowable in real time"><input type="checkbox" id="mBasis"/>&nbsp;trailing deciles (no look-ahead)</label>
     <div id="mRel" class="modal-rel">
       <div>
         <h3>Forward return by decile of this name's raw D &middot; 1mo</h3>
@@ -2009,17 +2200,50 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button class="modal-close" id="secmClose" aria-label="close">&times;</button>
     </div>
     <div class="modal-sub" id="secmSub"></div>
+    <div id="secmSpark"></div>
+    <label class="chk" id="secmBasisWrap" style="display:inline-flex;margin:8px 0 0" title="rank each day's DIX against only this fund's PREVIOUS 252 sessions (min 120) instead of its full window -- the decile that was actually knowable in real time"><input type="checkbox" id="secmBasis"/>&nbsp;trailing deciles (no look-ahead)</label>
+    <div id="secmRel" class="modal-rel">
+      <div>
+        <h3>Forward return by decile of this fund's DIX &middot; 1mo</h3>
+        <svg id="secmDec21" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+        <div class="stat" id="secmStat21"></div>
+      </div>
+      <div>
+        <h3>2mo</h3>
+        <svg id="secmDec42" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+        <div class="stat" id="secmStat42"></div>
+      </div>
+      <div>
+        <h3>3mo</h3>
+        <svg id="secmDec63" class="bars" viewBox="0 0 800 220" preserveAspectRatio="none"></svg>
+        <div class="stat" id="secmStat63"></div>
+      </div>
+    </div>
+    <h3 id="secmConstHdr" style="margin:24px 0 4px;font-size:11px;color:var(--mut);font-weight:650;text-transform:uppercase;letter-spacing:.3px">Who is receiving the dark flow &middot; constituents</h3>
     <svg id="secmBars" viewBox="0 0 900 640" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto"></svg>
     <div class="sub" id="secmNote" style="font-size:11px;line-height:1.5;margin-top:6px"></div>
   </div>
 </div>
 
-<script>
-const P = /*__DATA__*/;
+<script type="module">
+// Payload arrives deflate-compressed (base64) to keep the page small; inflate
+// via the native DecompressionStream. Top-level await is why this script is a
+// module -- module scripts are deferred, so the DOM below is already parsed.
+const PZ = "/*__DATAZ__*/";
+const P = await (async () => {
+  const b = atob(PZ), bytes = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) bytes[i] = b.charCodeAt(i);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'));
+  return JSON.parse(await new Response(stream).text());
+})();
 const grid = document.getElementById('grid');
 let mode = 'reg', shared = true, filter = '', sortMode = 'weight';
-let gridUniv = 'ndx';                                    // 'ndx' | 'spx' small-multiples grid
-function GS(){ return (gridUniv === 'spx' && P.spx_grid) ? P.spx_grid : P; }  // active grid source
+let gridUniv = 'ndx';                                    // 'ndx' | 'spx' | 'watch' small-multiples grid
+function GS(){                                            // active grid source
+  if(gridUniv === 'spx' && P.spx_grid) return P.spx_grid;
+  if(gridUniv === 'watch' && P.watch_grid) return P.watch_grid;
+  return P;
+}
 
 function fmt(x, m){ return m==='raw' ? x.toFixed(3) : (x>=0?'+':'') + x.toFixed(3); }
 
@@ -2086,7 +2310,7 @@ function spark(vals, ylo, yhi, m, w=204, h=64, pad=4, overlay=null){
 
 function updateChrome(){
   const S = GS();
-  const uni = gridUniv === 'spx' ? 'S&P 500' : 'NDX-100';
+  const uni = gridUniv === 'spx' ? 'S&P 500' : gridUniv === 'watch' ? 'Watchlist' : 'NDX-100';
   const hasW = S.weights && Object.keys(S.weights).length;
   const sortTxt = sortMode==='weight' ? (hasW ? 'ordered by index weight' : 'ordered by latest divergence')
     : mode==='raw' ? 'ordered by highest raw D'
@@ -2105,6 +2329,10 @@ function updateChrome(){
 function render(){
   if(gridUniv === 'spx' && !P.spx_grid){
     grid.innerHTML = '<div class="modal-empty" style="padding:40px 22px">S&amp;P 500 small multiples require a live build (run without --demo, and without --no-spx).</div>';
+    return;
+  }
+  if(gridUniv === 'watch' && !P.watch_grid){
+    grid.innerHTML = '<div class="modal-empty" style="padding:40px 22px">Watchlist small multiples are unavailable in this build (no FINRA / price data for the watchlist names).</div>';
     return;
   }
   const S = GS();
@@ -2182,7 +2410,52 @@ const overlay = document.getElementById('overlay');
 // forward-return-by-decile bars for one name at one horizon (uses the raw-D relationship
 // panel, which exists for the NDX-100 universe; S&P-only names have no per-name history).
 // the per-name raw-D source for the modal: S&P grid cells use P.spx_rel, NDX cells P.rel
-function modalRel(){ return (gridUniv === 'spx' && P.spx_rel) ? P.spx_rel : P.rel; }
+function modalRel(){
+  if(gridUniv === 'spx' && P.spx_rel) return P.spx_rel;
+  if(gridUniv === 'watch' && P.watch_rel) return P.watch_rel;
+  return P.rel;
+}
+
+// Trailing (no-look-ahead) decile machinery: each day's D ranked against only
+// that name's PREVIOUS `win` observations (min `minObs`), then forward returns
+// pooled per decile -- the decile that was actually knowable in real time.
+// Returns {buckets, todayDec}; buckets carry the same fields deciles() emits
+// (their dLo/dHi are the min/max D observed in the bucket, which OVERLAP across
+// buckets by construction -- hence renderBars' todayDecOverride).
+const TRAIL_WIN = 252, TRAIL_MIN = 120;
+function decilesTrailing(ds, rs, win=TRAIL_WIN, minObs=TRAIL_MIN){
+  const bx = Array.from({length:10}, ()=>({xs:[], ys:[]}));
+  const hist = [];
+  let todayDec = -1;
+  for(let i=0;i<ds.length;i++){
+    const x = ds[i];
+    if(x==null) continue;
+    const w0 = Math.max(0, hist.length - win);
+    if(hist.length - w0 >= minObs){
+      let below=0, eq=0;
+      for(let j=w0;j<hist.length;j++){ const v=hist[j]; if(v<x) below++; else if(v===x) eq++; }
+      const pct = (below + 0.5*eq) / (hist.length - w0);
+      const dec = Math.min(9, Math.floor(pct*10));
+      todayDec = dec;                       // latest non-null D's live decile
+      const y = rs && i < rs.length ? rs[i] : null;
+      if(y!=null){ bx[dec].xs.push(x); bx[dec].ys.push(y); }
+    }
+    hist.push(x);
+  }
+  const buckets = bx.map(b=>{
+    if(b.ys.length < 3) return null;
+    const m = mean(b.ys);
+    let ss=0; for(const y of b.ys) ss += (y-m)*(y-m);
+    return {n: b.ys.length, dAvg: mean(b.xs), rMean: m,
+            rMedian: median([...b.ys].sort((a,c)=>a-c)),
+            rStd: Math.sqrt(ss/b.ys.length),
+            dLo: Math.min(...b.xs), dHi: Math.max(...b.xs)};
+  });
+  return {buckets, todayDec};
+}
+
+let trailBasis = false;                 // modal + SP500-table decile basis toggle
+let curModal = null;                    // {tkr, R} of the open cell modal, for re-render
 
 function renderModalDeciles(h, tkr, R){
   const bars = document.getElementById('mBars'+h);
@@ -2190,20 +2463,46 @@ function renderModalDeciles(h, tkr, R){
   R = R || modalRel();
   const ds = (R.d||{})[tkr], rs = ((R['r'+h])||{})[tkr];
   if(!ds || !rs){ bars.innerHTML=''; stat.textContent='no per-name dark-ratio history for this name'; return; }
+  const hn = parseInt(h,10);
+  if(trailBasis){
+    const {buckets, todayDec} = decilesTrailing(ds, rs);
+    const nn = buckets.reduce((s,b)=>s+(b?b.n:0), 0);
+    if(nn < 20){ bars.innerHTML=''; stat.textContent='not enough history for trailing deciles (needs 120+ prior sessions)'; return; }
+    bars.innerHTML = renderBars(buckets, hn, null, null, todayDec);
+    stat.innerHTML = `n = <b>${nn.toLocaleString()}</b> · trailing deciles (prior ${TRAIL_WIN} sessions, min ${TRAIL_MIN}) · today's D &rarr; highlighted decile`;
+    return;
+  }
   const pts=[]; const n=Math.min(ds.length, rs.length);
   for(let i=0;i<n;i++){ const x=ds[i], y=rs[i]; if(x==null||y==null) continue; pts.push([x,y]); }
   if(pts.length<20){ bars.innerHTML=''; stat.textContent='too few overlapping observations'; return; }
-  const hn=parseInt(h,10), todayD=lastNonNull(ds), r=pearson(pts);
+  const todayD=lastNonNull(ds), r=pearson(pts);
   bars.innerHTML = renderBars(deciles(pts,10), hn, null, todayD);
   stat.innerHTML = `n = <b>${pts.length.toLocaleString()}</b> · Pearson r = <b>${r==null?'--':r.toFixed(3)}</b> · today's D &rarr; highlighted decile`;
 }
+document.getElementById('mBasis').addEventListener('change', e=>{
+  trailBasis = e.target.checked;
+  const t = document.getElementById('spxtblTrail'); if(t) t.checked = trailBasis;
+  spxTblRows = null;                    // the SP500 table shares the basis; recompute lazily
+  if(curModal) for(const h of ['21','42','63']) renderModalDeciles(h, curModal.tkr, curModal.R);
+});
 
-function openCellModal(tkr){
-  const S = GS();
-  const vals = S.data[mode][tkr];
+function openCellModal(tkr, univHint){
+  // Resolve which grid holds this name. Grid-cell clicks pass no hint (use the active grid);
+  // Today's pooled divergence rows pass their universe ('NDX'/'SPX'/'WL'). If the chosen source
+  // lacks the name, search all grids so a name from any universe still opens.
+  const has = g => g && g.data && (['reg','diff','raw'].some(m => g.data[m] && (tkr in g.data[m])));
+  let S = univHint ? gridForU(univHint) : GS();
+  let rel = univHint ? relForU(univHint) : modalRel();
+  if(!has(S)){
+    for(const u of ['ndx','spx','watch']){ const g = gridForU(u); if(has(g)){ S=g; rel=relForU(u); break; } }
+  }
+  if(!has(S)) return;
+  // Prefer the active grid mode; fall back to the residual (reg -> diff -> raw) the name has.
+  let vmode = mode, vals = S.data[mode] && S.data[mode][tkr];
+  if(!vals){ for(const m of ['reg','diff','raw']){ if(S.data[m] && S.data[m][tkr]){ vals=S.data[m][tkr]; vmode=m; break; } } }
   if(!vals) return;
   let lo, hi;
-  if(mode === 'raw'){
+  if(vmode === 'raw'){
     let mn=Infinity, mx=-Infinity;
     for(const v of vals){ if(v!=null){ mn=Math.min(mn,v); mx=Math.max(mx,v); } }
     if(mn===Infinity){ mn=0; mx=1; }
@@ -2214,21 +2513,23 @@ function openCellModal(tkr){
     lo=-a; hi=a;
   }
   const last = [...vals].reverse().find(v=>v!=null);
-  const wt = S.weights[tkr];
+  const wt = (S.weights||{})[tkr];
 
   document.getElementById('mTkr').textContent = tkr===S.bench ? (S.bench_label || S.bench) : tkr;
   const mVal = document.getElementById('mVal');
-  mVal.textContent = last==null ? '--' : fmt(last, mode);
-  mVal.className = 'val' + (mode==='raw' ? '' : (last>=0?' p':' n'));
+  mVal.textContent = last==null ? '--' : fmt(last, vmode);
+  mVal.className = 'val' + (vmode==='raw' ? '' : (last>=0?' p':' n'));
   document.getElementById('mSub').innerHTML =
     `<span>${tkr===S.bench ? 'benchmark (reconstructed constituent DIX)' : (wt!=null ? 'index weight '+wt.toFixed(2)+'%' : '')}</span>` +
     `<span>${S.dates[0]} &rarr; ${S.dates[S.dates.length-1]}</span>`;
-  document.getElementById('mSpark').innerHTML = spark(vals, lo, hi, mode, 860, 170, 10);
+  document.getElementById('mSpark').innerHTML = spark(vals, lo, hi, vmode, 860, 170, 10);
 
-  // forward-return-by-decile for this name (NDX cells use P.rel; S&P cells use P.spx_rel)
-  const hasRel = !!((modalRel().d||{})[tkr]);
+  // forward-return-by-decile for this name, from the matching universe's rel panel
+  const hasRel = !!(((rel && rel.d) || {})[tkr]);
   document.getElementById('mRel').style.display = hasRel ? '' : 'none';
-  if(hasRel){ renderModalDeciles('21', tkr); renderModalDeciles('42', tkr); renderModalDeciles('63', tkr); }
+  document.getElementById('mBasisWrap').style.display = hasRel ? 'inline-flex' : 'none';
+  curModal = hasRel ? {tkr, R: rel} : null;
+  if(hasRel){ renderModalDeciles('21', tkr, rel); renderModalDeciles('42', tkr, rel); renderModalDeciles('63', tkr, rel); }
 
   overlay.classList.add('on');
 }
@@ -2284,8 +2585,370 @@ if(P.demo){
   document.body.insertBefore(banner, document.body.firstChild);
   document.title = '[DEMO] ' + document.title;
 }
+// -------------------------------------------------------------------------
+// "Today" tab: an overview page of the day's notable statistics -- the index
+// DIX gauges and the cross-index comovement regime (with its historical
+// 1-month stats), active per-name D-streaks, the ten largest positive and
+// negative residual divergences, and per-sector dark-flow stats. All
+// client-side from the payload already on the page.
+// -------------------------------------------------------------------------
+const todayWrap = document.getElementById('todayWrap');
+
+// -------- Today "top / bottom divergences": pooled NDX + S&P 500 by default, with a
+// Watchlist toggle. Rendered into #todayDivBody by renderTodayDiv() so the toggle can
+// re-render just this section without rebuilding the whole tab. --------
+let todayDivMode = 'index';        // 'index' (NDX + S&P 500, pooled) | 'watch'
+let todayStreakTks = new Set();    // NDX active-streak tickers, for the row dot (set in renderToday)
+
+function gridForU(u){ return (u==='SPX'||u==='spx') ? P.spx_grid
+                           : (u==='WL'||u==='watch') ? P.watch_grid : P; }
+function relForU(u){ return (u==='SPX'||u==='spx') ? P.spx_rel
+                          : (u==='WL'||u==='watch') ? P.watch_rel : P.rel; }
+
+// latest raw-D 1y percentile per name from a rel.d panel (same rule as the breadth tile)
+function dpctFrom(relD){
+  const out = {};
+  if(!relD) return out;
+  for(const tk in relD){
+    const s = relD[tk], vals = s.filter(v=>v!=null);
+    if(vals.length < 250) continue;
+    const cur = lastNonNull(s);
+    const wnd = s.slice(-252).filter(v=>v!=null);
+    if(cur!=null && wnd.length >= 60) out[tk] = 100*wnd.filter(v=>v<cur).length/wnd.length;
+  }
+  return out;
+}
+
+// latest-divergence entries from one grid (skips its benchmark cell + stale series)
+function divEntries(grid, rel, univ){
+  const out = [];
+  if(!grid || !grid.data || !grid.data.reg) return out;
+  const reg = grid.data.reg, dp = dpctFrom(rel && rel.d);
+  for(const tk in reg){
+    if(tk === grid.bench) continue;
+    const s = reg[tk];
+    let last=null, at=-1;
+    for(let i=s.length-1;i>=0;i--){ if(s[i]!=null){ last=s[i]; at=i; break; } }
+    if(last==null || at < s.length-10) continue;   // stale series shouldn't headline "today"
+    out.push({tk, v:last, s, univ, wt:(grid.weights||{})[tk],
+              sec:(grid.sector_map||{})[tk]||'', dp: dp[tk]});
+  }
+  return out;
+}
+
+// pooled NDX + S&P 500 entries, deduped by ticker preferring the NDX residual (its home index)
+function indexDivEntries(){
+  const seen = new Set(), out = [];
+  for(const e of divEntries(P, P.rel, 'NDX')){ seen.add(e.tk); out.push(e); }
+  for(const e of divEntries(P.spx_grid, P.spx_rel, 'SPX')){ if(!seen.has(e.tk)){ seen.add(e.tk); out.push(e); } }
+  return out;
+}
+
+function renderTodayDiv(){
+  const body = document.getElementById('todayDivBody');
+  if(!body) return;
+  const entries = todayDivMode==='watch' ? divEntries(P.watch_grid, P.watch_rel, 'WL')
+                                         : indexDivEntries();
+  entries.sort((a,b)=>b.v-a.v);
+  const top = entries.filter(x=>x.v>0).slice(0,10);
+  const bot = entries.filter(x=>x.v<0).slice(-10).reverse();
+  const sgn = x => (x>=0?'+':'') + x.toFixed(3);
+  const uBadge = u => u==='NDX' ? '' :
+    `<span class="mut" title="${u==='SPX'?'S&P 500 (residual vs SPX-DIX)':u==='WL'?'watchlist (residual vs NDX-DIX)':u}" style="font-size:10px;border:1px solid var(--line);border-radius:3px;padding:0 3px;margin-left:4px">${u==='SPX'?'S&amp;P':u==='WL'?'watch':u}</span>`;
+  const divRow = (x,i) => {
+    const s = x.s.slice(-63);
+    let a=0.01; for(const v of s){ if(v!=null) a=Math.max(a,Math.abs(v)); }
+    return `<tr data-tkr="${x.tk}" data-td-univ="${x.univ}" style="cursor:pointer">
+      <td>${i+1}</td>
+      <td>${x.tk}${todayStreakTks.has(x.tk)?' <span title="active D-streak" style="color:var(--accent)">&#9679;</span>':''}${uBadge(x.univ)}${x.wt!=null?` <span class="mut">${x.wt.toFixed(1)}%</span>`:''}</td>
+      <td style="text-align:left;font-weight:400;color:var(--mut)">${x.sec}</td>
+      <td><div class="cspark">${spark(s, -a, a, 'reg', 204, 24, 3)}</div></td>
+      <td><span class="${x.v>=0?'p':'n'}">${sgn(x.v)}</span></td>
+      <td>${x.dp==null?'<span class="mut">--</span>':`<span style="color:${x.dp>=50?'var(--pos)':'var(--neg)'}">${x.dp.toFixed(0)}%</span>`}</td>
+    </tr>`;
+  };
+  const divTbl = (rows, label, sub) => `<div class="rel-card">
+    <h2>${label}</h2>
+    <div class="sub" style="font-size:11px;margin-bottom:8px">${sub}</div>
+    <div style="overflow-x:auto"><table class="ev-table" style="min-width:420px">
+      <thead><tr><th>#</th><th style="text-align:left">name</th><th style="text-align:left">sector</th><th>residual &middot; 3mo</th><th>latest</th><th>raw-D %ile 1y</th></tr></thead>
+      <tbody>${rows.length ? rows.map(divRow).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--mut)">none</td></tr>`}</tbody>
+    </table></div></div>`;
+  const scope = todayDivMode==='watch'
+    ? 'across the custom watchlist &middot; each name&rsquo;s D vs NDX-DIX'
+    : `across NDX-100${P.spx_grid?' + S&amp;P 500':''} &middot; each name&rsquo;s D vs its index DIX`;
+  body.innerHTML =
+    divTbl(top, 'Top 10 divergences &middot; dark accumulation',
+           `largest positive regression residual &middot; ${scope} &middot; click a row for detail`) +
+    divTbl(bot, 'Bottom 10 divergences &middot; distribution',
+           `most negative residual &middot; ${scope} &middot; click a row for detail`);
+}
+
+function renderToday(){
+  try{
+    const html = [];
+    const G3 = ['NDX','SPX','IWM'];
+    const lastDate = P.dates[P.dates.length-1];
+    const signed = (x,dp=3) => (x>=0?'+':'') + x.toFixed(dp);
+    const pctSpan = p => p==null ? '<span class="mut">--</span>'
+      : `<b style="color:${p>=50?'var(--pos)':'var(--neg)'}">${p.toFixed(0)}%</b><span class="mut">ile</span>`;
+
+    // ---- index gauges (5d-MA DIX level, 1y percentile, 21-session change) +
+    //      comovement regime, mirroring the comovement study's construction ----
+    let gs = null, regime = null;
+    if(P.spx && P.iwm && P.rel.ndx_dix){
+      const gauges = {
+        NDX: {dates: P.rel.dates, dix: P.rel.ndx_dix, r21: (P.rel.r21||{})[P.bench]},
+        SPX: {dates: P.spx.dates, dix: P.spx.dix, r21: P.spx.r21},
+        IWM: {dates: P.iwm.dates, dix: P.iwm.d,  r21: P.iwm.r21}};
+      // 5d MA (min 3 obs) per gauge, keyed by date -- mirrors the comovement study
+      const ma = {};
+      for(const k of G3){
+        const g = gauges[k], m = new Map(), buf = [];
+        for(let i=0;i<g.dates.length;i++){
+          buf.push(g.dix[i]);
+          if(buf.length>5) buf.shift();
+          const ok = buf.filter(v=>v!=null);
+          if(ok.length>=3) m.set(g.dates[i], ok.reduce((a,b)=>a+b,0)/ok.length);
+        }
+        ma[k] = m;
+      }
+      const days = P.rel.dates.filter(d => ma.NDX.has(d) && ma.SPX.has(d) && ma.IWM.has(d));
+      if(days.length){
+        gs = {};
+        for(const k of G3){
+          const vals = days.map(d=>ma[k].get(d));
+          const wnd = vals.slice(-252), cur = wnd[wnd.length-1];
+          gs[k] = {cur,
+                   pct: 100*wnd.filter(v=>v<cur).length/wnd.length,
+                   chg: vals.length>21 ? cur - vals[vals.length-22] : null,
+                   series: vals.slice(-126)};
+        }
+      }
+      if(days.length > 300){
+        const zone = {};
+        for(const k of G3){
+          const vals = days.map(d=>ma[k].get(d));
+          const srt = [...vals].sort((a,b)=>a-b);
+          const lo = srt[Math.floor(0.30*(srt.length-1))], hi = srt[Math.floor(0.70*(srt.length-1))];
+          zone[k] = vals.map(v => v<=lo ? 'L' : v>=hi ? 'H' : 'M');
+        }
+        const codes = days.map((_,i)=>zone.NDX[i]+zone.SPX[i]+zone.IWM[i]);
+        const code = codes[codes.length-1], prev = codes[codes.length-2];
+        const r21map = {};
+        for(const k of G3){
+          const g = gauges[k], m = new Map();
+          if(g.r21) for(let i=0;i<g.dates.length;i++) if(g.r21[i]!=null) m.set(g.dates[i], g.r21[i]);
+          r21map[k] = m;
+        }
+        const hist = {NDX:[], SPX:[], IWM:[]};
+        let nd = 0;
+        for(let i=0;i<days.length;i++){
+          if(codes[i] !== code) continue;
+          nd++;
+          for(const k of G3){ const v = r21map[k].get(days[i]); if(v!=null) hist[k].push(v); }
+        }
+        regime = {code, prev, nd, hist};
+      }
+    }
+
+    const W = {L:'Low', M:'Mid', H:'High'};
+    const tiles = [];
+    tiles.push(`<div class="tile"><div class="tl">Session</div><div class="tv">${lastDate}</div>
+      <div class="ts">${(P.order||[]).length} NDX names &middot; window ${P.window}d<br>built ${P.generated}</div></div>`);
+    if(gs) for(const k of G3){
+      const g = gs[k];
+      let lo=Infinity, hi=-Infinity;
+      for(const v of g.series){ if(v!=null){ lo=Math.min(lo,v); hi=Math.max(hi,v); } }
+      const pad=(hi-lo)*0.12||0.01;
+      tiles.push(`<div class="tile" title="${k} reconstructed dollar-DIX (5-day MA) -- current level, percentile within its trailing year, and 21-session change. Sparkline = last ~6 months.">
+        <div class="tl">${k} DIX</div>
+        <div class="tv">${g.cur.toFixed(3)} <span style="font-size:12px;font-weight:600">${pctSpan(g.pct)} <span class="mut">1y</span></span></div>
+        <div class="ts">21d ${g.chg==null?'--':`<b style="color:${g.chg>=0?'var(--pos)':'var(--neg)'}">${signed(g.chg)}</b>`}</div>
+        <div class="tspark">${spark(g.series, lo-pad, hi+pad, 'raw', 204, 26, 3)}</div></div>`);
+    }
+    if(regime){
+      const st = k => {
+        const a = regime.hist[k];
+        if(!a.length) return `${k} --`;
+        const m = a.reduce((x,y)=>x+y,0)/a.length, h = 100*a.filter(v=>v>0).length/a.length;
+        return `${k} <b style="color:${m>=0?'var(--pos)':'var(--neg)'}">${m>=0?'+':''}${m.toFixed(1)}%</b><span class="mut">/${h.toFixed(0)}%</span>`;
+      };
+      const changed = regime.prev && regime.prev !== regime.code;
+      tiles.push(`<a class="tile" href="comovement.html" target="_blank" rel="noopener" ${changed?'style="border-color:var(--accent)"':''}
+        title="cross-index DIX comovement regime (5d-MA DIX vs each gauge's own history: Low = bottom 30%, High = top 30%) with the mean 1-month forward return / hit rate over this regime's ${regime.nd} historical days. Overlapping windows -- treat as context, not a forecast. Click for the full study.">
+        <div class="tl">Comovement regime${changed?' &middot; <b style="color:var(--accent)">changed today</b>':''}</div>
+        <div class="tv" style="font-size:15px">N=${W[regime.code[0]]} &middot; S=${W[regime.code[1]]} &middot; I=${W[regime.code[2]]} <span class="mut" style="font-size:11px;font-weight:500">(${regime.nd}d)</span></div>
+        <div class="ts">hist 1mo: ${st('NDX')} &middot; ${st('SPX')} &middot; ${st('IWM')}${changed?`<br><span class="mut">was N=${W[regime.prev[0]]} S=${W[regime.prev[1]]} I=${W[regime.prev[2]]}</span>`:''}</div></a>`);
+    }
+
+    // ---- per-name machinery shared by the breadth tile, streaks and the
+    //      divergence tables: latest raw 1-day D + its trailing-1y percentile ----
+    const dpct1y = {};                     // ticker -> latest D's %ile in its trailing year
+    let brHi = 0, brLo = 0, brN = 0;       // dark breadth: names in own top/bottom 1y quintile
+    const streakHi = [], streakLo = [];
+    if(P.rel && P.rel.d){
+      const rd = P.rel.dates || [];
+      for(const tk in P.rel.d){
+        if(tk === P.bench) continue;
+        const s = P.rel.d[tk], vals = s.filter(v=>v!=null);
+        if(vals.length < 250) continue;
+        const cur = lastNonNull(s);
+        const wnd = s.slice(-252).filter(v=>v!=null);
+        if(cur!=null && wnd.length >= 60){
+          const p = 100*wnd.filter(v=>v<cur).length/wnd.length;
+          dpct1y[tk] = p;
+          brN++; if(p>=80) brHi++; else if(p<=20) brLo++;
+        }
+        // active D-streak: 5+ consecutive sessions with raw D in the name's own
+        // top/bottom decile (full-history cutoffs -- same rule as the events tab)
+        const srt = [...vals].sort((a,b)=>a-b);
+        const q10 = srt[Math.floor(0.10*(srt.length-1))], q90 = srt[Math.floor(0.90*(srt.length-1))];
+        let run = 0, dir = 0;
+        for(let i=s.length-1;i>=0;i--){
+          const v = s[i];
+          if(v==null) break;
+          const d = v>=q90 ? 1 : v<=q10 ? -1 : 0;
+          if(run===0){ if(!d) break; dir=d; run=1; }
+          else if(d===dir) run++;
+          else break;
+        }
+        if(run>=5) (dir>0?streakHi:streakLo).push({tk, run, since: rd[rd.length-run] || ''});
+      }
+      streakHi.sort((x,y)=>y.run-x.run); streakLo.sort((x,y)=>y.run-x.run);
+    }
+    if(brN){
+      const ph = 100*brHi/brN, pl = 100*brLo/brN;
+      tiles.push(`<div class="tile" title="share of NDX names whose latest raw 1-day D sits in the top / bottom quintile of that name's own trailing year -- how broad today's dark accumulation (or distribution) is across the universe">
+        <div class="tl">Dark breadth <span style="text-transform:none">(1y quintiles)</span></div>
+        <div class="tv"><span style="color:var(--pos)">${ph.toFixed(0)}%</span> <span class="mut" style="font-size:12px">top</span>
+          &nbsp;<span style="color:var(--neg)">${pl.toFixed(0)}%</span> <span class="mut" style="font-size:12px">bottom</span></div>
+        <div class="ts">${brHi} of ${brN} names unusually dark &middot; ${brLo} unusually lit</div></div>`);
+    }
+    html.push(`<div class="tile-row">${tiles.join('')}</div>`);
+
+    // ---- notable streaks ----
+    const chip = x => `<span class="chip" data-tkr="${x.tk}" title="raw 1-day D in ${x.tk}'s own ${x.dirHi?'TOP':'BOTTOM'} decile for ${x.run} consecutive sessions (since ${x.since||'?'}) -- click for the name's detail; tune streak rules in the D-streak events tab"><b>${x.tk}</b> ${x.run}d <span class="mut">since ${(x.since||'').slice(5)}</span></span>`;
+    const streakRow = (arr, dirHi) => arr.length
+      ? `<div class="today" style="margin-top:6px">${arr.slice(0,12).map(x=>chip({...x, dirHi})).join('')}${arr.length>12?`<span class="mut">+${arr.length-12} more</span>`:''}</div>`
+      : `<div class="ts" style="color:var(--mut);margin-top:6px">none active</div>`;
+    html.push(`<div class="rel-card">
+      <h2>Notable D-streaks &middot; 5+ sessions in the name's own top / bottom decile</h2>
+      <div class="sub" style="font-size:11px"><span style="color:var(--pos);font-weight:650">Accumulation</span> &middot; raw D pinned in the top decile of the name's own history</div>
+      ${streakRow(streakHi, true)}
+      <div class="sub" style="font-size:11px;margin-top:10px"><span style="color:var(--neg);font-weight:650">Distribution</span> &middot; raw D pinned in the bottom decile</div>
+      ${streakRow(streakLo, false)}
+    </div>`);
+
+    // ---- top / bottom divergences: pooled NDX + S&P 500 (default) with a Watchlist toggle.
+    //      The actual rows are drawn by renderTodayDiv() after the innerHTML flush so the toggle
+    //      can re-render just this section. The row streak-dot uses the NDX streak scan above. ----
+    todayStreakTks = new Set([...streakHi, ...streakLo].map(x=>x.tk));
+    html.push(`<div class="rel-card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <h2 style="margin:0">Top / bottom divergences &middot; today</h2>
+        <div class="seg" id="todayDivSeg" title="which universe to rank today's divergences over">
+          <button data-td="index"${todayDivMode==='index'?' class="on"':''}>NDX + S&amp;P 500</button>
+          ${P.watch_grid ? `<button data-td="watch"${todayDivMode==='watch'?' class="on"':''}>Watchlist</button>` : ''}
+        </div>
+      </div>
+    </div>
+    <div id="todayDivBody" class="vanilla-grid"></div>`);
+
+    // ---- sector dark-flow stats ----
+    if(P.sectors && P.sectors.items && P.sectors.items.length){
+      const dts = P.sectors.dates, cutoff = dts[Math.max(0, dts.length-5)];
+      const secRow = it => {
+        const w0 = Math.max(0, it.series.length-126);
+        const ser = it.series.slice(w0), p80 = (it.p80||[]).slice(w0), p20 = (it.p20||[]).slice(w0);
+        const cross = (it.cross||[]).map(c=>({i:c.i-w0, dir:c.dir})).filter(c=>c.i>=0);
+        let lo=Infinity, hi=-Infinity;
+        for(const arr of [ser,p80,p20]) for(const v of arr){ if(v!=null){ lo=Math.min(lo,v); hi=Math.max(hi,v); } }
+        if(lo===Infinity){ lo=0; hi=1; }
+        const pad=(hi-lo)*0.1||0.01;
+        const b80 = lastNonNull(it.p80||[]), b20 = lastNonNull(it.p20||[]);
+        const band = (b80!=null && it.cur>=b80) ? '<span class="p">&ge;P80</span>'
+                   : (b20!=null && it.cur<=b20) ? '<span class="n">&le;P20</span>'
+                   : '<span class="mut">mid</span>';
+        const recent = it.last_cross && it.last_cross.date >= cutoff;
+        const lc = it.last_cross
+          ? `<span style="color:${it.last_cross.dir==='up'?'var(--pos)':'var(--neg)'}">${it.last_cross.dir==='up'?'&#9650;P80':'&#9660;P20'}</span> <span class="mut">${it.last_cross.date.slice(5)}</span>${recent?' <b style="color:var(--accent)">new</b>':''}`
+          : '<span class="mut">--</span>';
+        const pc = it.pct>=50 ? 'var(--pos)' : 'var(--neg)';
+        return `<tr data-etf="${it.etf}" style="cursor:pointer"${recent?' title="crossed its trailing-year band within the last 5 sessions"':''}>
+          <td>${it.etf} <span class="mut" style="font-weight:400">${it.name}</span></td>
+          <td>${it.n}</td>
+          <td>${it.cur.toFixed(3)}</td>
+          <td><span class="${(it.d20||0)>=0?'p':'n'}">${it.d20==null?'--':signed(it.d20)}</span></td>
+          <td><span class="pbar"><i style="width:${Math.max(3,Math.min(100,it.pct))}%;background:${pc}"></i></span><span style="color:${pc}">${it.pct}%</span></td>
+          <td>${band}</td>
+          <td>${lc}</td>
+          <td><div class="cspark">${spark(ser, lo-pad, hi+pad, 'raw', 204, 24, 3, {p80, p20, cross})}</div></td>
+        </tr>`;
+      };
+      const broad = P.sectors.items.filter(it=>(it.level||'sector')==='sector')
+                      .sort((a,b)=>b.pct-a.pct);
+      html.push(`<div class="rel-card">
+        <h2>Sector dark flow &middot; reconstructed dollar-DIX, ranked by 1-year percentile</h2>
+        <div class="sub" style="font-size:11px;margin-bottom:8px">&Sigma;$ short &divide; &Sigma;$ off-exchange over each SPDR fund's constituents (5d MA) &middot; band = trailing-year 80th/20th percentile &middot; click a row for the constituent breakdown</div>
+        <div style="overflow-x:auto"><table class="ev-table" style="min-width:640px">
+          <thead><tr><th style="text-align:left">sector</th><th>n</th><th>DIX</th><th>&Delta;20d</th><th>1y %ile</th><th>band</th><th>last cross</th><th>DIX &middot; 6mo</th></tr></thead>
+          <tbody>${broad.map(secRow).join('')}</tbody>
+        </table></div></div>`);
+      // industry funds worth a look today: fresh band crossings or 1y-percentile extremes
+      const notable = P.sectors.items.filter(it=>(it.level||'sector')!=='sector')
+        .filter(it=>(it.last_cross && it.last_cross.date >= cutoff) || it.pct>=90 || it.pct<=10)
+        .sort((a,b)=>b.pct-a.pct);
+      if(notable.length){
+        const nchip = it => {
+          const recent = it.last_cross && it.last_cross.date >= cutoff;
+          const pc = it.pct>=50 ? 'var(--pos)' : 'var(--neg)';
+          return `<span class="chip" data-etf="${it.etf}" title="${it.name}: DIX ${it.cur.toFixed(3)}, ${it.pct}%ile of its trailing year${it.last_cross?` -- last band cross ${it.last_cross.dir==='up'?'&#9650;P80':'&#9660;P20'} ${it.last_cross.date}`:''} -- click for the constituent breakdown"><b>${it.etf}</b> <span style="color:${pc}">${it.pct}%</span><span class="mut">ile</span>${recent?` <span style="color:${it.last_cross.dir==='up'?'var(--pos)':'var(--neg)'}">${it.last_cross.dir==='up'?'&#9650;P80':'&#9660;P20'}</span>`:''}</span>`;
+        };
+        html.push(`<div class="rel-card">
+          <h2>Notable industry funds &middot; fresh band crossings or 1y extremes</h2>
+          <div class="today" style="margin-top:2px">${notable.map(nchip).join('')}</div>
+        </div>`);
+      }
+    }
+
+    html.push(`<div class="sub" style="font-size:11px;line-height:1.55">
+      Everything above is derived from the same payload as the other tabs: gauges are the reconstructed
+      dollar-DIX per index (5-day MA), the regime is each gauge's position vs the bottom/top 30% of its own
+      history, divergences are the latest rolling-regression residual of each name's D against its
+      index DIX (pooled across NDX-100 + S&amp;P 500, or the custom watchlist via the toggle),
+      streaks use each name's own full-history decile cutoffs, and sector rows
+      match the Sector DIX tab. Historical 1-month stats pool overlapping windows &mdash; context, not forecasts.
+    </div>`);
+    todayWrap.innerHTML = html.join('');
+    renderTodayDiv();   // fill the divergence tables (pooled NDX + S&P 500, or the watchlist)
+  }catch(err){
+    console.warn('today overview unavailable:', err);
+    todayWrap.innerHTML = '<div class="modal-empty">Today overview unavailable for this build.</div>';
+  }
+}
+
+// click-through: the divergence-universe toggle re-renders just that section; a name opens the
+// same detail modal as its grid cell (passing the row's universe so pooled S&P / watchlist names
+// resolve to the right grid); a sector row / industry chip opens the sector drill-down
+todayWrap.addEventListener('click', e=>{
+  const td = e.target.closest('[data-td]');
+  if(td){
+    todayDivMode = td.dataset.td;
+    const seg = document.getElementById('todayDivSeg');
+    if(seg) [...seg.children].forEach(b=>b.classList.toggle('on', b===td));
+    renderTodayDiv();
+    return;
+  }
+  const n = e.target.closest('[data-tkr]');
+  if(n){ openCellModal(n.dataset.tkr, n.dataset.tdUniv); return; }
+  const s = e.target.closest('[data-etf]');
+  if(s) openSectorModal(s.dataset.etf);
+});
+
 updateChrome();
 render();
+renderToday();
 
 // -------------------------------------------------------------------------
 // Tab: D vs forward return (1mo / 2mo / 3mo)
@@ -2463,7 +3126,7 @@ function barsAxisExtent(buckets, h){
 // several panels for direct visual comparison.
 // todayVal (optional): the latest DIX/D print -- its decile bucket gets spotlighted so
 // you can see where today's dark reading sits in its historical distribution.
-function renderBars(buckets, h, forcedA, todayVal){
+function renderBars(buckets, h, forcedA, todayVal, todayDecOverride){
   const w=800, H=220, padL=50, padR=14, padT=12, padB=40;  // padB fits Dn + domain range
   const barVal = b => useMedian ? b.rMedian : b.rMean;
   const se = b => useMedian ? 0 : b.rStd / Math.sqrt(Math.max(1, b.n / h));
@@ -2471,9 +3134,11 @@ function renderBars(buckets, h, forcedA, todayVal){
   const mid = padT + (H-padT-padB)/2, half = (H-padT-padB)/2;
   const ys = v => mid - (Math.max(-a, Math.min(a, v))/a) * half;
   const y0 = ys(0), bw = (w-padL-padR)/buckets.length;
-  // which decile does today's print fall into? (first bucket whose upper edge it clears)
-  let todayDec = -1;
-  if(todayVal != null && isFinite(todayVal)){
+  // which decile does today's print fall into? Trailing-basis callers pass the
+  // decile directly (their buckets' x-ranges overlap, so edge-matching is wrong);
+  // otherwise: first bucket whose upper edge it clears.
+  let todayDec = todayDecOverride != null ? todayDecOverride : -1;
+  if(todayDec < 0 && todayVal != null && isFinite(todayVal)){
     for(let i=0;i<buckets.length;i++){ if(buckets[i] && todayVal <= buckets[i].dHi){ todayDec=i; break; } }
     if(todayDec === -1) for(let i=buckets.length-1;i>=0;i--){ if(buckets[i]){ todayDec=i; break; } }
   }
@@ -2926,6 +3591,134 @@ function renderIwm(){
 document.getElementById('iwmShared').addEventListener('change', e=>{
   iwmShared = e.target.checked;
   renderIwm();
+});
+
+// -------------------------------------------------------------------------
+// DIX vs Return -> Sectors: each sector / industry fund's reconstructed
+// dollar-DIX (the 5d-MA series already packed for the Sector DIX tab) against
+// ITS OWN ETF's forward return (r21/r42/r63 packed per item). Same layout and
+// add-ons as the NDX/SPX/IWM views, plus a cross-sector summary table.
+// -------------------------------------------------------------------------
+let secShared = false, secCur = null, secWired = false;
+function secItems(){
+  const S = P.sectors;
+  if(!S || !S.items) return [];
+  return S.items.filter(it => it.r21 && it.r21.some(v => v != null));
+}
+function secPairs(it, h){
+  const d = it.series, rs = it['r' + h], out = [];
+  if(!d || !rs) return out;
+  const n = Math.min(d.length, rs.length);
+  for(let i=0;i<n;i++){
+    if(d[i]==null || rs[i]==null) continue;
+    out.push([d[i], rs[i]]);
+  }
+  return out;
+}
+function secSpread(it){
+  // D10-D1: mean 1-month forward return in the fund's top DIX decile minus its bottom one
+  const bk = deciles(secPairs(it, '21'), 10);
+  if(!bk || !bk[0] || !bk[9]) return null;
+  return bk[9].rMean - bk[0].rMean;
+}
+function secTodayDecile(it){
+  const bk = deciles(secPairs(it, '21'), 10), today = lastNonNull(it.series);
+  if(today==null || !bk) return -1;
+  for(let b=0;b<bk.length;b++){ if(bk[b] && today>=bk[b].dLo && today<=bk[b].dHi) return b; }
+  return (bk[9] && today>bk[9].dHi) ? 9 : 0;
+}
+function renderSecTable(items){
+  const rows = items.map(it => {
+    const r = {};
+    for(const h of ['21','42','63']) r['r'+h] = pearson(secPairs(it, h));
+    return { it, ...r, spread: secSpread(it), dec: secTodayDecile(it) };
+  }).sort((a,b) => (b.spread==null?-Infinity:b.spread) - (a.spread==null?-Infinity:a.spread));
+  const fr = v => v==null ? '·' : v.toFixed(3);
+  const cls = v => v==null ? 'na' : v>=0 ? 'pos' : 'neg';
+  let h = '<table class="dtbl"><thead><tr><th>Fund</th><th>level</th><th>names</th>'
+        + '<th title="latest 5d-MA reconstructed DIX">DIX now</th>'
+        + '<th title="percentile of today\'s DIX within the fund\'s trailing year">1y %ile</th>'
+        + '<th title="which decile of its own full-window history today\'s DIX sits in">now dec</th>'
+        + '<th title="Pearson correlation, DIX vs own-ETF 1-month forward return">r 1mo</th>'
+        + '<th>r 2mo</th><th>r 3mo</th>'
+        + '<th title="mean 1-month forward return in the top DIX decile minus the bottom one">D10−D1 1mo</th>'
+        + '</tr></thead><tbody>';
+  for(const row of rows){
+    const it = row.it, on = it.etf===secCur ? ' style="outline:1.5px solid var(--accent);outline-offset:-2px"' : '';
+    h += `<tr data-etf="${it.etf}" style="cursor:pointer"${it.etf===secCur?' class="cur"':''}>`
+       + `<td class="tk"${on}>${it.etf} <span style="color:var(--mut);font-weight:500">${it.name}</span></td>`
+       + `<td class="now">${it.level==='subsector' ? (it.parent||'subsector') : 'sector'}</td>`
+       + `<td>${it.n}</td><td>${it.cur.toFixed(3)}</td><td>${it.pct}%</td>`
+       + `<td class="now">${row.dec>=0 ? 'D'+(row.dec+1) : '--'}</td>`
+       + `<td class="${cls(row.r21)}"><span class="m">${fr(row.r21)}</span></td>`
+       + `<td class="${cls(row.r42)}"><span class="m">${fr(row.r42)}</span></td>`
+       + `<td class="${cls(row.r63)}"><span class="m">${fr(row.r63)}</span></td>`
+       + `<td class="${cls(row.spread)}"><span class="m">${row.spread==null?'·':fmtPct(row.spread)}</span></td>`
+       + '</tr>';
+  }
+  document.getElementById('secTbl').innerHTML = h + '</tbody></table>';
+}
+function renderSec(){
+  const items = secItems();
+  const sub = document.getElementById('secSub');
+  if(!items.length){
+    sub.textContent = 'no sector DIX-vs-return data in this payload (live builds only; regenerate the dashboard to add the sector ETF forward returns)';
+    document.getElementById('secGrid').innerHTML = '<div class="modal-empty">No sector DIX-vs-return data available.</div>';
+    document.getElementById('secTbl').innerHTML = '';
+    return;
+  }
+  const sel = document.getElementById('secSel');
+  if(!secWired){
+    const opt = it => `<option value="${it.etf}">${it.etf} · ${it.name}</option>`;
+    const broad = items.filter(it => (it.level || 'sector') === 'sector');
+    const fine = items.filter(it => it.level === 'subsector');
+    sel.innerHTML = `<optgroup label="Sectors">${broad.map(opt).join('')}</optgroup>`
+      + (fine.length ? `<optgroup label="Subsectors">${fine.map(opt).join('')}</optgroup>` : '');
+    sel.addEventListener('change', ()=>{ secCur = sel.value; renderSec(); });
+    document.getElementById('secTbl').addEventListener('click', e=>{
+      const tr = e.target.closest('tr[data-etf]'); if(!tr) return;
+      secCur = tr.dataset.etf; sel.value = secCur; renderSec();
+    });
+    secWired = true;
+  }
+  if(!secCur || !items.some(it => it.etf === secCur)) secCur = items[0].etf;
+  sel.value = secCur;
+  const it = items.find(x => x.etf === secCur);
+  const dates = P.sectors.dates;
+  sub.textContent =
+    `${it.etf} · ${it.name}${it.parent ? ' (' + it.parent + ')' : ''} — reconstructed dollar-DIX `
+    + `(5d MA, Σ$short/Σ$off-exch across ${it.n} constituents) vs ${it.etf}'s own forward return`
+    + ` · ${dates.length.toLocaleString()} days · ${dates[0]} → ${dates[dates.length-1]}`
+    + (secShared ? ' · shared axis' : '');
+  for(const h of ['21','42','63']){
+    const el = document.getElementById('secH'+h);
+    if(el) el.firstChild.textContent = `${it.etf} DIX vs ${h==='21'?'1':h==='42'?'2':'3'}-month ${it.etf} forward return `;
+  }
+  const panels = ['21','42','63'].map(h => {
+    const pts = secPairs(it, h);
+    return { h, hn: parseInt(h, 10), pts, buckets: deciles(pts, 10) };
+  });
+  const forcedA = secShared
+    ? Math.max(...panels.map(p => barsAxisExtent(p.buckets, p.hn))) : null;
+  const forcedRaw = secShared ? ptsBounds(panels.map(p => p.pts)) : null;
+  const dToday = lastNonNull(it.series);
+  for(const {h, hn, pts, buckets} of panels){
+    const r = pearson(pts), rho = spearman(pts);
+    const ci = pts.length > 200 ? blockBootstrapCI(pts, hn) : null;
+    const nEff = Math.round(pts.length / hn);
+    const ciTxt = ci ? ` [95% CI ${ci[0].toFixed(3)}, ${ci[1].toFixed(3)}]` : '';
+    document.getElementById('cBars' + h).innerHTML = renderBars(buckets, hn, forcedA, dToday);
+    document.getElementById('cScatter' + h).innerHTML = renderScatter(pts, 10, forcedRaw, dToday);
+    document.getElementById('cStats' + h).innerHTML =
+      `<span>n = <b>${pts.length.toLocaleString()}</b> (&asymp;<b>${nEff.toLocaleString()}</b> indep.)</span>` +
+      `<span>Pearson r = <b>${r==null?'--':r.toFixed(3)}</b>${ciTxt}</span>` +
+      `<span>Spearman &rho; = <b>${rho==null?'--':rho.toFixed(3)}</b></span>`;
+  }
+  renderSecTable(items);
+}
+document.getElementById('secShared').addEventListener('change', e=>{
+  secShared = e.target.checked;
+  renderSec();
 });
 
 // -------------------------------------------------------------------------
@@ -3989,7 +4782,7 @@ function renderSectors(){
       : ` <span style="color:var(--neg)">▼${Math.abs(it.d20).toFixed(3)}</span>`);
     const lcr = it.last_cross;
     const cross = lcr ? ` · <span style="color:${lcr.dir==='up'?'var(--pos)':'var(--neg)'}" title="most recent crossing into the trailing-year 80th/20th percentile band">${lcr.dir==='up'?'▲P80':'▼P20'} ${lcr.date}</span>` : '';
-    return `<div class="cell" data-etf="${it.etf}" title="click for constituent dark flow">
+    return `<div class="cell" data-etf="${it.etf}" title="click to zoom in: forward return by DIX decile + constituent dark flow">
       <div class="chead">
         <span class="tkr">${it.etf} <span style="color:var(--mut);font-weight:500;font-size:10px">${it.name}</span></span>
         <span class="val">${it.cur.toFixed(3)}</span>
@@ -4023,6 +4816,38 @@ document.getElementById('sectorLevelSeg').addEventListener('click', e=>{
   renderSectors();
 });
 
+// Forward-return-by-decile for one sector at one horizon -- the sector analog of
+// renderModalDeciles(): pairs the fund's reconstructed DIX (its "1-year trailing plot")
+// with its own ETF's forward return, buckets by DIX decile, and spotlights today's decile.
+// Shares the trailing (no-look-ahead) machinery via secModalTrail.
+let secModalTrail = false;    // sector modal decile basis toggle
+let curSecModal = null;       // the item whose sector modal is open, for re-render on toggle
+function renderSecModalDeciles(h, it){
+  const bars = document.getElementById('secmDec'+h);
+  const stat = document.getElementById('secmStat'+h);
+  const hn = parseInt(h,10), rs = it['r'+h];
+  if(!it.series || !rs || !rs.some(v=>v!=null)){
+    bars.innerHTML=''; stat.textContent='no forward-return history for this fund'; return;
+  }
+  if(secModalTrail){
+    const {buckets, todayDec} = decilesTrailing(it.series, rs);
+    const nn = buckets.reduce((s,b)=>s+(b?b.n:0), 0);
+    if(nn < 20){ bars.innerHTML=''; stat.textContent='not enough history for trailing deciles (needs 120+ prior sessions)'; return; }
+    bars.innerHTML = renderBars(buckets, hn, null, null, todayDec);
+    stat.innerHTML = `n = <b>${nn.toLocaleString()}</b> · trailing deciles (prior ${TRAIL_WIN} sessions, min ${TRAIL_MIN}) · today's DIX &rarr; highlighted decile`;
+    return;
+  }
+  const pts = secPairs(it, h);
+  if(pts.length < 20){ bars.innerHTML=''; stat.textContent='too few overlapping observations'; return; }
+  const today = lastNonNull(it.series), r = pearson(pts);
+  bars.innerHTML = renderBars(deciles(pts,10), hn, null, today);
+  stat.innerHTML = `n = <b>${pts.length.toLocaleString()}</b> · Pearson r = <b>${r==null?'--':r.toFixed(3)}</b> · today's DIX &rarr; highlighted decile`;
+}
+document.getElementById('secmBasis').addEventListener('change', e=>{
+  secModalTrail = e.target.checked;
+  if(curSecModal) for(const h of ['21','42','63']) renderSecModalDeciles(h, curSecModal);
+});
+
 function openSectorModal(etf){
   const S = P.sectors; if(!S) return;
   const it = S.items.find(x=>x.etf===etf); if(!it || !it.names || !it.names.length) return;
@@ -4030,8 +4855,27 @@ function openSectorModal(etf){
     `${it.etf} · ${it.name}` + (it.parent ? ` (${it.parent})` : '');
   document.getElementById('secmVal').textContent = `DIX ${it.cur.toFixed(3)} · ${it.pct}%ile 1y`;
   document.getElementById('secmSub').innerHTML =
-    `<span>who is receiving the dark flow — constituents by share of the sector's off-exchange short $ volume</span>`
+    `<span>this fund's DIX vs its own forward return (deciles), and which constituents are receiving the dark flow</span>`
     + `<span>top ${it.names.length} of ${it.n} names</span>`;
+
+  // Enlarged trailing DIX plot -- the sector's 1-year trailing sparkline zoomed up, with the
+  // same trailing-year 80/20 percentile band + crossing markers the small cell shows.
+  let slo=Infinity, shi=-Infinity;
+  for(const v of it.series){ if(v!=null){ if(v<slo)slo=v; if(v>shi)shi=v; } }
+  for(const arr of [it.p80, it.p20]){ if(!arr) continue; for(const v of arr){ if(v!=null){ if(v<slo)slo=v; if(v>shi)shi=v; } } }
+  if(slo===Infinity){ slo=0.35; shi=0.55; }
+  const spad=(shi-slo)*0.08||0.02; slo-=spad; shi+=spad;
+  document.getElementById('secmSpark').innerHTML =
+    spark(it.series, slo, shi, 'raw', 860, 150, 10, {p80: it.p80, p20: it.p20, cross: it.cross});
+
+  // Forward return by decile of this fund's own DIX (1/2/3-month), the same view single stocks
+  // get in the cell modal -- from the DIX series + the fund ETF's forward returns packed per item.
+  const hasRet = !!(it.series && it.r21 && it.r21.some(v => v != null));
+  document.getElementById('secmRel').style.display = hasRet ? '' : 'none';
+  document.getElementById('secmBasisWrap').style.display = hasRet ? 'inline-flex' : 'none';
+  curSecModal = hasRet ? it : null;
+  if(hasRet) for(const h of ['21','42','63']) renderSecModalDeciles(h, it);
+
   const names = it.names, rowH=20, padT=8, padL=66, padR=168, W=900;
   const maxW = Math.max(...names.map(n=>n.w), 0.01);
   const H = padT*2 + names.length*rowH;
@@ -4081,6 +4925,8 @@ function openSectorConstituent(tkr){
     document.getElementById('mSub').innerHTML =
       `<span>no per-name dark-ratio history for ${tkr}</span><span></span>`;
     spEl.innerHTML = ''; relBox.style.display = 'none';
+    document.getElementById('mBasisWrap').style.display = 'none';
+    curModal = null;
     overlay.classList.add('on'); return;
   }
   document.getElementById('mSub').innerHTML =
@@ -4091,6 +4937,8 @@ function openSectorConstituent(tkr){
   const pad=(mx-mn)*0.1||0.02;
   spEl.innerHTML = spark(dser, Math.max(0,mn-pad), mx+pad, 'raw', 860, 140, 10);
   relBox.style.display = '';
+  document.getElementById('mBasisWrap').style.display = 'inline-flex';
+  curModal = {tkr: key, R};
   renderModalDeciles('21', key, R); renderModalDeciles('42', key, R); renderModalDeciles('63', key, R);
   overlay.classList.add('on');
 }
@@ -4108,6 +4956,13 @@ function computeSpxTableRows(){
   for(const t of Object.keys(R.d).sort()){
     const ds = R.d[t], rs = (R.r21||{})[t];
     if(!ds || !rs) continue;
+    if(trailBasis){
+      const {buckets, todayDec} = decilesTrailing(ds, rs);
+      const nn = buckets.reduce((s,b)=>s+(b?b.n:0), 0);
+      if(nn < 30) continue;
+      out.push({t, bk: buckets, curDec: todayDec});
+      continue;
+    }
     const pts=[], n=Math.min(ds.length, rs.length);
     for(let i=0;i<n;i++){ const x=ds[i], y=rs[i]; if(x==null||y==null) continue; pts.push([x,y]); }
     if(pts.length < 30) continue;
@@ -4130,7 +4985,9 @@ function renderSpxTable(){
   if(!spxTblRows) spxTblRows = computeSpxTableRows();
   const f = (document.getElementById('spxtblFilter').value || '').toUpperCase().trim();
   const shown = f ? spxTblRows.filter(r=>r.t.includes(f)) : spxTblRows;
-  sub.innerHTML = `${shown.length} of ${spxTblRows.length} S&P 500 names · mean 1-month (21d) forward return by decile of each name's dark ratio D · ±1 SE (whisker level) below each mean`;
+  sub.innerHTML = `${shown.length} of ${spxTblRows.length} S&P 500 names · mean 1-month (21d) forward return by decile of each name's dark ratio D`
+    + (trailBasis ? ` · <b>trailing deciles</b> (each day ranked vs the name's prior ${TRAIL_WIN} sessions -- no look-ahead)` : '')
+    + ` · ±1 SE (whisker level) below each mean`;
   let h = '<table class="dtbl"><thead><tr><th>Ticker</th><th>now</th>';
   for(let b=1;b<=10;b++) h += `<th>D${b}</th>`;
   h += '</tr></thead><tbody>';
@@ -4148,18 +5005,26 @@ function renderSpxTable(){
   body.innerHTML = h + '</tbody></table>';
 }
 document.getElementById('spxtblFilter').addEventListener('input', renderSpxTable);
+document.getElementById('spxtblTrail').addEventListener('change', e=>{
+  trailBasis = e.target.checked;
+  document.getElementById('mBasis').checked = trailBasis;   // one shared basis
+  spxTblRows = null;
+  renderSpxTable();
+});
 
 // -------------------------------------------------------------------------
 // Top-level tab switching
 // -------------------------------------------------------------------------
-let spxRendered = false, ndxRendered = false, iwmRendered = false, sectorsRendered = false;
+let spxRendered = false, ndxRendered = false, iwmRendered = false, sectorsRendered = false,
+    secRendered = false;
 // Unified "DIX vs Return" tab: a multi-toggle selects any combination of the
-// NDX / SPX / IWM reconstructed-DIX views, each keeping its own wrap, controls
-// and render function untouched.
+// NDX / SPX / IWM / sector reconstructed-DIX views, each keeping its own wrap,
+// controls and render function untouched.
 function updateIdx(){
   const active = [...document.querySelectorAll('#idxSel button')]
     .filter(x => x.classList.contains('on')).map(x => x.dataset.i);
-  [['ndx','ndxWrap','ctl-ndx'],['spx','spxWrap','ctl-spx'],['iwm','iwmWrap','ctl-iwm']].forEach(([i,w,c])=>{
+  [['ndx','ndxWrap','ctl-ndx'],['spx','spxWrap','ctl-spx'],['iwm','iwmWrap','ctl-iwm'],
+   ['sec','secWrap','ctl-sec']].forEach(([i,w,c])=>{
     const on = active.includes(i);
     document.getElementById(w).style.display = on ? '' : 'none';
     document.getElementById(c).style.display = on ? '' : 'none';
@@ -4167,6 +5032,7 @@ function updateIdx(){
       if(i==='ndx' && !ndxRendered){ renderNdx(); ndxRendered = true; }
       if(i==='spx' && !spxRendered){ renderSpx(); spxRendered = true; }
       if(i==='iwm' && !iwmRendered){ renderIwm(); iwmRendered = true; }
+      if(i==='sec' && !secRendered){ renderSec(); secRendered = true; }
     }
   });
 }
@@ -4181,6 +5047,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
   const t = b.dataset.t;
   [...e.currentTarget.children].forEach(x=>x.classList.toggle('on', x===b));
+  document.getElementById('todayWrap').style.display = t==='today' ? '' : 'none';
   document.getElementById('ctl-grid').style.display = t==='grid' ? '' : 'none';
   document.getElementById('ctl-rel').style.display = t==='rel' ? '' : 'none';
   document.getElementById('ctl-idx').style.display = t==='idx' ? '' : 'none';
@@ -4191,17 +5058,19 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('grid').style.display = t==='grid' ? '' : 'none';
   document.getElementById('relWrap').style.display = t==='rel' ? '' : 'none';
   // index wraps + their controls are governed by the idx multi-toggle; hide them off-tab
-  if(t!=='idx'){ ['spxWrap','ndxWrap','iwmWrap','ctl-spx','ctl-ndx','ctl-iwm']
+  if(t!=='idx'){ ['spxWrap','ndxWrap','iwmWrap','secWrap','ctl-spx','ctl-ndx','ctl-iwm','ctl-sec']
     .forEach(id=>document.getElementById(id).style.display='none'); }
   document.getElementById('contribWrap').style.display = t==='contrib' ? '' : 'none';
   document.getElementById('xsWrap').style.display = t==='xs' ? '' : 'none';
   document.getElementById('evWrap').style.display = t==='ev' ? '' : 'none';
   document.getElementById('sectorsWrap').style.display = t==='sectors' ? '' : 'none';
   document.getElementById('spxtblWrap').style.display = t==='spxtbl' ? '' : 'none';
-  document.getElementById('footHint').textContent = t==='rel'
+  document.getElementById('footHint').textContent = t==='today'
+    ? "today's signal changes at a glance -- click a name or sector for detail -- overlapping-window stats are context, not forecasts"
+    : t==='rel'
     ? 'whiskers = ±1 SE on the overlap-adjusted (effective-N) mean; r CI via block bootstrap; overlapping daily returns → n far exceeds independent obs'
     : t==='idx'
-    ? 'reconstructed dollar-weighted DIX per index (NDX-100 / S&P 500 / Russell 2000) vs that index\'s own forward return -- toggle any combination of indices to compare'
+    ? 'reconstructed dollar-weighted DIX per index (NDX-100 / S&P 500 / Russell 2000) or per sector ETF vs its own forward return -- toggle any combination of views to compare'
     : t==='contrib'
     ? 'per-name decomposition of each index\'s dollar-DIX -- contribution = dark-$ weight x own dark ratio (DPI); the contributions sum to the DIX'
     : t==='xs'
@@ -4215,6 +5084,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
     : (sortMode==='weight' ? 'ordered by NDX index weight'
        : mode==='raw' ? 'ordered by highest raw D'
        : 'ordered by latest divergence (accumulating, then distributing)') + ' · toggle Weight/Divergence to reorder · hover a panel for date/value';
+  if(t==='today') renderToday();
   if(t==='rel') renderRel();
   if(t==='idx') updateIdx();
   if(t==='contrib') renderContrib();
@@ -4253,7 +5123,8 @@ function wireDecileHover(barsId, scatterId){
 [['barsSvg','scatterSvg'],
  ['sBars21','sScatter21'], ['sBars42','sScatter42'], ['sBars63','sScatter63'],
  ['nBars21','nScatter21'], ['nBars42','nScatter42'], ['nBars63','nScatter63'],
- ['wBars21','wScatter21'], ['wBars42','wScatter42'], ['wBars63','wScatter63']].forEach(([b, s]) => wireDecileHover(b, s));
+ ['wBars21','wScatter21'], ['wBars42','wScatter42'], ['wBars63','wScatter63'],
+ ['cBars21','cScatter21'], ['cBars42','cScatter42'], ['cBars63','cScatter63']].forEach(([b, s]) => wireDecileHover(b, s));
 </script>
 </body>
 </html>
@@ -4562,6 +5433,8 @@ def _ssga_tickers_from_xlsx(raw):
         col = col.iloc[:, 0]
     out, seen = [], set()
     for t in col.tolist():
+        if pd.isna(t):                          # blank ticker cell (disclaimer/trailer row)
+            continue
         u = str(t).strip().upper()
         if _TICKER_RE.match(u) and u not in seen:
             seen.add(u); out.append(u)
@@ -4678,7 +5551,7 @@ def build_breadth_payload(etf_px, keep):
 
 
 def build_sector_payload(members, short, total, close, d, keep, hist_win=252, min_names=8,
-                         top_names=30):
+                         top_names=30, etf_px=None):
     """One reconstructed dollar-DIX per sector over `keep`, plus the latest level, its percentile
     within the trailing `hist_win` sessions (dark accumulation vs its own recent history), its
     20-session change, the trailing-year 80th/20th percentile band (`p80`/`p20`) with the dates it
@@ -4686,7 +5559,11 @@ def build_sector_payload(members, short, total, close, d, keep, hist_win=252, mi
     breakdown of which names are receiving the dark flow.
     `members` is [(etf, name, [tickers]), ...]; short/total/close/`d` are the shared union panels
     (`d` = per-name 5d-MA dark ratio). Same Sum($ short)/Sum($ off-exch) DIX construction as the
-    SPX/IWM tabs, computed over each sector's own constituents."""
+    SPX/IWM tabs, computed over each sector's own constituents.
+    `etf_px` (optional) is a wide adjclose panel of the sector ETFs themselves; when a fund's
+    price history is present, its own 1/2/3-month forward returns (`r21`/`r42`/`r63`, percent,
+    aligned to `keep`) are packed per item so the dashboard can plot sector DIX vs the sector
+    ETF's forward return -- the same view the NDX/SPX/IWM index tabs give."""
     if not members:
         return None
     items = []
@@ -4753,10 +5630,22 @@ def build_sector_payload(members, short, total, close, d, keep, hist_win=252, mi
             names.append({"t": c, "d": round(dcur, 3), "dd": round(dchg, 3),
                           "w": round(100.0 * float(dark_dollar[c]) / tot, 2)})
         names.sort(key=lambda x: x["w"], reverse=True)
+        # The sector ETF's own forward returns, aligned to `keep`. Computed on the fund's
+        # full price history FIRST (like build_index_payload) so dates near the left edge
+        # of the plot window still see their futures; the trailing ~h sessions are None.
+        rets = {}
+        if etf_px is not None and etf in etf_px.columns:
+            px = etf_px[etf].dropna()
+            if len(px) > 63:
+                fwd = px.to_frame("CLOSE")
+                for key, h in (("r21", 21), ("r42", 42), ("r63", 63)):
+                    r = compute_forward_return(fwd, h)["CLOSE"].reindex(keep)
+                    rets[key] = [round(float(x), 4) if pd.notna(x) else None
+                                 for x in r.values]
         items.append({"etf": etf, "name": name, "n": len(cols), "cur": round(cur, 4),
                       "pct": pct, "d20": d20, "series": series, "names": names[:top_names],
                       "p80": p80, "p20": p20, "cross": crosses, "last_cross": last_cross,
-                      "level": level, "parent": parent})
+                      "level": level, "parent": parent, **rets})
     if not items:
         return None
     return {"dates": [dt.strftime("%Y-%m-%d") for dt in keep], "items": items}
@@ -4800,6 +5689,10 @@ def main():
                     help="OPTIONAL: local IWM holdings file (SpreadsheetML/Excel-XML, CSV or a "
                          "plain ticker list) for the Russell 2000 universe. Auto-fetched from "
                          "BlackRock when omitted.")
+    ap.add_argument("--watchlist-csv", dest="watchlist_csv", default=WATCHLIST_CSV,
+                    help=f"CSV driving the custom Watchlist small-multiples tab (column 1 = "
+                         f"ticker, optional column 2 = sector). Default: {WATCHLIST_CSV}. Falls "
+                         f"back to the built-in list when the file is missing/unreadable.")
     args = ap.parse_args()
 
     cache_dir = args.cache_dir or None
@@ -4807,6 +5700,13 @@ def main():
     end = pd.Timestamp.today().normalize()
     start = pd.Timestamp(args.dark_start) if args.dark_start else pd.Timestamp("2018-08-01")
     ndx_syms = [BENCH] + [t for t in NDX100 if t != BENCH]
+    # Custom watchlist tickers + sector labels: from the CSV (source of truth), built-in fallback.
+    wl_tickers, wl_sectors = load_watchlist(args.watchlist_csv)
+    if wl_tickers:
+        print(f"Watchlist: {len(wl_tickers)} names from "
+              f"{args.watchlist_csv if Path(args.watchlist_csv).exists() else 'built-in default'} "
+              f"({', '.join(wl_tickers[:6])}{'...' if len(wl_tickers) > 6 else ''})",
+              file=sys.stderr)
 
     if args.demo:
         print("DEMO mode: synthetic data (no network)...", file=sys.stderr)
@@ -4835,6 +5735,13 @@ def main():
         spx_rel = None
         spx_weight_map = {}
         spx_weight_order = None
+        # Custom watchlist grid: synthesize D / raw-D / close panels for the WATCHLIST names so
+        # the tab renders in --demo too (residualized against the demo NDX-DIX below). The QQQ
+        # bench column demo_panel adds is dropped -- the watchlist has no ticker of its own.
+        wldata = demo_panel(wl_tickers, BENCH, start=args.plot_start or "2020-01-01", seed=23)
+        wl_d = wldata["d"].drop(columns=[BENCH], errors="ignore")
+        wl_dpi = wldata["raw_dark"].drop(columns=[BENCH], errors="ignore")
+        wl_adj = wldata["close"].drop(columns=[BENCH], errors="ignore")
         breadth_px = None
         sector_data = None   # sector-DIX tab is a live-data feature (empty in --demo)
     else:
@@ -4892,6 +5799,18 @@ def main():
                 spx_rel = pack_name_rel(SP["dpi"], SP["adjclose"], plot_start=plot_start)
                 print(f"S&P 500 grid: residualized {spx_res['reg'].notna().any().sum()} names "
                       f"vs the S&P 500 DIX", file=sys.stderr)
+
+        # ---- Custom watchlist small-multiples: FINRA DPI + Yahoo prices for WATCHLIST names ----
+        # A sparse, curated universe (hot names outside the index), so heal_frac=1.0 heals only
+        # all-NaN rows -- like the Russell fetch. Residualized against the NDX-DIX further below.
+        wl_d = wl_dpi = wl_adj = None
+        if wl_tickers:
+            print(f"Building watchlist panel ({len(wl_tickers)} names) from FINRA + Yahoo...",
+                  file=sys.stderr)
+            WL = build_universe_panels(wl_tickers, start, end, workers=args.workers,
+                                       cache_dir=cache_dir, ns="watchlist", refresh=args.refresh,
+                                       label="watchlist", heal_frac=1.0)
+            wl_d, wl_dpi, wl_adj = WL["d"], WL["dpi"], WL["adjclose"]
 
         # ---- IWM tab: Russell 2000 dollar-DIX (IWM constituents) vs IWM forward return ----
         print("Building IWM DIX from Russell 2000 (IWM) constituents...", file=sys.stderr)
@@ -4973,9 +5892,15 @@ def main():
             SEC = build_universe_panels(sec_union, start, end, workers=args.workers,
                                         cache_dir=cache_dir, ns="sector", refresh=args.refresh,
                                         label="sector")
+            # The sector ETFs' own (split/dividend-adjusted) prices, for each fund's forward
+            # returns in the "DIX vs Return -> Sectors" view.
+            sec_etf_px = load_yahoo_panels([etf for etf, *_ in sec_members], start, end,
+                                           workers=4, cache_dir=cache_dir,
+                                           refresh=args.refresh, label="sector ETF")["adjclose"]
             sector_data = {"members": sec_members, "short": SEC["short"],
                            "total": SEC["total"], "close": SEC["close"], "d": SEC["d"],
-                           "dpi": SEC["dpi"], "adjclose": SEC["adjclose"]}
+                           "dpi": SEC["dpi"], "adjclose": SEC["adjclose"],
+                           "etf_px": sec_etf_px}
 
     if BENCH not in panel.columns or panel.shape[1] < 3:
         sys.exit(f"Insufficient data (got {panel.shape[1]} names incl. bench).")
@@ -4998,6 +5923,18 @@ def main():
                             min_periods=args.min_periods, smooth=args.smooth,
                             bench_series=bench_series)
 
+    # Custom watchlist grid: residualize the WATCHLIST names against the SAME NDX-DIX benchmark
+    # (needs bench_series -- there is no watchlist-native index DIX). wl_rel feeds the cell modal.
+    wl_res = None
+    wl_rel = None
+    if wl_d is not None and bench_series is not None and not wl_d.dropna(how="all").empty:
+        wl_res = compute_residuals(wl_d, bench_label, window=args.window,
+                                   min_periods=args.min_periods, smooth=args.smooth,
+                                   bench_series=bench_series)
+        wl_rel = pack_name_rel(wl_dpi, wl_adj, plot_start=plot_start)
+        print(f"Watchlist grid: residualized {int(wl_res['reg'].notna().any().sum())} names "
+              f"vs {bench_label}", file=sys.stderr)
+
     if spx_payload:
         print(f"SPX DIX: {len(spx_payload['dates'])} dates "
               f"({spx_payload['range'][0]} -> {spx_payload['range'][1]})", file=sys.stderr)
@@ -5015,6 +5952,7 @@ def main():
                        raw_dark_panel, ndx_agg=ndx_agg, ndx_dix=ndx_dix, spx=spx_payload,
                        iwm=iwm_payload, bench_label=bench_label, spx_res=spx_res, spx_rel=spx_rel,
                        spx_weight_map=spx_weight_map, spx_weight_order=spx_weight_order,
+                       wl_res=wl_res, wl_rel=wl_rel, wl_sectors=wl_sectors,
                        breadth_px=breadth_px, sector_data=sector_data, contrib=contrib,
                        plot_days=args.plot_days, plot_start=plot_start, window=args.window,
                        demo=args.demo)

@@ -1,35 +1,46 @@
-name: Refresh NDX Dark-Residual Dashboard
+name: Build & Deploy Dashboard (GitHub Pages)
+
+# Builds the dashboard (index + comovement) AND the earnings-DPI study, then publishes the
+# whole docs/ folder to GitHub Pages as a build ARTIFACT -- nothing is committed to git. This
+# replaces the old commit-and-push refresh (which wrote a ~13 MB docs/index.html into history
+# every night and bloated the repo). The data still has to be computed by this build (a browser
+# can't run the FINRA math); we just stop storing the result in git.
+#
+# ONE-TIME SETUP (repo owner): Settings -> Pages -> Build and deployment -> Source ->
+# "GitHub Actions". Until that is set, the "Deploy to GitHub Pages" step will fail; the build
+# steps still run fine.
 
 on:
-  # Manual "Run workflow" button on the Actions tab
+  # Manual "Run workflow" button on the Actions tab -- use this for an immediate rebuild/redeploy.
   workflow_dispatch:
     inputs:
       refresh:
         description: "Force re-download of cached FINRA/Yahoo data (slower, fully fresh)"
         type: boolean
         default: false
-  # Auto-refresh at 7:00pm America/New_York every trading day (Mon-Fri).
-  # GitHub cron is fixed-UTC and cannot follow US daylight-saving on its own, so
-  # BOTH candidate times fire and the `gate` job below lets exactly one through --
-  # whichever actually lands on 19:00 ET today. FINRA publishes the session's
-  # consolidated short-volume file after ~5pm ET, so 7pm gives it a buffer; if a
-  # day is still delayed, the build self-heals on the next run (see
-  # FINRA_RECENT_REFETCH_DAYS in ndx_dark_residual.py). Market holidays can't be
-  # excluded in cron, but on a no-data day the commit step is simply a no-op.
+  # Auto-refresh at 7:00pm America/New_York every trading day (Mon-Fri). GitHub cron is
+  # fixed-UTC and cannot follow US daylight-saving, so BOTH candidate times fire and the `gate`
+  # job lets exactly one through -- whichever actually lands on 19:00 ET today. FINRA publishes
+  # the session's consolidated short-volume file after ~5pm ET; 7pm gives it a buffer.
   schedule:
     - cron: "0 23 * * 1-5"   # 23:00 UTC = 7:00pm ET during EDT (UTC-4), Mon-Fri ET
     - cron: "0 0 * * 2-6"    # 00:00 UTC = 7:00pm ET during EST (UTC-5), Mon-Fri ET
 
+# No `contents: write` -- the site is deployed as an artifact, so the workflow never pushes to
+# the repo. `pages: write` + `id-token: write` are what actions/deploy-pages needs.
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
+# Serialize Pages deploys; never cancel an in-flight deploy.
 concurrency:
-  group: refresh-dashboard
+  group: pages
   cancel-in-progress: false
 
 jobs:
-  # Gate: proceed only when it is really 7:00pm ET on a weekday (so the "wrong"
-  # cron for the current DST offset is skipped), or on any manual/other trigger.
+  # Gate: proceed only when it is really 7:00pm ET on a weekday (so the "wrong" cron for the
+  # current DST offset is skipped), or on any manual/other trigger.
   gate:
     runs-on: ubuntu-latest
     outputs:
@@ -53,10 +64,13 @@ jobs:
             echo "proceed=false" >> "$GITHUB_OUTPUT"
           fi
 
-  build:
+  build-deploy:
     needs: gate
     if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -67,17 +81,33 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
-      # Persist FINRA/Yahoo cache between runs so each refresh only fetches new days,
-      # matching the script's incremental caching design.
+      # Gate the refresh on the unit tests: a logic regression must not be
+      # committed to the published dashboard. Deterministic and offline (~seconds).
+      - name: Run tests
+        run: python -m pytest
+
+      # Persist FINRA/Yahoo cache between runs so each refresh only fetches new days. One shared
+      # cache now covers both the dashboard and earnings builds (they hit the same FINRA/Yahoo
+      # data). The run_id in the key makes every run save a fresh cache; restore-keys pulls the
+      # newest previous one.
       - name: Restore data cache
         uses: actions/cache@v4
         with:
           path: .ndx_dark_cache
-          key: ndx-dark-cache-${{ github.run_id }}
+          key: ndx-dark-cache-v3-${{ github.run_id }}
           restore-keys: |
+            ndx-dark-cache-v3-
             ndx-dark-cache-
+
+      # Optional: refresh data/watchlist.csv (the Watchlist tab's ticker list) from a published
+      # Google Sheet before building. Skipped unless the repo variable WATCHLIST_SHEET_CSV_URL is
+      # set (Settings -> Secrets and variables -> Actions -> Variables). A failed sync leaves the
+      # committed CSV untouched.
+      - name: Sync watchlist from Google Sheet (optional)
+        if: ${{ vars.WATCHLIST_SHEET_CSV_URL != '' }}
+        run: python sync_watchlist.py --url "${{ vars.WATCHLIST_SHEET_CSV_URL }}"
 
       - name: Build dashboard
         run: >
@@ -86,8 +116,8 @@ jobs:
           --cache-dir .ndx_dark_cache
           ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
 
-      # Cross-index DIX comovement tab: reads the DIX payload just written into
-      # docs/index.html and joins it to QQQ/SPY/IWM closes (same Yahoo cache).
+      # Cross-index DIX comovement tab: reads the DIX payload just written into docs/index.html
+      # and joins it to QQQ/SPY/IWM closes (same Yahoo cache).
       - name: Build comovement tab
         run: >
           python build_comovement.py
@@ -95,10 +125,29 @@ jobs:
           --docs-out docs/comovement.html
           --cache-dir .ndx_dark_cache
 
-      - name: Commit and push updated dashboard
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html docs/comovement.html
-          git diff --staged --quiet && echo "No changes to commit" || git commit -m "Refresh dashboard $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git push
+      # Earnings-DPI study -> docs/earnings.html (linked from the dashboard's "Earnings DIX" tab).
+      - name: Refresh earnings dates from SEC EDGAR
+        run: python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
+
+      - name: Run DPI-into-earnings study
+        run: >
+          python earnings_dpi_study.py
+          --earnings earnings_dates_edgar.csv
+          --cache-dir .ndx_dark_cache
+          --out-prefix earnings_dpi
+          --summary-out earnings_dpi_summary.txt
+          ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
+
+      - name: Rebuild interactive earnings report (Pages copy)
+        run: python build_report.py --cache-dir .ndx_dark_cache --docs-out docs/earnings.html
+
+      # Publish the whole docs/ folder (index.html, comovement.html, earnings.html, .nojekyll)
+      # as the Pages artifact, then deploy. No git commit anywhere in this workflow.
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
