@@ -35,13 +35,17 @@ Events are then split by the dark-flow condition:
 
 Outcome / inference
 -------------------
-Forward 21/42/63-session return, three ways: RAW, EXCESS vs SPY, and cross-
-sectionally DEMEANED. Events are DE-OVERLAPPED per name (a `cooldown`-session gap
-between a name's own entries). Because reclaims cluster in calendar time (they
-fire market-wide after a market dip), the honest lenses are: a moving-block
-bootstrap over date-sorted events, a per-NAME fraction-positive with a sign
-test, a pre-2021 vs 2021+ split, and -- above all -- the R_dpi MINUS R_nodpi gap,
-since any market-timing/overlap bias hits both equally.
+Two questions. (1) MEAN: forward 21/42/63-session return, three ways -- RAW,
+EXCESS vs SPY, cross-sectionally DEMEANED -- does high DPI pick the bigger
+winner? (2) STICK (the conviction reframe): conditional on the reclaim, does high
+DPI make the bounce HOLD -- path metrics over the next N sessions (whipsaw back
+below the MA, give-back / max adverse excursion, blow-up <-10%, fraction of days
+above the MA, still-above-MA at N)? Events are DE-OVERLAPPED per name (a
+`cooldown`-session gap). Because reclaims cluster in calendar time (they fire
+market-wide after a market dip), the honest lenses are: a moving-block bootstrap
+over date-sorted events, a by-NAME cluster bootstrap on the stick metrics, a
+per-NAME sign test, a pre-2021 vs 2021+ split, and -- above all -- the R_dpi
+MINUS R_nodpi gap, since any market-timing/overlap bias hits both equally.
 
 Data: reuses spx_xs_dip_dix_study.load_universe (FINRA D + Yahoo adjclose over
 the current S&P 500, cached).
@@ -97,7 +101,8 @@ def build_events(D, adj, spy, reclaim_ma=RECLAIM_MA, trend_ma=TREND_MA,
     excess = {h: fwd[h].sub(spy_fwd[h], axis=0) for h in HORIZONS}
     xdemean = {h: fwd[h].sub(fwd[h].mean(axis=1), axis=0) for h in HORIZONS}
     return {"ev_dpi": ev_dpi, "ev_nodpi": ev_nodpi, "base": base,
-            "fwd": fwd, "excess": excess, "xdemean": xdemean, "index": idx}
+            "fwd": fwd, "excess": excess, "xdemean": xdemean, "index": idx,
+            "adj": adj, "ma_r": ma_r}
 
 
 def deoverlap(mask, cooldown=COOLDOWN):
@@ -202,6 +207,169 @@ def summary_rows(frames, cooldown=COOLDOWN, reclaim_ma=RECLAIM_MA):
     return pd.DataFrame(rows)
 
 
+def stick_paths(events, adj, ma_r, N):
+    """Path-dependent 'did the bounce STICK' metrics for each event over the next
+    N sessions -- conditional on the reclaim, not about the mean drift. Returns a
+    per-event DataFrame with:
+      fail       -- did close fall back BELOW the reclaimed MA at least once (whipsaw)
+      maxdd      -- worst entry-relative return over the window, % (give-back; ~0 = sticky)
+      mfe        -- best entry-relative return over the window, %
+      frac_above -- fraction of the N days held above the reclaimed MA
+      hold       -- still above the MA at day N
+      blow10     -- suffered a >10% drawdown from entry (a failed bounce)
+      endret     -- entry-relative return at day N, %
+    """
+    posmap = {d: i for i, d in enumerate(adj.index)}
+    rows = []
+    from collections import defaultdict
+    byname = defaultdict(list)
+    for d, n in events:
+        byname[n].append(d)
+    for n, dates in byname.items():
+        pv = adj[n].to_numpy(dtype=float)
+        mv = ma_r[n].to_numpy(dtype=float)
+        for dt in dates:
+            p = posmap[dt]
+            e = pv[p]
+            if not np.isfinite(e) or e <= 0:
+                continue
+            path = pv[p + 1: p + 1 + N]
+            mpath = mv[p + 1: p + 1 + N]
+            valid = np.isfinite(path) & np.isfinite(mpath)
+            if valid.sum() < max(5, N // 3):
+                continue
+            path, mpath = path[valid], mpath[valid]
+            cr = path / e - 1.0
+            above = path > mpath
+            rows.append({
+                "name": n,
+                "fail": bool((~above).any()),
+                "maxdd": float(cr.min()) * 100.0,
+                "mfe": float(cr.max()) * 100.0,
+                "frac_above": float(above.mean()),
+                "hold": bool(above[-1]),
+                "blow10": bool(cr.min() < -0.10),
+                "endret": float(cr[-1]) * 100.0,
+            })
+    return pd.DataFrame(rows)
+
+
+def _agg(df):
+    """Group-level 'stick' summary from a per-event stick DataFrame."""
+    if df.empty:
+        return {"n": 0}
+    return {"n": int(len(df)), "fail_pct": round(df["fail"].mean() * 100, 1),
+            "maxdd_mean": round(df["maxdd"].mean(), 2), "maxdd_med": round(df["maxdd"].median(), 2),
+            "blow10_pct": round(df["blow10"].mean() * 100, 1),
+            "frac_above": round(df["frac_above"].mean() * 100, 1),
+            "hold_pct": round(df["hold"].mean() * 100, 1),
+            "endret_mean": round(df["endret"].mean(), 2)}
+
+
+def cluster_boot_diff(dfa, dfb, col, is_bool, B=2000, seed=0):
+    """95% CI on (metric_A - metric_B) via a by-NAME cluster bootstrap (resample
+    names, pool their events) -- respects within-name correlation. For a bool col
+    the metric is a rate (%), for a float col it is the pooled mean."""
+    names = np.array(sorted(set(dfa["name"]) | set(dfb["name"])))
+    if len(names) == 0:
+        return None
+    def vecs(df):
+        g = df.groupby("name")[col]
+        s = (g.sum() if is_bool else g.sum()).reindex(names).fillna(0).to_numpy(dtype=float)
+        c = g.size().reindex(names).fillna(0).to_numpy(dtype=float)
+        return s, c
+    sa, ca = vecs(dfa)
+    sb, cb = vecs(dfb)
+    scale = 100.0 if is_bool else 1.0
+    rng = np.random.default_rng(seed)
+    draw = rng.integers(0, len(names), size=(B, len(names)))
+    A = sa[draw].sum(1) / np.maximum(ca[draw].sum(1), 1e-9) * scale
+    Bv = sb[draw].sum(1) / np.maximum(cb[draw].sum(1), 1e-9) * scale
+    d = A - Bv
+    return round(float(np.percentile(d, 2.5)), 3), round(float(np.percentile(d, 97.5)), 3), round(float(d.mean()), 3)
+
+
+def paired_by_name(dfa, dfb, col, min_ev=3, stickier="lower"):
+    """Paired 'no matter the stock' test: among names with >= min_ev events in
+    BOTH groups, in what fraction is R_dpi stickier than R_nodpi on `col`?
+    `stickier`='lower' for fail/blow10/maxdd-as-drawdown-magnitude... but note we
+    compare the metric directly: for fail_pct lower is better; for frac_above/hold
+    higher is better; for maxdd (a negative %) higher (less negative) is better."""
+    a = dfa.groupby("name")[col].mean()
+    b = dfb.groupby("name")[col].mean()
+    na = dfa.groupby("name").size()
+    nb = dfb.groupby("name").size()
+    common = [n for n in a.index if n in b.index and na[n] >= min_ev and nb[n] >= min_ev]
+    if not common:
+        return {"names": 0}
+    diff = np.array([a[n] - b[n] for n in common])          # R_dpi - R_nodpi
+    better = (diff < 0) if stickier == "lower" else (diff > 0)
+    k = int(better.sum())
+    return {"names": len(common), "dpi_stickier_pct": round(k / len(common) * 100, 1),
+            "sign_p": round(XS.sign_test_p(k, len(common)), 4),
+            "median_diff": round(float(np.median(diff)), 3)}
+
+
+def stick_report(frames, N, cooldown=COOLDOWN):
+    ev_dpi = deoverlap(frames["ev_dpi"], cooldown)
+    ev_nodpi = deoverlap(frames["ev_nodpi"], cooldown)
+    da = stick_paths(ev_dpi, frames["adj"], frames["ma_r"], N)
+    db = stick_paths(ev_nodpi, frames["adj"], frames["ma_r"], N)
+    A, B = _agg(da), _agg(db)
+    out = [f"=== DOES THE BOUNCE STICK?  forward window N={N} sessions "
+           f"({round(N/21)}mo) ===",
+           "  ('stick' = holds above the reclaimed MA, shallow give-back, no blow-up "
+           "-- NOT mean drift)",
+           f"  {'metric':22s} {'R_dpi':>10} {'R_nodpi':>10}   diff (R_dpi-R_nodpi) [95% CI, by-name cluster boot]"]
+    specs = [("fail_pct", "fail % (whipsaw)", "fail", True, "lower"),
+             ("blow10_pct", "blow-up % (<-10%)", "blow10", True, "lower"),
+             ("maxdd_mean", "mean give-back %", "maxdd", False, "higher"),
+             ("frac_above", "% days above MA", "frac_above", False, "higher"),
+             ("hold_pct", "still above MA @N %", "hold", True, "higher"),
+             ("endret_mean", "end return %", "endret", False, "higher")]
+    for key, lab, col, is_bool, _dir in specs:
+        ci = cluster_boot_diff(da, db, col, is_bool) if (len(da) and len(db)) else None
+        av, bv = A.get(key, np.nan), B.get(key, np.nan)
+        cistr = f"{ci[2]:+.2f} [{ci[0]:+.2f}, {ci[1]:+.2f}]" if ci else "--"
+        out.append(f"  {lab:22s} {av:>10} {bv:>10}   {cistr}")
+    out.append(f"  (n: R_dpi={A.get('n',0)}, R_nodpi={B.get('n',0)})")
+    # paired 'no matter the stock' on the two headline stick metrics
+    pf = paired_by_name(da, db, "fail", stickier="lower")
+    pd_ = paired_by_name(da, db, "maxdd", stickier="higher")
+    if pf.get("names"):
+        out.append(f"  paired-by-name (>=3 events each): R_dpi has LOWER fail% in "
+                   f"{pf['dpi_stickier_pct']}% of {pf['names']} names (sign-p={pf['sign_p']}); "
+                   f"shallower give-back in {pd_['dpi_stickier_pct']}% (sign-p={pd_['sign_p']})")
+    return "\n".join(out)
+
+
+def stick_summary_rows(frames, windows=(21, 42, 63), cooldown=COOLDOWN):
+    """Tidy stick metrics per (window) for R_dpi vs R_nodpi plus the by-name
+    cluster-bootstrap diff and CI on the two headline metrics."""
+    ev_dpi = deoverlap(frames["ev_dpi"], cooldown)
+    ev_nodpi = deoverlap(frames["ev_nodpi"], cooldown)
+    rows = []
+    for N in windows:
+        da = stick_paths(ev_dpi, frames["adj"], frames["ma_r"], N)
+        db = stick_paths(ev_nodpi, frames["adj"], frames["ma_r"], N)
+        A, B = _agg(da), _agg(db)
+        fail_ci = cluster_boot_diff(da, db, "fail", True) if (len(da) and len(db)) else None
+        dd_ci = cluster_boot_diff(da, db, "maxdd", False) if (len(da) and len(db)) else None
+        rows.append({
+            "window": N, "months": round(N / 21),
+            "n_dpi": A.get("n", 0), "n_nodpi": B.get("n", 0),
+            "fail_pct_dpi": A.get("fail_pct"), "fail_pct_nodpi": B.get("fail_pct"),
+            "fail_diff": fail_ci[2] if fail_ci else None,
+            "fail_ci_lo": fail_ci[0] if fail_ci else None, "fail_ci_hi": fail_ci[1] if fail_ci else None,
+            "giveback_dpi": A.get("maxdd_mean"), "giveback_nodpi": B.get("maxdd_mean"),
+            "giveback_diff": dd_ci[2] if dd_ci else None,
+            "giveback_ci_lo": dd_ci[0] if dd_ci else None, "giveback_ci_hi": dd_ci[1] if dd_ci else None,
+            "blow10_dpi": A.get("blow10_pct"), "blow10_nodpi": B.get("blow10_pct"),
+            "holdN_dpi": A.get("hold_pct"), "holdN_nodpi": B.get("hold_pct"),
+        })
+    return pd.DataFrame(rows)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -211,6 +379,8 @@ def main():
                     help="MA whose reclaim triggers entry (default 50; try 20)")
     ap.add_argument("--trend-ma", type=int, default=TREND_MA)
     ap.add_argument("--cooldown", type=int, default=COOLDOWN)
+    ap.add_argument("--stick-window", type=int, default=42,
+                    help="forward window (sessions) for the 'does it stick' path metrics (default 42)")
     ap.add_argument("--cache-dir", default=N.DEFAULT_CACHE_DIR)
     ap.add_argument("--workers", type=int, default=10)
     ap.add_argument("--max-names", type=int, default=None)
@@ -233,10 +403,19 @@ def main():
     print("=" * 78)
     txt, _, _ = report(frames, args.cooldown)
     print(txt)
+    print("\n" + "=" * 78)
+    print("CONVICTION / 'DOES THE BOUNCE STICK' -- path metrics conditional on the reclaim")
+    print("=" * 78)
+    for nwin in dict.fromkeys([21, args.stick_window, 63]):
+        print(stick_report(frames, nwin, args.cooldown))
+        print()
 
     if args.out:
         summary_rows(frames, args.cooldown, args.reclaim_ma).to_csv(args.out, index=False)
         print(f"\nWrote summary -> {args.out}")
+        stick_path = args.out.replace(".csv", "") + "_stick.csv"
+        stick_summary_rows(frames, cooldown=args.cooldown).to_csv(stick_path, index=False)
+        print(f"Wrote stick summary -> {stick_path}")
 
 
 if __name__ == "__main__":

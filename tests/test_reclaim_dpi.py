@@ -74,3 +74,41 @@ def test_cooldown_deoverlaps_repeat_entries():
     ev = R.deoverlap(mask, cooldown=3)
     pos = [idx.get_loc(d) for d, _ in ev]
     assert pos == [0, 4, 7]
+
+
+# --- 'does the bounce stick' path metrics --------------------------------------
+def _stick_frame():
+    """Two names entering at the same day: STICK holds above its MA with a tiny
+    give-back; FAIL falls back below the MA with a >10% drawdown."""
+    idx = pd.bdate_range("2019-01-02", periods=140)
+    ma = pd.DataFrame({"STICK": np.full(140, 100.0), "FAIL": np.full(140, 100.0)}, index=idx)
+    stick = np.full(140, 101.0)
+    stick[100:] = 101 + np.arange(40)                 # keeps climbing above the 100 MA
+    fail = np.full(140, 101.0)
+    fail[100:] = np.linspace(101, 80, 40)             # collapses ~20% below the MA
+    adj = pd.DataFrame({"STICK": stick, "FAIL": fail}, index=idx)
+    events = [(idx[99], "STICK"), (idx[99], "FAIL")]
+    return adj, ma, events, idx
+
+
+def test_stick_paths_flags_hold_vs_failure():
+    adj, ma, events, idx = _stick_frame()
+    df = R.stick_paths(events, adj, ma, N=30).set_index("name")
+    assert df.loc["STICK", "fail"] == False and df.loc["STICK", "blow10"] == False
+    assert df.loc["STICK", "hold"] == True and df.loc["STICK", "frac_above"] == 1.0
+    assert df.loc["FAIL", "fail"] == True and df.loc["FAIL", "blow10"] == True
+    assert df.loc["FAIL", "hold"] == False
+    assert df.loc["FAIL", "maxdd"] < df.loc["STICK", "maxdd"]     # deeper give-back
+
+
+def test_cluster_boot_and_paired_helpers_run():
+    adj, ma, events, idx = _stick_frame()
+    # duplicate events across a few pseudo-names so the by-name bootstrap has clusters
+    da = R.stick_paths([(idx[99], "STICK")] * 6, adj, ma, N=30)
+    da["name"] = [f"g{i}" for i in range(len(da))]
+    db = R.stick_paths([(idx[99], "FAIL")] * 6, adj, ma, N=30)
+    db["name"] = [f"h{i}" for i in range(len(db))]
+    ci = R.cluster_boot_diff(da, db, "fail", is_bool=True, B=300)
+    assert ci is not None and len(ci) == 3
+    # STICK never fails, FAIL always fails -> fail-rate diff ~ -100pp
+    assert ci[2] < -50

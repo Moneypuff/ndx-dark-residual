@@ -1,0 +1,4 @@
+window,months,n_dpi,n_nodpi,fail_pct_dpi,fail_pct_nodpi,fail_diff,fail_ci_lo,fail_ci_hi,giveback_dpi,giveback_nodpi,giveback_diff,giveback_ci_lo,giveback_ci_hi,blow10_dpi,blow10_nodpi,holdN_dpi,holdN_nodpi
+21,1,2206,7926,67.6,69.2,-1.517,-3.668,0.648,-4.81,-4.76,-0.051,-0.328,0.212,14.9,14.8,68.1,65.8
+42,2,2197,7892,81.4,82.8,-1.329,-3.216,0.45,-7.1,-7.14,0.032,-0.348,0.397,26.6,25.9,61.7,59.8
+63,3,2193,7873,90.8,92.0,-1.197,-2.492,0.062,-8.68,-8.82,0.139,-0.295,0.557,34.6,33.1,57.6,57.6
