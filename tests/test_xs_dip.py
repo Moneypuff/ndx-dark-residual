@@ -35,36 +35,50 @@ def _planted_frame(n_names=40, n_days=200, effect=3.0, seed=0):
 
 def test_planted_signal_is_recovered_end_to_end():
     long = _planted_frame(effect=3.0, seed=1)
-    # 2x2 interaction: high-D pays much more on dips than off dips
-    tab, inter = X.interaction_2x2(long, "xret", "dpct")
+    sel = long["dip"] < 0                           # the "downtrend" selector
+    # 2x2 interaction: high-D pays much more in a downtrend than outside
+    tab, inter = X.interaction_2x2(long, sel, "xret", "dpct")
     assert inter > 1.5
-    hd = tab.set_index("cell").loc["highD & dip", "mean"]
-    ld = tab.set_index("cell").loc["lowD & dip", "mean"]
+    hd = tab.set_index("cell").loc["highD & downtrend", "mean"]
+    ld = tab.set_index("cell").loc["lowD & downtrend", "mean"]
     assert hd - ld > 1.5
-    # decile within dips: monotone-ish, strong positive long-short
-    g, ls = X.decile_within_dips(long, "xret", "dpct")
+    # decile within downtrend: monotone-ish, strong positive long-short
+    g, ls = X.decile_within_dips(long, sel, "xret", "dpct")
     assert ls > 1.5
     assert g.loc[g.index.max(), "mean"] > g.loc[g.index.min(), "mean"]
     # daily portfolio: long-short mean strongly positive, CI clears zero
-    dp = X.daily_portfolio(long, "xret", "dpct")
+    dp = X.daily_portfolio(long, sel, "xret", "dpct")
     assert dp["long_short"]["mean"] > 1.5
     assert dp["long_short"]["ci"][0] > 0
     # 'no matter the stock': the planted effect is universal
-    pn = X.per_name_edge(long, "xret", "dpct")
+    pn = X.per_name_edge(long, sel, "xret", "dpct")
     assert pn["pos_frac"] > 90
     assert pn["sign_p"] < 0.01
 
 
 def test_null_frame_comes_back_flat():
-    rng = np.random.default_rng(2)
     long = _planted_frame(effect=0.0, seed=2)      # outcome is pure noise
-    _, inter = X.interaction_2x2(long, "xret", "dpct")
-    _, ls = X.decile_within_dips(long, "xret", "dpct")
-    dp = X.daily_portfolio(long, "xret", "dpct")
+    sel = long["dip"] < 0
+    _, inter = X.interaction_2x2(long, sel, "xret", "dpct")
+    _, ls = X.decile_within_dips(long, sel, "xret", "dpct")
+    dp = X.daily_portfolio(long, sel, "xret", "dpct")
     assert abs(inter) < 0.4
     assert abs(ls) < 0.4
     lo, hi = dp["long_short"]["ci"]
     assert lo < 0 < hi                              # CI straddles zero
+
+
+def test_trend_slope_sign_and_lookahead():
+    # a strictly rising then falling log-price -> slope > 0 then < 0; the first
+    # (win-1) rows are NaN (no full trailing window yet).
+    idx = pd.bdate_range("2019-01-02", periods=60)
+    up = np.linspace(0, 1, 30)
+    down = np.linspace(1, 0, 30)
+    adj = pd.DataFrame({"A": np.exp(np.concatenate([up, down]))}, index=idx)
+    slope = X.trend_slope(adj, win=10)
+    assert slope["A"].iloc[:9].isna().all()
+    assert slope["A"].iloc[15] > 0                 # inside the rising leg
+    assert slope["A"].iloc[-1] < 0                 # inside the falling leg
 
 
 def test_self_percentile_no_lookahead_and_bounds():

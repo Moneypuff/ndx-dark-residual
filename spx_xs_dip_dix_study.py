@@ -19,8 +19,11 @@ dark ratio the dashboard uses. "High DIX for a single stock" is framed two ways:
   * CROSS-SECTIONAL: D_i,t ranked across all names that day -- "the darkest names
                      today". Reported as a cross-check.
 
-"Dip" = a recent price pullback: the name's trailing DIP_LOOKBACK-session return
-is negative (default 21 sessions -- a one-month dip). Graded by depth too.
+"Dip" is a DOWNTREND, not a single-point pullback: the name is in a downtrend of
+duration W when the OLS slope of its log price over the trailing W sessions is
+negative. The duration W is SWEPT from 1 to 6 months (21/42/63/84/126 sessions)
+-- the headline is that sweep, so the question is answered for a downtrend of
+*any* duration, not one arbitrary lookback.
 
 Outcome (no look-ahead)
 -----------------------
@@ -70,6 +73,8 @@ SELF_MIN = 120          # min obs before the self-relative percentile is defined
 HI, LO = 0.80, 0.20     # high/low cutoffs on the D percentile (top/bottom quintile)
 REGIME_SPLIT = "2021-01-01"
 BOOT_B, BOOT_L = 2000, 21
+# Downtrend durations to sweep: 1, 2, 3, 4, 6 months (trading sessions).
+TREND_WINDOWS = (21, 42, 63, 84, 126)
 
 
 # ---------------------------------------------------------------------------
@@ -108,15 +113,42 @@ def self_percentile(D, win=SELF_WIN, min_obs=SELF_MIN):
     return D.rolling(win, min_periods=min_obs).rank(pct=True)
 
 
-def build_frames(D, adj, spy, fwd_h=21, dip_lb=DIP_LOOKBACK):
+def trend_slope(adj, win):
+    """Per-name TREND over the trailing `win` sessions: the OLS slope of log
+    price regressed on session index, expressed as % per session (x100). A
+    downtrend is slope < 0; the magnitude grades how steep it is. This is a
+    sustained-direction measure, unlike a single point-to-point return, and is
+    computed real-time (each day uses only its own trailing window).
+
+    Vectorised via the closed-form slope = Sum(c_k * y) / Sum(c_k^2), where y =
+    log price and c_k = (k - mean(k)) is a fixed centred ramp over the window --
+    a cross-correlation, one np.convolve per name (fast, no rolling apply)."""
+    y = np.log(adj)
+    k = np.arange(win, dtype=float)
+    c = k - k.mean()
+    denom = float((c * c).sum())
+    kernel = c[::-1]                                   # np.convolve 'valid' -> Sum(c_k * y_window)
+    out = {}
+    for col in adj.columns:
+        v = y[col].to_numpy(dtype=float)
+        s = np.full(len(v), np.nan)
+        if len(v) >= win:
+            s[win - 1:] = np.convolve(v, kernel, mode="valid") / denom
+        out[col] = s
+    return pd.DataFrame(out, index=adj.index) * 100.0
+
+
+def build_frames(D, adj, spy, fwd_h=21, dip_lb=DIP_LOOKBACK, trend_windows=TREND_WINDOWS):
     """Assemble the aligned per-(name,day) fields as a tidy long DataFrame:
-      dpct   -- SELF-relative D percentile within the name's own trailing year (0..1)
-      xrank  -- CROSS-SECTIONAL D percentile across all names that day (0..1)
-      dip    -- trailing `dip_lb`-session return, % (negative = a dip)
-      fwd    -- forward `fwd_h`-session return, %
-      xret   -- fwd cross-sectionally demeaned (minus the universe's daily mean)
-      spyx   -- fwd minus SPY's forward return over the same window (market excess)
-    Only rows with all of {dpct, dip, fwd} present are kept."""
+      dpct       -- SELF-relative D percentile within the name's own year (0..1)
+      xrank      -- CROSS-SECTIONAL D percentile across all names that day (0..1)
+      dip        -- trailing `dip_lb`-session return, % (negative = a dip)
+      trend_<W>  -- OLS log-price slope over the trailing W sessions, %/session
+                    (< 0 = a downtrend of duration W), one column per window
+      fwd        -- forward `fwd_h`-session return, %
+      xret       -- fwd cross-sectionally demeaned (minus the universe daily mean)
+      spyx       -- fwd minus SPY's forward return over the same window
+    Rows with any of {dpct, fwd, all trend cols} missing are dropped."""
     cols = D.columns.intersection(adj.columns)
     idx = D.index.intersection(adj.index)                   # shared trading calendar
     D, adj = D.loc[idx, cols], adj.loc[idx, cols]
@@ -129,28 +161,45 @@ def build_frames(D, adj, spy, fwd_h=21, dip_lb=DIP_LOOKBACK):
     spy_fwd = (spy.shift(-fwd_h) / spy - 1.0) * 100.0
     spyx = fwd.sub(spy_fwd, axis=0)
 
-    # pandas 3.0 stack() keeps the full grid; DataFrame construction aligns the
-    # six columns on the shared (date, name) MultiIndex.
-    long = pd.DataFrame({
+    # pandas 3.0 stack() keeps the full grid; DataFrame construction aligns every
+    # column on the shared (date, name) MultiIndex.
+    data = {
         "dpct": dpct.stack(), "xrank": xrank.stack(), "dip": back.stack(),
         "fwd": fwd.stack(), "xret": xret.stack(), "spyx": spyx.stack(),
-    })
+    }
+    for w in trend_windows:
+        data[f"trend_{w}"] = trend_slope(adj, w).stack()
+    long = pd.DataFrame(data)
     long.index.set_names(["date", "name"], inplace=True)
-    long = long.dropna(subset=["dpct", "dip", "fwd"])
+    long = long.dropna(subset=["dpct", "fwd"] + [f"trend_{w}" for w in trend_windows])
     return long
 
 
 # ---------------------------------------------------------------------------
 # Analyses
 # ---------------------------------------------------------------------------
-def interaction_2x2(long, outcome="xret", sig="dpct"):
-    """Mean outcome across (high/low D) x (dip / no-dip), plus the interaction:
-    does high-vs-low D pay MORE among dipped names than among non-dipped?"""
+def _mask(long, sel):
+    """Resolve `sel` to a boolean Series aligned to `long`. `sel` may be a
+    boolean Series/array, or None -> the default 'in a 1-month downtrend'
+    (trend_21 < 0), falling back to the trailing-return dip if trend cols are
+    absent (keeps the pure functions usable on hand-built frames)."""
+    if sel is None:
+        if "trend_21" in long:
+            return long["trend_21"] < 0
+        return long["dip"] < 0
+    if isinstance(sel, pd.Series):
+        return sel.reindex(long.index).fillna(False)
+    return pd.Series(np.asarray(sel, dtype=bool), index=long.index)
+
+
+def interaction_2x2(long, sel=None, outcome="xret", sig="dpct"):
+    """Mean outcome across (high/low D) x (in-downtrend / not), plus the
+    interaction: does high-vs-low D pay MORE inside a downtrend than outside?"""
     hi = long[sig] >= HI
     lo = long[sig] <= LO
-    dip = long["dip"] < 0
+    down = _mask(long, sel)
     rows = []
-    for dlab, dmask in [("dip", dip), ("no-dip", ~dip)]:
+    for dlab, dmask in [("downtrend", down), ("no-down", ~down)]:
         for glab, gmask in [("highD", hi), ("lowD", lo)]:
             r = long.loc[dmask & gmask, outcome]
             rows.append({"cell": f"{glab} & {dlab}", "n": int(len(r)),
@@ -158,14 +207,14 @@ def interaction_2x2(long, outcome="xret", sig="dpct"):
                          "hit": round(float((r > 0).mean() * 100)) if len(r) else np.nan})
     tab = pd.DataFrame(rows)
     def m(g, d):
-        return long.loc[(hi if g == "hi" else lo) & (dip if d else ~dip), outcome].mean()
+        return long.loc[(hi if g == "hi" else lo) & (down if d else ~down), outcome].mean()
     inter = (m("hi", True) - m("lo", True)) - (m("hi", False) - m("lo", False))
     return tab, float(inter)
 
 
-def decile_within_dips(long, outcome="xret", sig="dpct", n=10):
-    """Outcome by decile of the D signal, restricted to dipped names."""
-    d = long[long["dip"] < 0].copy()
+def decile_within_dips(long, sel=None, outcome="xret", sig="dpct", n=10):
+    """Outcome by decile of the D signal, restricted to names in a downtrend."""
+    d = long[_mask(long, sel)].copy()
     d["dec"] = pd.qcut(d[sig], n, labels=False, duplicates="drop") + 1
     g = d.groupby("dec")[outcome].agg(["mean", "median", "count"])
     top, bot = int(g.index.max()), int(g.index.min())
@@ -173,14 +222,14 @@ def decile_within_dips(long, outcome="xret", sig="dpct", n=10):
     return g, ls
 
 
-def daily_portfolio(long, outcome="xret", sig="dpct", seed=0):
-    """The honest, tradeable view. Each day, among names that dipped, take the
+def daily_portfolio(long, sel=None, outcome="xret", sig="dpct", seed=0):
+    """The honest, tradeable view. Each day, among names in a downtrend, take the
     top-D-quintile long and bottom-D-quintile short (equal weight) -> one L/S
-    return per day; also a long-only 'darkest dips vs universe' leg. Returns a
-    dict of the daily series' mean + block-bootstrap CI + hit rate."""
-    dips = long[long["dip"] < 0]
+    return per day; also a long-only 'darkest downtrenders vs universe' leg.
+    Returns a dict of the daily series' mean + block-bootstrap CI + hit rate."""
+    down = long[_mask(long, sel)]
     ls_daily, lo_daily = [], []
-    for date, g in dips.groupby(level="date"):
+    for date, g in down.groupby(level="date"):
         if len(g) < 10:
             continue
         hiq = g[g[sig] >= HI][outcome]
@@ -199,15 +248,15 @@ def daily_portfolio(long, outcome="xret", sig="dpct", seed=0):
     return out
 
 
-def per_name_edge(long, outcome="xret", sig="dpct"):
+def per_name_edge(long, sel=None, outcome="xret", sig="dpct"):
     """The literal 'no matter the stock' test. For each name, compare its mean
-    outcome on HIGH-D dips vs its mean outcome on its OTHER dips (low/mid-D
-    dips). Report the distribution of that per-name edge and a sign test on how
-    many names are positive (each name weighted once, so a few names can't carry
-    the result)."""
-    dips = long[long["dip"] < 0]
+    outcome on HIGH-D downtrend days vs its mean outcome on its OTHER downtrend
+    days (low/mid-D). Report the distribution of that per-name edge and a sign
+    test on how many names are positive (each name weighted once, so a few names
+    can't carry the result)."""
+    down = long[_mask(long, sel)]
     edges = []
-    for name, g in dips.groupby(level="name"):
+    for name, g in down.groupby(level="name"):
         hiq = g[g[sig] >= HI][outcome]
         rest = g[g[sig] < HI][outcome]
         if len(hiq) >= 5 and len(rest) >= 5:
@@ -223,14 +272,40 @@ def per_name_edge(long, outcome="xret", sig="dpct"):
             "sign_p": round(sign_test_p(k, len(e)), 4)}
 
 
-def regime_split(long, outcome="xret", sig="dpct"):
+def regime_split(long, sel=None, outcome="xret", sig="dpct"):
     """Daily-portfolio long-short mean, pre-2021 vs 2021+."""
+    down = _mask(long, sel)
     out = {}
-    for lab, sub in [("pre-2021", long[long.index.get_level_values("date") < REGIME_SPLIT]),
-                     ("2021+", long[long.index.get_level_values("date") >= REGIME_SPLIT])]:
-        dp = daily_portfolio(sub, outcome, sig=sig)
+    for lab, keep in [("pre-2021", long.index.get_level_values("date") < REGIME_SPLIT),
+                      ("2021+", long.index.get_level_values("date") >= REGIME_SPLIT)]:
+        dp = daily_portfolio(long[keep], down[keep], outcome, sig=sig)
         out[lab] = dp["long_short"]
     return out
+
+
+def trend_sweep(long, outcome="xret", sig="dpct", windows=TREND_WINDOWS):
+    """Sweep the downtrend DURATION. For each window W, define 'in a downtrend'
+    as trend_W < 0 and report the daily-portfolio long-short (darkest - least-
+    dark names in that downtrend), the long-only leg, the 2x2 interaction, and
+    the per-name fraction positive -- the headline that answers 'does buying a
+    downtrend of duration W on high DIX have an edge, for any W?'."""
+    rows = []
+    for w in windows:
+        sel = long[f"trend_{w}"] < 0
+        n_obs = int(sel.sum())
+        dp = daily_portfolio(long, sel, outcome, sig)
+        _, inter = interaction_2x2(long, sel, outcome, sig)
+        pn = per_name_edge(long, sel, outcome, sig)
+        ls, lo = dp["long_short"], dp["long_only"]
+        rows.append({
+            "months": round(w / 21), "window": w, "obs": n_obs,
+            "ls_mean": ls["mean"], "ls_hit": ls["hit"],
+            "ls_ci_lo": ls["ci"][0] if ls["ci"] else np.nan,
+            "ls_ci_hi": ls["ci"][1] if ls["ci"] else np.nan,
+            "lo_mean": lo["mean"], "interaction": round(inter, 3),
+            "names_pos_pct": pn.get("pos_frac", np.nan), "sign_p": pn.get("sign_p", np.nan),
+        })
+    return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -258,36 +333,36 @@ def _fmt_ci(ci):
     return f"[{ci[0]:+.3f}, {ci[1]:+.3f}]" if ci else "--"
 
 
-def report(long, outcome="xret", sig="dpct", sig_label="self-relative"):
-    out = [f"### signal = {sig_label} D percentile   |   outcome = "
-           + ("cross-sectionally demeaned" if outcome == "xret" else "excess vs SPY")
-           + f" forward return  ({outcome})"]
-    tab, inter = interaction_2x2(long, outcome, sig)
+def report(long, sel, trend_label, outcome="xret", sig="dpct", sig_label="self-relative"):
+    out = [f"### downtrend = {trend_label}  |  signal = {sig_label} D percentile  |  "
+           "outcome = " + ("cross-sectionally demeaned" if outcome == "xret" else "excess vs SPY")
+           + f" fwd return ({outcome})"]
+    tab, inter = interaction_2x2(long, sel, outcome, sig)
     out.append("\n2x2  (high D = top quintile of the signal, low D = bottom quintile):")
     for _, r in tab.iterrows():
-        out.append(f"   {r['cell']:16s} n={int(r['n']):>7}  mean {r['mean']:+.3f}%  hit {r['hit']:.0f}%")
-    out.append(f"   INTERACTION (highD-lowD | dip) - (highD-lowD | no-dip) = {inter:+.3f} pp"
-               "   <- is dark flow MORE informative on a dip?")
-    g, ls = decile_within_dips(long, outcome, sig)
-    out.append("\nForward return by D decile, WITHIN dipped names only:")
+        out.append(f"   {r['cell']:18s} n={int(r['n']):>7}  mean {r['mean']:+.3f}%  hit {r['hit']:.0f}%")
+    out.append(f"   INTERACTION (highD-lowD | downtrend) - (highD-lowD | not) = {inter:+.3f} pp"
+               "   <- is dark flow MORE informative in a downtrend?")
+    g, ls = decile_within_dips(long, sel, outcome, sig)
+    out.append("\nForward return by D decile, WITHIN downtrend names only:")
     for dec, row in g.iterrows():
         out.append(f"   D{int(dec):<2d} mean {row['mean']:+.3f}%  med {row['median']:+.3f}%  n={int(row['count'])}")
-    out.append(f"   long-short (darkest - least-dark dips): {ls:+.3f} pp")
-    dp = daily_portfolio(long, outcome, sig)
-    out.append("\nDaily portfolio (each day, among dips; equal-weight; overlapping 21d holds):")
-    out.append(f"   LONG-SHORT (top-Q darkest dips - bottom-Q): "
+    out.append(f"   long-short (darkest - least-dark in downtrend): {ls:+.3f} pp")
+    dp = daily_portfolio(long, sel, outcome, sig)
+    out.append("\nDaily portfolio (each day, among downtrend names; equal-weight; overlapping holds):")
+    out.append(f"   LONG-SHORT (top-Q darkest - bottom-Q): "
                f"mean {dp['long_short']['mean']:+.3f}%  hit {dp['long_short']['hit']:.0f}%  "
                f"95% CI {_fmt_ci(dp['long_short']['ci'])}  ({dp['long_short']['days']} days)")
-    out.append(f"   LONG-ONLY  (darkest dips vs universe):      "
+    out.append(f"   LONG-ONLY  (darkest downtrenders vs universe): "
                f"mean {dp['long_only']['mean']:+.3f}%  hit {dp['long_only']['hit']:.0f}%  "
                f"95% CI {_fmt_ci(dp['long_only']['ci'])}")
-    pn = per_name_edge(long, outcome, sig)
+    pn = per_name_edge(long, sel, outcome, sig)
     if pn.get("names"):
-        out.append("\n'No matter the stock' -- per-NAME edge (high-D dips vs the name's other dips):")
+        out.append("\n'No matter the stock' -- per-NAME edge (high-D downtrend days vs the name's other downtrend days):")
         out.append(f"   {pn['names']} names with enough obs | {pn['pos_frac']}% positive "
                    f"(sign-test p={pn['sign_p']}) | median edge {pn['median_edge']:+.3f}pp "
                    f"IQR [{pn['iqr'][0]:+.3f}, {pn['iqr'][1]:+.3f}]")
-    rs = regime_split(long, outcome, sig)
+    rs = regime_split(long, sel, outcome, sig)
     out.append("\nRegime split (daily-portfolio long-short mean):")
     for lab, s in rs.items():
         out.append(f"   {lab:9s} mean {s['mean']:+.3f}%  hit {s['hit']:.0f}%  "
@@ -297,20 +372,26 @@ def report(long, outcome="xret", sig="dpct", sig_label="self-relative"):
 
 def summary_rows(long):
     """Compact machine-readable rows for the results CSV: the daily-portfolio
-    long-short and long-only headline for each (signal, outcome, period)."""
+    long-short + long-only headline for each (downtrend window, signal, outcome,
+    period)."""
     rows = []
-    for sig, slab in [("dpct", "self"), ("xrank", "xsect")]:
-        for outcome in ("xret", "spyx"):
-            for lab, sub in [("all", long),
-                             ("pre2021", long[long.index.get_level_values("date") < REGIME_SPLIT]),
-                             ("post2021", long[long.index.get_level_values("date") >= REGIME_SPLIT])]:
-                dp = daily_portfolio(sub, outcome, sig)
-                for leg in ("long_short", "long_only"):
-                    d = dp[leg]
-                    rows.append({"signal": slab, "outcome": outcome, "period": lab, "leg": leg,
-                                 "days": d["days"], "mean_pp": d["mean"], "hit_pct": d["hit"],
-                                 "ci_lo": d["ci"][0] if d["ci"] else None,
-                                 "ci_hi": d["ci"][1] if d["ci"] else None})
+    for w in TREND_WINDOWS:
+        sel_full = long[f"trend_{w}"] < 0
+        for sig, slab in [("dpct", "self"), ("xrank", "xsect")]:
+            for outcome in ("xret", "spyx"):
+                for lab, keep in [("all", pd.Series(True, index=long.index)),
+                                  ("pre2021", long.index.get_level_values("date") < REGIME_SPLIT),
+                                  ("post2021", long.index.get_level_values("date") >= REGIME_SPLIT)]:
+                    keep = pd.Series(np.asarray(keep), index=long.index)
+                    sub = long[keep]
+                    dp = daily_portfolio(sub, sel_full[keep], outcome, sig)
+                    for leg in ("long_short", "long_only"):
+                        d = dp[leg]
+                        rows.append({"trend_months": round(w / 21), "trend_win": w,
+                                     "signal": slab, "outcome": outcome, "period": lab, "leg": leg,
+                                     "days": d["days"], "mean_pp": d["mean"], "hit_pct": d["hit"],
+                                     "ci_lo": d["ci"][0] if d["ci"] else None,
+                                     "ci_hi": d["ci"][1] if d["ci"] else None})
     return pd.DataFrame(rows)
 
 
@@ -320,8 +401,8 @@ def main():
     ap.add_argument("--start", default="2019-01-01", help="history start (default 2019-01-01)")
     ap.add_argument("--end", default=None, help="history end (default today)")
     ap.add_argument("--horizon", type=int, default=21, help="forward horizon in sessions (default 21)")
-    ap.add_argument("--dip-lookback", type=int, default=DIP_LOOKBACK,
-                    help="trailing sessions defining a dip (default 21)")
+    ap.add_argument("--detail-window", type=int, default=63,
+                    help="downtrend duration (sessions) for the detailed report (default 63 = 3mo)")
     ap.add_argument("--cache-dir", default=N.DEFAULT_CACHE_DIR, help="FINRA/Yahoo cache dir")
     ap.add_argument("--workers", type=int, default=10, help="fetch workers (default 10)")
     ap.add_argument("--max-names", type=int, default=None, help="cap universe size (smoke tests)")
@@ -334,27 +415,43 @@ def main():
     end = pd.Timestamp(args.end) if args.end else pd.Timestamp.today().normalize()
     D, adj, spy, syms = load_universe(start, end, args.cache_dir, args.workers,
                                       max_names=args.max_names, refresh=args.refresh)
-    long = build_frames(D, adj, spy, fwd_h=args.horizon, dip_lb=args.dip_lookback)
+    long = build_frames(D, adj, spy, fwd_h=args.horizon)
     ndays = long.index.get_level_values("date").nunique()
     nnames = long.index.get_level_values("name").nunique()
-    ndips = int((long["dip"] < 0).sum())
     print(f"\nAligned panel: {len(long):,} (name,day) obs · {nnames} names · {ndays} days "
           f"[{long.index.get_level_values('date').min().date()} -> "
           f"{long.index.get_level_values('date').max().date()}]")
-    print(f"Dips (trailing {args.dip_lookback}d return < 0): {ndips:,} obs "
-          f"({ndips / len(long) * 100:.0f}% of the panel)\n")
-    print("=" * 78)
-    print("PRIMARY -- self-relative high-D dips, cross-sectionally demeaned outcome")
-    print("=" * 78)
-    print(report(long, "xret", "dpct", "self-relative"))
-    print("\n" + "=" * 78)
-    print("CROSS-CHECK -- cross-sectional darkest-names ranking (xrank)")
-    print("=" * 78)
-    print(report(long, "xret", "xrank", "cross-sectional"))
+    print("Downtrend = OLS log-price slope over the trailing window < 0.\n")
+
+    # HEADLINE: sweep the downtrend duration 1 -> 6 months
+    for sig, slab in [("dpct", "self-relative"), ("xrank", "cross-sectional")]:
+        print("=" * 90)
+        print(f"DOWNTREND-DURATION SWEEP  ·  signal = {slab} D  ·  outcome = xret "
+              "(cross-sectionally demeaned)")
+        print("=" * 90)
+        sw = trend_sweep(long, "xret", sig)
+        print(" dur  window   obs     L/S mean  hit   95% CI            long-only  interact  names+%  signp")
+        for _, r in sw.iterrows():
+            print(f" {int(r['months'])}mo  {int(r['window']):>4}  {int(r['obs']):>7}  "
+                  f"{r['ls_mean']:+7.3f}%  {r['ls_hit']:.0f}%  "
+                  f"[{r['ls_ci_lo']:+.3f},{r['ls_ci_hi']:+.3f}]  {r['lo_mean']:+7.3f}%  "
+                  f"{r['interaction']:+7.3f}  {r['names_pos_pct']:>5.1f}%  {r['sign_p']:.3f}")
+        print()
+
+    # DETAIL: one downtrend duration, both outcomes
+    w = args.detail_window
+    sel = long[f"trend_{w}"] < 0
+    tl = f"{round(w/21)}-month trend (slope<0 over {w}d)"
+    print("=" * 90)
+    print(f"DETAIL -- downtrend = {tl}")
+    print("=" * 90)
+    print(report(long, sel, tl, "xret", "dpct", "self-relative"))
+    print()
+    print(report(long, sel, tl, "spyx", "dpct", "self-relative"))
 
     if args.out:
         summary_rows(long).to_csv(args.out, index=False)
-        print(f"\nWrote summary table -> {args.out}")
+        print(f"\nWrote summary table (all durations) -> {args.out}")
     if args.frame_out:
         long.reset_index().to_csv(args.frame_out, index=False)
         print(f"Wrote per-(name,day) frame -> {args.frame_out}")

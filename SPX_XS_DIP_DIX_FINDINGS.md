@@ -25,8 +25,11 @@ python spx_xs_dip_dix_study.py --start 2019-01-01 --out spx_xs_dip_dix.csv
   within the name's own trailing 252 sessions (primary; "unusually dark vs its
   own norm"); **cross-sectional** = D ranked across all names that day ("the
   darkest names today", cross-check). High/low = top/bottom quintile.
-- **Dip** = trailing 21-session return < 0 (a one-month pullback). 43% of the
-  panel qualifies.
+- **Dip** = a recent pullback. Two definitions, both tested: the simple
+  **trailing 21-session return < 0** (the 2×2/decile tables just below), and — the
+  stronger one — a **downtrend of duration W** (OLS log-price slope over the
+  trailing W sessions < 0), with **W swept 1 → 6 months** (see the follow-up
+  section). The conclusion is the same under both.
 - **Outcome** = 21-session forward return, **cross-sectionally demeaned** (minus
   the universe's daily mean) so it measures *stock selection*, not market beta;
   a market-excess-vs-SPY twin is also reported and agrees.
@@ -70,6 +73,40 @@ rescues it.
 −0.16 pp, interaction +0.12 pp, per-name 44.9% positive). The market-excess
 (vs-SPY) outcome agrees with the cross-sectional-demean outcome throughout
 (`spx_xs_dip_dix.csv`): every long-short CI straddles zero.
+
+## Follow-up — "dip" redefined as a downtrend, swept 1 → 6 months
+
+A single-point trailing return is a weak proxy for a *dip*. Redefine it properly:
+a name is **in a downtrend of duration W** when the OLS slope of its log price
+over the trailing W sessions is negative (`trend_slope` in the study), and
+**sweep W across 1, 2, 3, 4, 6 months**. Daily-portfolio long-short (darkest −
+least-dark names *in that downtrend*), cross-sectionally demeaned outcome:
+
+| downtrend | self-relative D L/S | 95% CI | interaction | names +% | x-sect D L/S | 95% CI |
+|---|---:|---|---:|---:|---:|---|
+| 1-month | −0.19% | [−0.50, +0.14] | −0.08 | 48% | −0.07% | [−0.44, +0.30] |
+| 2-month | −0.06% | [−0.39, +0.28] | +0.08 | 49% | −0.03% | [−0.43, +0.37] |
+| **3-month** | +0.02% | [−0.32, +0.39] | **+0.20** | 50% | +0.10% | [−0.30, +0.53] |
+| 4-month | −0.09% | [−0.45, +0.28] | +0.04 | 48% | −0.05% | [−0.46, +0.36] |
+| 6-month | −0.06% | [−0.43, +0.33] | +0.16 | 48% | +0.09% | [−0.35, +0.57] |
+
+**The null is robust to the redefinition and to every duration.** Every
+long-short 95% CI straddles zero, for both the self-relative and cross-sectional
+signal; the point estimates are all within ±0.2%/month of zero; the per-name
+fraction positive stays ~48–50% (a coin flip) at every W; and the regime split
+is flat too (pre-2021 and 2021+ CIs both straddle zero for all durations,
+`spx_xs_dip_dix.csv`). The long-only "darkest downtrenders vs universe" leg is
+similarly indistinguishable from zero (+0.05% to +0.19%/mo, CIs include zero).
+
+The one faint pattern worth naming honestly: the **interaction** (does high-vs-
+low D pay more inside a downtrend than outside?) is mildly positive at the
+**longer** durations (3-month +0.20 pp, 6-month +0.16 pp) and slightly negative
+at 1-month — i.e. *if* dark flow ever carries dip-buying information, it is in
+**longer, more established downtrends**, not short pullbacks. But it is a whisper
+(the 3-month detail 2×2 still shows low-D marginally *ahead* of high-D, +0.27%
+vs +0.23%, and the decile ladder within downtrends is non-monotone), nowhere
+near significant, and does not turn into a tradeable long-short. It is a
+direction to remember, not an edge to trade.
 
 ## Why the index signal worked but this doesn't
 
