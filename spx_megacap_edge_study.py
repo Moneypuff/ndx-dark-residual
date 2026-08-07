@@ -52,6 +52,36 @@ HORIZON = 21
 SPLIT_DATE = "2023-01-01"   # in-sample (< split) vs out-of-sample (>= split)
 
 
+def add_capm_alpha(long, adj, spy, horizon, beta_win=252, beta_min=120):
+    """Add a per-(name,day) forward CAPM ALPHA column to `long`:
+
+        beta_i,t  = cov(r_i, r_spy)/var(r_spy) over the trailing `beta_win`
+                    DAILY returns (min `beta_min`) -- estimated real-time, no
+                    look-ahead.
+        alpha_i,t = fwd_ret_i  -  beta_i,t * fwd_ret_spy   (both h-day forward, %)
+
+    Alpha is the beta-adjusted forward return -- what's left after the stock's own
+    market exposure is priced out, so a positive high-DPI alpha is a real edge
+    over beta, not a high-beta name riding an up market."""
+    cols = adj.columns
+    r = adj.pct_change()
+    rs = spy.reindex(adj.index).pct_change()
+    Er = r.rolling(beta_win, min_periods=beta_min).mean()
+    Ers = rs.rolling(beta_win, min_periods=beta_min).mean()
+    Errs = r.mul(rs, axis=0).rolling(beta_win, min_periods=beta_min).mean()
+    Erss = (rs * rs).rolling(beta_win, min_periods=beta_min).mean()
+    cov = Errs.sub(Er.mul(Ers, axis=0))
+    var = (Erss - Ers * Ers)
+    beta = cov.div(var, axis=0)
+    fwd = N.compute_forward_return(adj, horizon)
+    spy_fwd = (spy.reindex(adj.index).shift(-horizon) / spy.reindex(adj.index) - 1.0) * 100.0
+    alpha = fwd.sub(beta.mul(spy_fwd, axis=0))
+    long = long.copy()
+    long["beta"] = beta.stack().reindex(long.index)
+    long["alpha"] = alpha.stack().reindex(long.index)
+    return long
+
+
 def load_megacaps(start, end, cache_dir, workers, max_cut, refresh=False):
     syms, wmap = N.fetch_ishares_holdings(N.IVV_PORTFOLIO_ID, label="IVV S&P 500",
                                           return_weights=True)
@@ -123,7 +153,7 @@ def megacap_edge(long, weights, cutoffs=CUTOFFS, sig="dpct", trend_col="trend_63
             sel = _stat(basket_series(sub, hi & cmask, "mc_x"), seed=2)
             spy_hi = _stat(basket_series(sub, hi & cmask, "spyx"), seed=3)
             spy_all = _stat(basket_series(sub, cmask, "spyx", min_n=max(5, MIN_BASKET)), seed=4)
-            rows.append({
+            row = {
                 "top_n": ncut, "names": len(top), "cond": clab,
                 "ls_mean": ls["mean"], "ls_ci_lo": ls["ci"][0] if ls["ci"] else None,
                 "ls_ci_hi": ls["ci"][1] if ls["ci"] else None, "ls_hit": ls["hit"],
@@ -132,7 +162,17 @@ def megacap_edge(long, weights, cutoffs=CUTOFFS, sig="dpct", trend_col="trend_63
                 "highDPI_vs_spy": spy_hi["mean"], "allmega_vs_spy": spy_all["mean"],
                 "edge_over_beta": (round(spy_hi["mean"] - spy_all["mean"], 3)
                                    if np.isfinite(spy_hi["mean"]) and np.isfinite(spy_all["mean"]) else np.nan),
-            })
+            }
+            if "alpha" in sub.columns:
+                a_lo = _stat(basket_series(sub, hi & cmask, "alpha"), seed=5)
+                a_ls = _stat(longshort_series(sub[cmask.reindex(sub.index).fillna(False)], sig, "alpha"), seed=6)
+                row.update({
+                    "alpha_lo": a_lo["mean"], "alpha_lo_ci_lo": a_lo["ci"][0] if a_lo["ci"] else None,
+                    "alpha_lo_ci_hi": a_lo["ci"][1] if a_lo["ci"] else None, "alpha_lo_hit": a_lo["hit"],
+                    "alpha_ls": a_ls["mean"], "alpha_ls_ci_lo": a_ls["ci"][0] if a_ls["ci"] else None,
+                    "alpha_ls_ci_hi": a_ls["ci"][1] if a_ls["ci"] else None,
+                })
+            rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -171,6 +211,43 @@ def oos_report(long, weights, split=SPLIT_DATE, cutoffs=CUTOFFS):
                 f"| {a['ls_mean']:+6.3f}%  {b['ls_mean']:+6.3f}%")
     out.append("\n  A cell 'survives' only if BOTH halves are positive and the OOS CI clears zero.")
     return "\n".join(out), pd.concat([pre, post], ignore_index=True)
+
+
+def alpha_oos_report(long, weights, split=SPLIT_DATE, cutoffs=CUTOFFS):
+    """CAPM-alpha version of the OOS split. Reports the high-DPI basket's
+    beta-adjusted forward alpha (long-only) and the darkest-minus-least-dark
+    alpha (long-short), full sample + IS/OOS -- the clean 'edge over beta' test."""
+    full = megacap_edge(long, weights, cutoffs)
+    pre = megacap_edge(_slice(long, hi=split), weights, cutoffs)
+    post = megacap_edge(_slice(long, lo=split), weights, cutoffs)
+    out = ["CAPM-ALPHA edge over beta (alpha = fwd - beta*SPY_fwd; beta on trailing 252d):",
+           f"  full = 2019-2026, IS = 2019-{int(split[:4])-1}, OOS = {split[:4]}-2026"]
+    for cond in ("all-days", "in-3mo-downtrend"):
+        out.append(f"\n=== {cond}  --  ALPHA long-only (high-DPI basket) [95% CI] ===")
+        out.append(" topN |        full                 |         IS                  |        OOS")
+        for ncut in cutoffs:
+            def cell(tab):
+                r = tab[(tab["top_n"] == ncut) & (tab["cond"] == cond)]
+                if r.empty or "alpha_lo" not in r or not np.isfinite(r.iloc[0].get("alpha_lo", np.nan)):
+                    return f"{'--':>27}"
+                r = r.iloc[0]
+                return f"{r['alpha_lo']:+6.3f}% {_ci(r['alpha_lo_ci_lo'], r['alpha_lo_ci_hi']):>18}"
+            out.append(f" {ncut:>4} | {cell(full)} | {cell(pre)} | {cell(post)}")
+        out.append(f"  -- {cond}: ALPHA long-short (darkest-least-dark) --")
+        for ncut in cutoffs:
+            def cell_ls(tab):
+                r = tab[(tab["top_n"] == ncut) & (tab["cond"] == cond)]
+                if r.empty or not np.isfinite(r.iloc[0].get("alpha_ls", np.nan)):
+                    return f"{'--':>27}"
+                r = r.iloc[0]
+                return f"{r['alpha_ls']:+6.3f}% {_ci(r['alpha_ls_ci_lo'], r['alpha_ls_ci_hi']):>18}"
+            out.append(f" {ncut:>4} | {cell_ls(full)} | {cell_ls(pre)} | {cell_ls(post)}")
+    out.append("\n  Edge over beta is real only where ALPHA (long-only or long-short) is")
+    out.append("  positive AND its CI clears zero -- in BOTH the full sample and the OOS half.")
+    full["period"] = "full"
+    pre["period"] = f"IS(<{split[:4]})"
+    post["period"] = f"OOS(>={split[:4]})"
+    return "\n".join(out), pd.concat([full, pre, post], ignore_index=True)
 
 
 def _ci(lo, hi):
@@ -217,6 +294,7 @@ def main():
     D, adj, spy, weights = load_megacaps(start, end, args.cache_dir, args.workers,
                                          args.max_cut, refresh=args.refresh)
     long = XS.build_frames(D, adj, spy, fwd_h=args.horizon, trend_windows=(21, 63))
+    long = add_capm_alpha(long, adj, spy, args.horizon)
     nnames = long.index.get_level_values("name").nunique()
     ndays = long.index.get_level_values("date").nunique()
     print(f"\nPanel: {len(long):,} (name,day) obs · {nnames} names · {ndays} days "
@@ -231,8 +309,13 @@ def main():
     print("=" * 78)
     oos_txt, oos_tab = oos_report(long, weights, split=args.split_date)
     print(oos_txt)
+    print("\n" + "=" * 78)
+    print("CAPM-ALPHA OUT-OF-SAMPLE SPLIT (the confirmation test)")
+    print("=" * 78)
+    alpha_txt, alpha_tab = alpha_oos_report(long, weights, split=args.split_date)
+    print(alpha_txt)
     if args.out:
-        pd.concat([tab, oos_tab], ignore_index=True).to_csv(args.out, index=False)
+        alpha_tab.to_csv(args.out, index=False)
         print(f"\nWrote -> {args.out}")
 
 

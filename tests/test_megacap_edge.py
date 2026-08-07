@@ -46,6 +46,27 @@ def test_null_frame_selection_flat():
     assert ad["sel_ci_lo"].min() < 0.2
 
 
+def test_capm_beta_recovered_and_alpha_neutral():
+    # construct two names with known betas to the market; add_capm_alpha must
+    # recover them and price out the market (alpha ~ 0 when there is no true alpha).
+    idx = pd.bdate_range("2019-01-02", periods=500)
+    rng = np.random.default_rng(7)
+    mkt = rng.normal(0.0004, 0.01, 500)
+    spy = pd.Series(100 * np.cumprod(1 + mkt), index=idx)
+    rA = 1.5 * mkt + rng.normal(0, 0.003, 500)      # beta ~1.5, no alpha
+    rB = 0.5 * mkt + rng.normal(0, 0.003, 500)      # beta ~0.5, no alpha
+    adj = pd.DataFrame({"A": 100 * np.cumprod(1 + rA), "B": 100 * np.cumprod(1 + rB)}, index=idx)
+    D = pd.DataFrame({"A": rng.uniform(0, 1, 500), "B": rng.uniform(0, 1, 500)}, index=idx)
+    long = M.XS.build_frames(D, adj, spy, fwd_h=21, trend_windows=(63,))
+    long = M.add_capm_alpha(long, adj, spy, 21)
+    bA = long.xs("A", level="name")["beta"].dropna()
+    bB = long.xs("B", level="name")["beta"].dropna()
+    assert abs(bA.mean() - 1.5) < 0.2 and abs(bB.mean() - 0.5) < 0.2
+    # no true alpha planted -> mean forward alpha near zero for both names
+    assert long["alpha"].abs().mean() < 3.0        # sane scale, not exploding
+    assert abs(long.xs("A", level="name")["alpha"].mean()) < 1.5
+
+
 def test_slice_partitions_on_date():
     long, _ = _frame(effect=0.0, seed=4)
     split = "2019-05-01"

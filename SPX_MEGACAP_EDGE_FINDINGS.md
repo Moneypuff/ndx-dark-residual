@@ -6,14 +6,16 @@ it should show up in the highest-weight names, not the long tail. Restrict the
 S&P 500 to the top-N by IVV index weight and ask: can a high-DPI / dip setup
 produce a small **edge over beta** there?
 
-**Short answer: no reliable edge over beta — and, tellingly, the mechanism runs
-backwards.** Buying high-DPI mega-caps *does* beat SPY (+0.8% to +1.8%/month),
-but that is almost entirely the **mega-cap tilt** (owning big tech in 2019–26),
-not dark-flow selection: once you go beta-neutral (long-short, or demean within
-the mega-cap set) every 95% CI includes zero. And the faint positive point
-estimates are **weakest at the very top (15–25 names) and best around 50–100** —
-the opposite of "strongest where the index weight is," which is what the
-hypothesis predicts.
+**Short answer: no confirmed edge over beta.** Buying high-DPI mega-caps beats SPY
+and even carries real positive **CAPM alpha** — but that alpha is the **mega-cap
+alpha of 2019–26** (it appears at *every* weight cutoff, in-sample and out), not
+dark-flow selection. The moment you isolate selection — a beta-adjusted
+darkest-minus-least-dark long-short — the alpha **straddles zero in the full
+sample, in-sample, and out-of-sample**. The one cell that survived a first
+excess-vs-SPY OOS split (top-50 in a downtrend) did so only because its long-only
+leg inherited the mega-cap alpha; beta-adjusted and isolated to selection, nothing
+survives. The point estimates are also **weakest at the very top (15–25 names)** —
+the opposite of the hypothesis that the edge lives where the index weight is.
 
 Reproduce:
 ```
@@ -114,10 +116,54 @@ investigation that hasn't died — worth re-checking as another year of data
 accrues, and worth a proper per-name CAPM-alpha version rather than excess-vs-SPY
 — but on the evidence it is a maybe, not an edge.
 
+## CAPM-alpha confirmation (the decisive test)
+
+Excess-vs-SPY is not a clean beta control (a high-beta name beats SPY in an up
+market with no skill). So I re-scored everything as **CAPM alpha**: for each name,
+estimate beta on the trailing 252 daily returns (real-time), then
+`alpha = fwd_ret − beta·SPY_fwd_ret`. Two baskets:
+
+- **ALPHA long-only** = the high-DPI basket's alpha (buy high-DPI mega-caps,
+  beta-adjusted). *But this still contains whatever alpha any mega-cap basket had.*
+- **ALPHA long-short** = darkest-quintile − least-dark-quintile alpha. This
+  **cancels the common mega-cap alpha and isolates DPI selection** — it is the
+  clean test.
+
+Top-50, in a 3-month downtrend (the surviving cell):
+
+| period | ALPHA long-only [95% CI] | ALPHA long-short [95% CI] |
+|---|---|---|
+| full | +1.65% [+0.74, +2.68] | +0.92% [−0.36, +2.34] |
+| IS 2019–22 | +1.00% [+0.17, +2.00] | +0.66% [−0.90, +2.57] |
+| OOS 2023–26 | +2.42% [+0.78, +4.54] | +0.90% [−0.90, +3.04] |
+
+And the long-only alpha across **all** cutoffs (all-days) is positive and
+CI-clearing in full/IS/OOS — even at **top-200** (+0.47% / +0.43% / +0.50%).
+
+**This is the tell, and it kills the edge.** The high-DPI basket's long-only
+alpha is real and robust — but it is the **mega-cap alpha of 2019–26** (big-cap
+outperformance beyond beta), not dark flow: it shows up at *every* cutoff
+including the entire top-200, so owning the names produces it, not selecting them
+by DPI. The moment you go **long-short** — removing that common mega-cap alpha to
+isolate what DPI actually picks — the alpha **straddles zero in the full sample,
+in-sample, and out-of-sample** (top-50-downtrend: +0.92% [−0.36, +2.34] / +0.66%
+[−0.90, +2.57] / +0.90% [−0.90, +3.04]), and across the other cutoffs the
+long-short alpha is null with signs that flip between IS and OOS (e.g. top-15
+all-days: IS +1.36%, OOS −1.57%).
+
+So the surviving whisper was **long-only construction leaking the mega-cap alpha**,
+not a DPI selection edge. Beta-adjusted and isolated to selection, it is **not
+confirmed** — full, IS, and OOS all include zero.
+
 ## Bottom line
 
 Restricting to the high-weight names does **not** turn the single-stock dark-flow
-setup into a *confirmed* edge over beta. High-DPI mega-caps beat SPY, but that is the
+setup into a confirmed edge over beta. The CAPM-alpha test is decisive: high-DPI
+mega-caps carry real positive alpha, but it is the **era's mega-cap alpha** (present
+at every cutoff, IS and OOS), and the **DPI-selection component (long-short alpha)
+is zero within CIs in every period**. The one cell that survived the excess-vs-SPY
+OOS split did so only because its long-only leg inherited that mega-cap alpha;
+beta-adjusted and isolated to selection, nothing remains. High-DPI mega-caps beat SPY, but that is the
 well-known mega-cap tilt; the dark-flow-specific, beta-neutral component is
 zero within CIs at every cutoff. This is consistent with the whole thread: dark
 flow's tradeable edge is **systematic and index-level** (option B, already on the
