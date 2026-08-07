@@ -265,11 +265,12 @@ least-dead signal anywhere after 2021.
 De-overlapped entry events on the bullish-divergence flag (84 entries, 21-day
 cool-down): **+1.61%, 70% hit**. It is a genuinely distinct signal — dark buying
 *into* price weakness — and reads intuitively. **This flag is now surfaced live
-on the dashboard's SPX and IWM "DIX vs Return" tabs** as a dark-flow-divergence
-badge (`compute_divergence_signal` in `ndx_dark_residual.py`); note the dashboard
-computes it on each index's *reconstructed* dollar-DIX rather than the raw
-published DIX validated here — cousins, so treat the badge as directional colour,
-not the exact numbers above. Honesty check on the regime,
+on the dashboard's NDX, SPX and IWM "DIX vs Return" tabs** as a dark-flow-
+divergence badge (`compute_divergence_signal` in `ndx_dark_residual.py`; NDX uses
+the reconstructed NDX-100 dollar-DIX vs QQQ, SPX/IWM use their reconstructed
+dollar-DIX vs SPY/IWM). Note the dashboard computes it on each index's
+*reconstructed* dollar-DIX rather than the raw published DIX validated here —
+cousins, so treat the badge as directional colour, not the exact numbers above. Honesty check on the regime,
 though: the bullish-divergence *edge over baseline* was **+0.72 pp pre-2021** but
 **−0.07 pp in 2021+**, so like everything else here its edge has thinned in the
 current regime even though its raw hit rate stays ~70%.

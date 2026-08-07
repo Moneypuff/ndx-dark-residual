@@ -1599,6 +1599,18 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
                  if len(dark.index) else None,
     }
 
+    # NDX-level DIX-vs-price divergence (option B), same construction as the
+    # SPX/IWM index tabs but using the reconstructed NDX-100 dollar-DIX vs QQQ
+    # (the index's price). Surfaced as the dark-flow-divergence badge on the
+    # NDX "DIX vs Return" tab.
+    rel["div"], rel["div_stats"] = None, None
+    if ndx_dix is not None and bench in close_panel.columns:
+        _ndx = ndx_dix.reindex(dark.index)
+        _qqq = close_panel[bench].reindex(dark.index)
+        _qqq_fwd = compute_forward_return(close_panel[[bench]], 21)[bench].reindex(dark.index)
+        _div_state, rel["div_stats"] = compute_divergence_signal(_ndx, _qqq, _qqq_fwd)
+        rel["div"] = [None if pd.isna(x) else int(x) for x in _div_state.reindex(dark.index).values]
+
     sectors_payload = (build_sector_payload(sector_data["members"], sector_data["short"],
                                             sector_data["total"], sector_data["close"],
                                             sector_data["d"], keep,
@@ -2001,6 +2013,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 <div class="rel-wrap" id="ndxWrap" style="display:none">
   <div class="sub" id="ndxSub" style="margin:0 22px 4px"></div>
+  <div class="sub" id="ndxDiv" style="margin:0 22px 8px" title="DIX-vs-price divergence over the trailing 21 sessions: the NDX-100 dollar-DIX RISING while QQQ FALLS = bullish divergence (dark accumulation into weakness), historically an above-average forward-return setup. See SPX_DIX_DECILE_VS_BREAKOUT_FINDINGS.md (option B)."></div>
   <div class="vanilla-grid">
     <div class="rel-card">
       <h2>NDX avg dark ratio vs 1-month QQQ forward return <span style="color:var(--mut);font-weight:400">(21 trading days)</span></h2>
@@ -3617,6 +3630,7 @@ function renderNdx(){
       `<span>Pearson r = <b>${r==null?'--':r.toFixed(3)}</b>${ciTxt}</span>` +
       `<span>Spearman &rho; = <b>${rho==null?'--':rho.toFixed(3)}</b></span>`;
   }
+  renderDivBadge('ndxDiv', P.rel, P.bench);   // price label = QQQ (the index proxy)
 }
 document.getElementById('ndxModeSeg').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
