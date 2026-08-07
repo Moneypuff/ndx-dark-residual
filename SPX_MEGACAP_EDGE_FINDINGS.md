@@ -79,10 +79,45 @@ moving-block-bootstrap 95% CIs.
    Concentrating into the biggest names does not concentrate the edge — it
    removes it.
 
+## Out-of-sample split (in-sample 2019–2022 vs OOS 2023–2026)
+
+The lone suggestive cell — top-50 mega-caps, high-DPI selection, in a 3-month
+downtrend — was found by scanning ~20 configurations, so the only honest test is
+whether it reproduces out of sample. The configuration has no fitted parameters,
+so I evaluate the *same* rule on 2019–2022 (in-sample) and 2023–2026 (OOS):
+
+| top-N, in-3mo-downtrend | IS selection [95% CI] | OOS selection [95% CI] | IS L/S | OOS L/S |
+|---:|---|---|---:|---:|
+| 15 | +0.40% [−0.79, +1.67] | +0.21% [−1.22, +2.00] | −0.17% | −1.77% |
+| 25 | +0.37% [−0.87, +1.80] | −0.11% [−1.58, +1.50] | −0.11% | −0.15% |
+| **50** | **+0.45% [−0.22, +1.26]** | **+0.74% [−0.64, +2.58]** | +0.44% | +0.80% |
+| 100 | +0.01% [−0.42, +0.47] | +0.55% [−0.47, +1.68] | −0.30% | +1.06% |
+| 200 | +0.10% [−0.50, +0.69] | +0.15% [−0.63, +0.91] | −0.35% | +0.41% |
+
+**Verdict: the top-50 cell survives the *weak* test and fails the *strong* one.**
+Its sign holds in both halves — selection **+0.45% in-sample, +0.74% OOS** (and
+long-short +0.44% → +0.80%), so it did not flip or vanish; if anything the OOS
+point estimate is a touch larger. But **neither half's CI clears zero** — split
+in two, each sub-sample (and especially the OOS downtrend days, a subset of 3.5
+years) is too small to confirm, and the full-sample borderline result
+(+0.65% [−0.05, +1.46]) came from pooling both halves. So it is a **consistent-
+sign, statistically-unconfirmed** hypothesis, not a validated edge.
+
+Two honesty notes: the *very top* names (15/25) do **not** reproduce — top-25 OOS
+selection is −0.11% and its long-short −0.15%, so the "biggest names carry it"
+thesis still fails out of sample; and top-100's downtrend selection is ~0 IS but
++0.55% OOS, i.e. *not* consistent, which is what a noise cell looks like. Only
+the top-50 slice is positive in both halves.
+
+**Practical read:** don't trade it. It is the single thread in this whole
+investigation that hasn't died — worth re-checking as another year of data
+accrues, and worth a proper per-name CAPM-alpha version rather than excess-vs-SPY
+— but on the evidence it is a maybe, not an edge.
+
 ## Bottom line
 
 Restricting to the high-weight names does **not** turn the single-stock dark-flow
-setup into an edge over beta. High-DPI mega-caps beat SPY, but that is the
+setup into a *confirmed* edge over beta. High-DPI mega-caps beat SPY, but that is the
 well-known mega-cap tilt; the dark-flow-specific, beta-neutral component is
 zero within CIs at every cutoff. This is consistent with the whole thread: dark
 flow's tradeable edge is **systematic and index-level** (option B, already on the

@@ -49,6 +49,7 @@ import spx_xs_dip_dix_study as XS   # build_frames, self_percentile, block_boot_
 CUTOFFS = (15, 25, 50, 100, 200)
 MIN_BASKET = 3          # skip days with fewer than this many names in a leg
 HORIZON = 21
+SPLIT_DATE = "2023-01-01"   # in-sample (< split) vs out-of-sample (>= split)
 
 
 def load_megacaps(start, end, cache_dir, workers, max_cut, refresh=False):
@@ -135,6 +136,43 @@ def megacap_edge(long, weights, cutoffs=CUTOFFS, sig="dpct", trend_col="trend_63
     return pd.DataFrame(rows)
 
 
+def _slice(long, lo=None, hi=None):
+    d = long.index.get_level_values("date")
+    m = np.ones(len(long), dtype=bool)
+    if lo is not None:
+        m &= np.asarray(d >= pd.Timestamp(lo))
+    if hi is not None:
+        m &= np.asarray(d < pd.Timestamp(hi))
+    return long[m]
+
+
+def oos_report(long, weights, split=SPLIT_DATE, cutoffs=CUTOFFS):
+    """Same configuration evaluated in-sample (< split) vs out-of-sample (>=
+    split). The honest test of the suggestive full-sample cells: do they
+    reproduce, or were they a pre-split artifact?"""
+    pre = megacap_edge(_slice(long, hi=split), weights, cutoffs)
+    post = megacap_edge(_slice(long, lo=split), weights, cutoffs)
+    pre["period"], post["period"] = f"IS(<{split[:4]})", f"OOS(>={split[:4]})"
+    out = [f"OUT-OF-SAMPLE SPLIT at {split}:  IS = 2019-2022, OOS = 2023-2026",
+           "  (SELECTION = high-DPI mega-caps demeaned within the set; ~beta-neutral)"]
+    for cond in ("all-days", "in-3mo-downtrend"):
+        out.append(f"\n=== {cond} ===")
+        out.append(" topN |     IS selection [95% CI]            |    OOS selection [95% CI]           "
+                   "|  IS L/S    OOS L/S")
+        for ncut in cutoffs:
+            a = pre[(pre["top_n"] == ncut) & (pre["cond"] == cond)]
+            b = post[(post["top_n"] == ncut) & (post["cond"] == cond)]
+            if a.empty or b.empty:
+                continue
+            a, b = a.iloc[0], b.iloc[0]
+            out.append(
+                f" {ncut:>4} | {a['sel_mean']:+7.3f}% {_ci(a['sel_ci_lo'], a['sel_ci_hi']):>20} "
+                f"| {b['sel_mean']:+7.3f}% {_ci(b['sel_ci_lo'], b['sel_ci_hi']):>20} "
+                f"| {a['ls_mean']:+6.3f}%  {b['ls_mean']:+6.3f}%")
+    out.append("\n  A cell 'survives' only if BOTH halves are positive and the OOS CI clears zero.")
+    return "\n".join(out), pd.concat([pre, post], ignore_index=True)
+
+
 def _ci(lo, hi):
     return f"[{lo:+.3f}, {hi:+.3f}]" if lo is not None and np.isfinite(lo) else "--"
 
@@ -166,6 +204,8 @@ def main():
     ap.add_argument("--max-cut", type=int, default=max(CUTOFFS),
                     help="build this many top-weight names (the largest cutoff)")
     ap.add_argument("--horizon", type=int, default=HORIZON)
+    ap.add_argument("--split-date", default=SPLIT_DATE,
+                    help="in-sample (<) vs out-of-sample (>=) boundary (default 2023-01-01)")
     ap.add_argument("--cache-dir", default=N.DEFAULT_CACHE_DIR)
     ap.add_argument("--workers", type=int, default=10)
     ap.add_argument("--refresh", action="store_true")
@@ -184,9 +224,15 @@ def main():
           f"{long.index.get_level_values('date').max().date()}]")
     print(f"Outcome horizon: {args.horizon}d. 'high DIX' = self-relative DPI top quintile.")
     tab = megacap_edge(long, weights)
+    tab["period"] = "full"
     print(report(tab))
+    print("\n" + "=" * 78)
+    print("OUT-OF-SAMPLE SPLIT")
+    print("=" * 78)
+    oos_txt, oos_tab = oos_report(long, weights, split=args.split_date)
+    print(oos_txt)
     if args.out:
-        tab.to_csv(args.out, index=False)
+        pd.concat([tab, oos_tab], ignore_index=True).to_csv(args.out, index=False)
         print(f"\nWrote -> {args.out}")
 
 

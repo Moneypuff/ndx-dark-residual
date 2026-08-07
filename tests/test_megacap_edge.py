@@ -46,6 +46,16 @@ def test_null_frame_selection_flat():
     assert ad["sel_ci_lo"].min() < 0.2
 
 
+def test_slice_partitions_on_date():
+    long, _ = _frame(effect=0.0, seed=4)
+    split = "2019-05-01"
+    pre = M._slice(long, hi=split)
+    post = M._slice(long, lo=split)
+    assert len(pre) + len(post) == len(long)                      # exact partition
+    assert pre.index.get_level_values("date").max() < pd.Timestamp(split)
+    assert post.index.get_level_values("date").min() >= pd.Timestamp(split)
+
+
 def test_basket_and_longshort_respect_min_size():
     long, weights = _frame(effect=0.0, seed=3)
     sub = long[long.index.get_level_values("name").isin([f"N{i}" for i in range(30)])].copy()
