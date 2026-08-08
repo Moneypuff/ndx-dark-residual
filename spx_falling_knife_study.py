@@ -81,6 +81,56 @@ def _loss10(v): return (v < -10).mean() * 100.0
 def _loss20(v): return (v < -20).mean() * 100.0
 
 
+def forward_path_min(adj, horizon):
+    """Forward MAX ADVERSE EXCURSION: min over the next `horizon` sessions of
+    adj[t+k]/adj[t] - 1 (k = 1..horizon), in %. This is the PATH answer to
+    'did it keep selling off' -- an endpoint return can hide a deep intraperiod
+    knife that would have stopped a real position out. Computed by a reversed
+    trailing rolling-min (vectorised), shifted so today's own close is excluded."""
+    rev_min = adj.iloc[::-1].rolling(horizon, min_periods=max(3, horizon // 2)).min().iloc[::-1]
+    fmin = rev_min.shift(-1)                     # window becomes t+1 .. t+horizon
+    return (fmin / adj - 1.0) * 100.0
+
+
+def _mae10(v): return (v < -10).mean() * 100.0
+def _mae15(v): return (v < -15).mean() * 100.0
+
+
+def path_profile(long, mae_col="mae"):
+    """Path-based falling-knife profile by DPI group: mean forward MAE, the
+    probability the path dips below -10% / -15% at ANY point in the window, and
+    the share of 'hidden knives' (path < -10% but endpoint positive) that the
+    endpoint tables cannot see."""
+    m = group_masks(long)
+    rows = []
+    hidden = pd.Series(
+        np.where(long[mae_col].isna() | long["fwd"].isna(), np.nan,
+                 ((long[mae_col] < -10) & (long["fwd"] > 0)).astype(float)),
+        index=long.index)
+    for g in ("LOW", "MID", "HIGH", "ALL", "KEEP"):
+        mask = m[g]
+        pooled = long.loc[mask, mae_col].dropna()
+        hid = _stat(_daily(long.assign(_h=hidden), mask, "_h", _MEAN), seed=4)
+        rows.append({
+            "group": g, "n": int(len(pooled)),
+            "mae_mean": _stat(_daily(long, mask, mae_col, _MEAN), seed=1),
+            "mae10": _stat(_daily(long, mask, mae_col, _mae10), seed=2),
+            "mae15": _stat(_daily(long, mask, mae_col, _mae15), seed=3),
+            "hidden": {"days": hid["days"],
+                       "mean": round(hid["mean"] * 100, 2) if np.isfinite(hid["mean"]) else np.nan,
+                       "ci": (round(hid["ci"][0] * 100, 2), round(hid["ci"][1] * 100, 2))
+                             if hid["ci"] else None},
+            "mae_p5": round(float(np.percentile(pooled, 5)), 2) if len(pooled) else np.nan,
+        })
+    dif = {}
+    for lab, mA, mB in [("HIGH-LOW", m["HIGH"], m["LOW"]), ("KEEP-ALL", m["KEEP"], m["ALL"])]:
+        dif[lab] = {
+            "mae_mean": _stat(_daily_diff(long, mA, mB, mae_col, _MEAN), seed=5),
+            "mae10": _stat(_daily_diff(long, mA, mB, mae_col, _mae10), seed=6),
+        }
+    return rows, dif
+
+
 def group_masks(long):
     down = long["trend63"] < 0
     return {"LOW": down & (long["p10"] <= LOWQ), "HIGH": down & (long["p10"] >= HIQ),
@@ -134,7 +184,9 @@ def reversal_control(long):
     down = long["trend63"] < 0
     d = long.copy()
     d["lowdpi"] = (d["p10"] <= LOWQ).astype(float)
-    d["bigloss"] = (d["fwd"] < -10).astype(float)
+    # NaN forward returns (the last h sessions) must stay NaN, not count as
+    # "no big loss" -- fama_macbeth then drops them via its dropna.
+    d["bigloss"] = np.where(d["fwd"].isna(), np.nan, (d["fwd"] < -10).astype(float))
     rb = {g: round(float(long.loc[m & down, "rback"].mean()), 2)
           for g, m in [("LOW", long["p10"] <= LOWQ), ("HIGH", long["p10"] >= HIQ)]}
     fm = P.fama_macbeth(d, "bigloss", ["rback", "lowdpi"], down)
@@ -173,6 +225,24 @@ def report(long_by_h, split=SPLIT_DATE):
                 out.append(f"   >> {lab}: mean {d['mean']['mean']:+.2f} {_ci(d['mean']['ci'])} | "
                            f"hit% {d['hit']['mean']:+.2f} {_ci(d['hit']['ci'])} | "
                            f"P(<-10%) {d['loss10']['mean']:+.2f} {_ci(d['loss10']['ci'])}")
+        # PATH view: forward max adverse excursion (the actual "kept selling off" test)
+        if "mae" in long.columns:
+            rows_p, dif_p = path_profile(long)
+            out.append(f"\n-- PATH: forward MAX ADVERSE EXCURSION over {h}d "
+                       "(min of the path, not the endpoint) --")
+            out.append(f"   {'grp':4s} {'n':>7}  {'mean MAE':>16}  {'P(path<-10%)':>16}  "
+                       f"{'P(path<-15%)':>15}  {'hidden knives%':>15}  MAE p5")
+            for r in rows_p:
+                out.append(
+                    f"   {r['group']:4s} {r['n']:>7}  {r['mae_mean']['mean']:+6.2f} "
+                    f"{_ci(r['mae_mean']['ci']):>9}  {r['mae10']['mean']:5.1f} {_ci(r['mae10']['ci']):>10}  "
+                    f"{r['mae15']['mean']:5.1f} {_ci(r['mae15']['ci']):>9}  "
+                    f"{r['hidden']['mean']:5.1f} {_ci(r['hidden']['ci']):>9}  {r['mae_p5']:+7.1f}")
+            for lab in ("HIGH-LOW", "KEEP-ALL"):
+                d = dif_p[lab]
+                out.append(f"   >> {lab}: mean MAE {d['mae_mean']['mean']:+.2f} "
+                           f"{_ci(d['mae_mean']['ci'])} | P(path<-10%) {d['mae10']['mean']:+.2f} "
+                           f"{_ci(d['mae10']['ci'])}")
         # reversal control (raw big-loss)
         rb, low_fm, rb_fm = reversal_control(long)
         out.append(f"\n-- falling-knife reversal control (fwd {h}d) --")
@@ -200,6 +270,14 @@ def summary_rows(long_by_h):
                              "mean": r["mean"]["mean"], "hit_pct": r["hit"]["mean"],
                              "loss10_pct": r["loss10"]["mean"], "loss20_pct": r["loss20"]["mean"],
                              "p5": r["p5"], "cvar10": r["cvar10"]})
+        if "mae" in long.columns:
+            rows_p, _ = path_profile(long)
+            for r in rows_p:
+                rows.append({"horizon": h, "outcome": "path_mae", "group": r["group"],
+                             "n": r["n"], "mean": r["mae_mean"]["mean"],
+                             "hit_pct": None, "loss10_pct": r["mae10"]["mean"],
+                             "loss20_pct": r["mae15"]["mean"], "p5": r["mae_p5"],
+                             "cvar10": r["hidden"]["mean"]})
     return pd.DataFrame(rows)
 
 
@@ -220,7 +298,11 @@ def main():
     end = pd.Timestamp(args.end) if args.end else pd.Timestamp.today().normalize()
     SP, spy = P.load_full(start, end, args.cache_dir, args.workers,
                           max_names=args.max_names, refresh=args.refresh)
-    long_by_h = {h: P.build_long(SP, spy, h) for h in HORIZONS}
+    long_by_h = {}
+    for h in HORIZONS:
+        lg = P.build_long(SP, spy, h)
+        lg["mae"] = forward_path_min(SP["adjclose"], h).stack().reindex(lg.index)
+        long_by_h[h] = lg
     a = long_by_h[HORIZONS[0]]
     down = a["trend63"] < 0
     print(f"\nPanel: {len(a):,} obs · {a.index.get_level_values('name').nunique()} names · "

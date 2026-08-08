@@ -62,6 +62,39 @@ low-DPI adds **no** extra falling-knife probability.
 The OOS split says the same: KEEP−ALL hit-rate improvement is ~0 in both halves,
 and the HIGH−LOW big-loss gap flips sign (IS +1.08, OOS −0.79) — noise.
 
+## The path test — "kept selling off" measured on the path, not the endpoint
+
+A fair objection to everything above: those are **endpoint** statistics. A stock
+that plunges −18% mid-window and claws back to −2% by day 21 looks harmless in
+every endpoint table — yet it is exactly the knife that stops a real position
+out. So the decisive metric is **forward max adverse excursion (MAE)**: the
+*minimum* of the price path over the next h sessions (today excluded).
+
+**21-day path profile:**
+
+| group | mean MAE | P(path < −10%) | P(path < −15%) | hidden knives* | MAE 5th-pct |
+|---|---:|---:|---:|---:|---:|
+| **LOW** | −5.22 [−6.13, −4.55] | 16.3% | 7.0% | 1.4% | −16.9 |
+| MID | −5.43 | 17.2% | 7.6% | 1.6% | −17.6 |
+| **HIGH** | −5.39 [−6.44, −4.65] | 16.4% | 7.4% | 1.5% | −17.6 |
+
+*\*dipped >10% intraperiod but ended positive — the knives the endpoint tables
+cannot see.*
+
+Differences: HIGH−LOW mean MAE **−0.19 [−0.43, +0.03]** (HIGH's paths are
+marginally *worse*, grazing zero), P(path<−10%) +0.10 [−1.20, +1.25]. The
+KEEP−ALL filter shifts mean MAE by **−0.05pp** — statistically resolvable,
+economically nothing, and in the *wrong* direction. The 42-day window tells the
+same story (LOW −7.62 vs HIGH −7.87 mean MAE; P(path<−10%) 28.2% vs 28.0%).
+
+**The path test confirms the endpoint result rather than overturning it.**
+Low-DPI downtrend names do not sell off harder *along the way* either — their
+intraperiod drawdowns, deep-dip probabilities, and hidden-knife rates are
+indistinguishable from (if anything a touch milder than) high-DPI names. The
+absolute danger is worth staring at — **~17% of downtrend names dip more than
+10% at some point in the next month, ~29% within two months** — but DPI does not
+tell you which.
+
 ## What this means
 
 The danger is real in absolute terms — **~9% of downtrend names drop another >10%
@@ -78,11 +111,9 @@ discrimination). The tradeable dark-flow signal remains **systematic / index-lev
 
 ## Caveats
 
-- **"Keep selling off" is proxied by the forward-return distribution** (hit rate,
-  P(<−10/−20%), 5th-pct, worst-decile), not an intraperiod path; a name down >10%
-  a month later is effectively a knife that kept falling. An explicit max-drawdown
-  path metric could be added but the flat distributional result makes a hidden
-  effect unlikely.
+- ~~"Keep selling off" is proxied by the endpoint distribution~~ — resolved: the
+  path-based MAE analysis above measures intraperiod drawdowns directly (daily
+  closes; intraday lows would be deeper still, but symmetrically across groups).
 - **Downtrend = 3-month OLS slope < 0**; a different dip definition could shift
   composition, but the earlier 1–6-month downtrend sweep was also flat.
 - **Survivorship** — current S&P 500 members; the CAPM-alpha and within-downtrend
