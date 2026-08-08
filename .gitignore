@@ -11,3 +11,6 @@ docs/*.html
 
 # Editor / OS cruft
 .DS_Store
+
+# Built dashboard pages (deployed as a Pages artifact by CI, never committed)
+docs/*.html
