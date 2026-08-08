@@ -132,7 +132,7 @@ def path_reversal_control(long, split=SPLIT_DATE):
         for lab, sub in [("full", long), ("IS", _slice(long, hi=split)),
                          ("OOS", _slice(long, lo=split))]:
             fm = P.fama_macbeth(sub, y, ["rback", "streak10"], sub["trend63"] < 0,
-                                seed=hash((y, lab)) % 1000)
+                                seed=P.stable_seed(y, lab))
             out[y][lab] = fm["streak10"]
     return out
 

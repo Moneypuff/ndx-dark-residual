@@ -58,6 +58,14 @@ SPLIT_DATE = "2023-01-01"
 MIN_BASKET = 3
 
 
+def stable_seed(*parts):
+    """Deterministic small seed from arbitrary labels. Python's hash() is
+    randomized per process (PYTHONHASHSEED), which made bootstrap CIs jitter
+    between runs -- never use it for seeding."""
+    import zlib
+    return zlib.crc32("|".join(map(str, parts)).encode()) % 100000
+
+
 def run_length(bool_df):
     """Per-column consecutive-True run length ending at each row (0 where False)."""
     def _rl(s):
@@ -266,7 +274,7 @@ def report(long_by_h, split=SPLIT_DATE):
         out.append("\n3) BETA-NEUTRAL LONG-SHORT (p10 darkest-least-dark, downtrend), CAPM alpha:")
         for lab, sub in [("full", long), (f"IS<{split[:4]}", _slice(long, hi=split)),
                          (f"OOS>={split[:4]}", _slice(long, lo=split))]:
-            ls = longshort(sub, "p10", "alpha", seed=hash((h, lab)) % 1000)
+            ls = longshort(sub, "p10", "alpha", seed=stable_seed(h, lab))
             out.append(f"   {lab:10s} alpha L/S {ls['mean']:+.3f}%  hit {ls['hit']}%  "
                        f"95% CI {_ci(ls['ci'])}  ({ls['days']} days)")
 
@@ -281,7 +289,7 @@ def report(long_by_h, split=SPLIT_DATE):
         for lab, sub in [("full", long), (f"IS<{split[:4]}", _slice(long, hi=split)),
                          (f"OOS>={split[:4]}", _slice(long, lo=split))]:
             fm = fama_macbeth(sub, "alpha", ["rback", "streak10"], sub["trend63"] < 0,
-                              seed=hash((h, lab, "fm")) % 1000)
+                              seed=stable_seed(h, lab, "fm"))
             s10, rbk = fm["streak10"], fm["rback"]
             out.append(f"   {lab:10s} streak10 {s10['mean']:+.3f}% {_ci(s10['ci'])}  |  "
                        f"rback(reversal) {rbk['mean']:+.4f} {_ci(rbk['ci'])}  ({s10['days']} days)")

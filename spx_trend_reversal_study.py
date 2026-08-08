@@ -156,7 +156,7 @@ def prob_tests(long, split=SPLIT_DATE):
     dd["hi10"] = (dd["p10"] >= HI).astype(float)
     for lab, sub in [("full", dd), ("IS", P._slice(dd, hi=split)), ("OOS", P._slice(dd, lo=split))]:
         f = P.fama_macbeth(sub, "tw", ["rback", "hi10"], sub["trend63"] < 0,
-                           seed=hash(lab) % 997)
+                           seed=P.stable_seed('rev', lab))
         fm[lab] = f["hi10"]
     return base, rates, hl, st, fm
 

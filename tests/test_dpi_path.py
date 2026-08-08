@@ -95,5 +95,7 @@ def test_path_reversal_control_isolates_streak_effect():
     rc = PT.path_reversal_control(long, split="2019-07-01")
     assert abs(rc["mfe"]["full"]["mean"] - 1.5) < 0.3
     assert rc["mfe"]["full"]["ci"][0] > 0
-    lo, hi = rc["mae"]["full"]["ci"]
-    assert lo < 0 < hi
+    # mae carries no planted effect: bound the magnitude (a tight bootstrap CI
+    # around a small noise mean can exclude zero, so a straddle is too strict)
+    assert abs(rc["mae"]["full"]["mean"]) < 0.15
+    assert rc["mae"]["full"]["mean"] < rc["mfe"]["full"]["mean"] - 1.0
