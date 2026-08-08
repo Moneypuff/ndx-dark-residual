@@ -74,3 +74,26 @@ def test_flat_when_no_planted_difference():
     for metric in ("tilt", "mae", "mfe"):
         lo, hi = d["HIGH-LOW"][metric]["ci"]
         assert lo < 0 < hi                           # CI straddles zero on a null
+
+
+def test_path_reversal_control_isolates_streak_effect():
+    # mfe = -0.1*rback + 1.5*streak10 + noise; the FM streak10 coef on mfe must
+    # recover ~1.5 even though rback correlates with the outcome, while the mae
+    # coef (no planted effect) must straddle zero.
+    rng = np.random.default_rng(5)
+    dates = pd.bdate_range("2019-01-02", periods=250)
+    names = [f"N{i}" for i in range(40)]
+    idx = pd.MultiIndex.from_product([dates, names], names=["date", "name"])
+    m = len(idx)
+    rback = rng.normal(-4, 5, m)
+    streak10 = (rng.uniform(0, 1, m) < 0.25).astype(float)
+    mfe = -0.1 * rback + 1.5 * streak10 + rng.normal(6, 2, m)
+    mae = -0.1 * rback + rng.normal(-6, 2, m)
+    long = pd.DataFrame({"trend63": np.full(m, -1.0), "rback": rback,
+                         "streak10": streak10, "mae": mae, "mfe": mfe,
+                         "tilt": mae + mfe}, index=idx)
+    rc = PT.path_reversal_control(long, split="2019-07-01")
+    assert abs(rc["mfe"]["full"]["mean"] - 1.5) < 0.3
+    assert rc["mfe"]["full"]["ci"][0] > 0
+    lo, hi = rc["mae"]["full"]["ci"]
+    assert lo < 0 < hi

@@ -121,6 +121,22 @@ def path_diffs(long):
     return out
 
 
+def path_reversal_control(long, split=SPLIT_DATE):
+    """The endpoint streak alpha deflated under the reversal control, so the
+    path metrics get the same test: Fama-MacBeth of MAE / MFE / TILT on
+    [rback, streak10] among downtrend names -- the streak10 coefficient is the
+    path effect BEYOND the recent-return characteristic, full/IS/OOS."""
+    out = {}
+    for y in ("mae", "mfe", "tilt"):
+        out[y] = {}
+        for lab, sub in [("full", long), ("IS", _slice(long, hi=split)),
+                         ("OOS", _slice(long, lo=split))]:
+            fm = P.fama_macbeth(sub, y, ["rback", "streak10"], sub["trend63"] < 0,
+                                seed=hash((y, lab)) % 1000)
+            out[y][lab] = fm["streak10"]
+    return out
+
+
 def _slice(long, lo=None, hi=None):
     dts = long.index.get_level_values("date")
     m = np.ones(len(long), dtype=bool)
@@ -167,6 +183,13 @@ def report(long_by_h, split=SPLIT_DATE):
                        f"{_ci(dd['S10+-S0']['tilt']['ci'])}  MAE {dd['S10+-S0']['mae']['mean']:+.2f} "
                        f"{_ci(dd['S10+-S0']['mae']['ci'])} | HIGH-LOW TILT "
                        f"{dd['HIGH-LOW']['tilt']['mean']:+.2f} {_ci(dd['HIGH-LOW']['tilt']['ci'])}")
+        out.append("   REVERSAL CONTROL -- Fama-MacBeth path-metric ~ rback + streak10, "
+                   "streak10 coefficient (pp beyond recent return):")
+        rc = path_reversal_control(long, split=split)
+        for y in ("mae", "mfe", "tilt"):
+            cells = "  ".join(f"{lab} {rc[y][lab]['mean']:+.3f} {_ci(rc[y][lab]['ci'])}"
+                              for lab in ("full", "IS", "OOS"))
+            out.append(f"      {y:4s}: {cells}")
     return "\n".join(out)
 
 
@@ -188,6 +211,15 @@ def summary_rows(long_by_h):
                          "p_mfe10": None, "t_trough": x["tmin"]["mean"], "t_peak": None,
                          "tilt_ci_lo": (x["tilt"]["ci"] or [None, None])[0],
                          "tilt_ci_hi": (x["tilt"]["ci"] or [None, None])[1]})
+        rc = path_reversal_control(long)
+        for y in ("mae", "mfe", "tilt"):
+            for lab, s in rc[y].items():
+                rows.append({"horizon": h, "kind": "fm_revadj", "group": f"{y}_{lab}",
+                             "n": s["days"], "mae": None, "mfe": None, "tilt": s["mean"],
+                             "p_mae10": None, "p_mfe10": None, "t_trough": None,
+                             "t_peak": None,
+                             "tilt_ci_lo": (s["ci"] or [None, None])[0],
+                             "tilt_ci_hi": (s["ci"] or [None, None])[1]})
     return pd.DataFrame(rows)
 
 
