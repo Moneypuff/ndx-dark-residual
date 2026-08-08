@@ -1,0 +1,1086 @@
+<style>
+:root{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8;
+  --neg:#d4635f; --neg-ink:#f0938f;
+  --pos-rgb:70,179,154; --neg-rgb:212,99,95; --acc-rgb:227,179,65;
+  --shadow:0 1px 0 rgba(255,255,255,.03), 0 18px 40px -24px rgba(0,0,0,.8);
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+    --line:#d3dbe3; --line-soft:#e3e9ef;
+    --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+    --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+    --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+    --pos-rgb:31,143,121; --neg-rgb:192,65,60; --acc-rgb:154,108,18;
+    --shadow:0 1px 0 rgba(255,255,255,.6), 0 16px 34px -26px rgba(20,40,60,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8; --neg:#d4635f; --neg-ink:#f0938f;
+  --pos-rgb:70,179,154; --neg-rgb:212,99,95; --acc-rgb:227,179,65;
+}
+:root[data-theme="light"]{
+  --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+  --line:#d3dbe3; --line-soft:#e3e9ef;
+  --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+  --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+  --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+  --pos-rgb:31,143,121; --neg-rgb:192,65,60; --acc-rgb:154,108,18;
+}
+
+/* series colors: ours (blue) vs the Cboe reference (neutral) */
+:root{ --sOur:#6ea8fe; --sRef:#cfd8e2; --sOur-rgb:110,168,254; }
+@media (prefers-color-scheme: light){ :root{ --sOur:#2f6bd8; --sRef:#51606d; --sOur-rgb:47,107,216; } }
+:root[data-theme="dark"]{ --sOur:#6ea8fe; --sRef:#cfd8e2; --sOur-rgb:110,168,254; }
+:root[data-theme="light"]{ --sOur:#2f6bd8; --sRef:#51606d; --sOur-rgb:47,107,216; }
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+.page{
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono",Menlo,"Roboto Mono","DejaVu Sans Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-family:var(--sans);
+  color:var(--ink);
+  background:
+    radial-gradient(120% 60% at 85% -10%, var(--accent-soft), transparent 60%),
+    linear-gradient(var(--grad), var(--ground) 340px);
+  background-attachment:fixed;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:"kern" 1;
+  min-height:100vh;
+}
+.wrap{max-width:1000px; margin:0 auto; padding:0 24px}
+.mono{font-family:var(--mono)}
+.num{font-variant-numeric:tabular-nums; font-family:var(--mono)}
+
+/* ---- top strip ---- */
+.strip{
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:18px 0 16px; border-bottom:1px solid var(--line-soft);
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.strip .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-soft); display:inline-block; margin-right:9px; vertical-align:middle}
+.strip b{color:var(--ink-dim); font-weight:500}
+
+/* ---- hero ---- */
+.hero{padding:64px 0 30px}
+.eyebrow{
+  font-family:var(--mono); font-size:12px; letter-spacing:.24em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 22px; display:flex; align-items:center; gap:12px;
+}
+.eyebrow::before{content:""; width:26px; height:1px; background:var(--accent-line)}
+h1{
+  font-size:clamp(31px,5.4vw,56px); line-height:1.04; letter-spacing:-.022em; font-weight:800;
+  margin:0; text-wrap:balance; max-width:18ch;
+}
+h1 .g{color:var(--accent)}
+.lede{
+  font-size:clamp(16px,2vw,19px); color:var(--ink-dim); max-width:62ch; margin:24px 0 0;
+  text-wrap:pretty;
+}
+.lede b{color:var(--ink); font-weight:600}
+
+/* ---- hero barometer card ---- */
+.regime-card{
+  margin-top:44px; border:1px solid var(--accent-line); border-radius:16px;
+  background:linear-gradient(180deg, var(--accent-soft), transparent 70%), var(--surface);
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.regime-head{
+  display:flex; flex-wrap:wrap; align-items:center; gap:14px 20px;
+  padding:20px 26px; border-bottom:1px solid var(--line);
+}
+.regime-head .tag{
+  font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--accent); padding:5px 11px; border:1px solid var(--accent-line); border-radius:100px;
+}
+.regime-head .desc{font-size:14px; color:var(--ink-dim)}
+.dialset{display:flex; gap:8px; margin-left:auto; flex-wrap:wrap}
+.dialchip{
+  font-family:var(--mono); font-size:12px; letter-spacing:.03em;
+  display:flex; align-items:center; gap:7px; padding:6px 11px; border-radius:8px;
+  border:1px solid var(--line); background:var(--surface-2); white-space:nowrap;
+}
+.dialchip .lvl{font-weight:600; color:var(--ink)}
+.dialchip .px{color:var(--ink-faint)}
+.stat-grid{display:grid; grid-template-columns:repeat(3,1fr)}
+.stat{padding:26px 26px 28px; border-right:1px solid var(--line); position:relative}
+.stat:last-child{border-right:0}
+.stat .idx{
+  font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-faint); margin-bottom:6px;
+}
+.stat .big{
+  font-family:var(--mono); font-size:clamp(34px,5vw,46px); font-weight:600; line-height:1;
+  color:var(--pos-ink); letter-spacing:-.02em; font-variant-numeric:tabular-nums;
+}
+.stat .sub{margin-top:12px; font-family:var(--mono); font-size:12.5px; color:var(--ink-dim);
+  display:flex; gap:14px; flex-wrap:wrap}
+.stat .sub .delta{color:var(--pos-ink)}
+.stat .bar{position:absolute; left:0; bottom:0; height:2px; background:var(--pos); width:0;
+  transition:width 1.1s cubic-bezier(.2,.7,.2,1) .25s}
+
+/* ---- section scaffold ---- */
+section{padding:52px 0}
+.sec-h{display:flex; align-items:baseline; gap:16px; margin:0 0 26px}
+.sec-h .n{font-family:var(--mono); font-size:12px; color:var(--accent); letter-spacing:.1em;
+  padding-top:5px}
+.sec-h h2{font-size:clamp(21px,3vw,28px); letter-spacing:-.015em; font-weight:750; margin:0;
+  text-wrap:balance}
+.sec-h .h-sub{color:var(--ink-dim); font-size:14.5px; margin:5px 0 0; max-width:64ch}
+
+/* ---- method ---- */
+.method{
+  border:1px solid var(--line); border-left:2px solid var(--accent-line);
+  border-radius:12px; background:var(--surface); padding:8px 26px;
+}
+.method dl{margin:0}
+.method .row{display:grid; grid-template-columns:130px 1fr; gap:20px; padding:15px 0;
+  border-bottom:1px solid var(--line-soft)}
+.method .row:last-child{border-bottom:0}
+.method dt{font-family:var(--mono); font-size:13px; color:var(--accent); letter-spacing:.02em}
+.method dd{margin:0; font-size:14.5px; color:var(--ink-dim)}
+.method dd b{color:var(--ink); font-weight:600}
+.method code{font-family:var(--mono); font-size:12.5px; background:var(--surface-2);
+  padding:1px 6px; border-radius:5px; border:1px solid var(--line); color:var(--ink)}
+
+/* ---- charts ---- */
+.controls{display:flex; flex-wrap:wrap; gap:18px 24px; align-items:center; margin-bottom:20px}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden;
+  background:var(--surface)}
+.seg button{
+  font-family:var(--mono); font-size:12.5px; letter-spacing:.03em; color:var(--ink-dim);
+  background:transparent; border:0; padding:9px 16px; cursor:pointer; transition:.15s;
+}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft); color:var(--accent)}
+.seg button:hover{color:var(--ink)}
+.legend{display:flex; align-items:center; gap:11px; font-family:var(--mono); font-size:11.5px;
+  color:var(--ink-faint); margin-left:auto}
+.legend .scale{width:150px; height:9px; border-radius:5px;
+  background:linear-gradient(90deg,var(--neg),rgba(120,130,140,.25) 50%,var(--pos))}
+.chart-legend{display:flex; flex-wrap:wrap; gap:8px 20px; margin-bottom:12px; font-family:var(--mono);
+  font-size:12px; color:var(--ink-dim)}
+.chart-legend .lg{display:flex; align-items:center; gap:8px}
+.chart-legend .lg i{width:16px; height:3px; border-radius:2px; display:inline-block}
+.chart-legend .lg.band i{height:13px; width:9px; border-radius:2px;
+  background:rgba(var(--acc-rgb),.4); border:1px solid var(--accent-line)}
+.chart-wrap{position:relative; border:1px solid var(--line); border-radius:14px;
+  background:var(--surface); box-shadow:var(--shadow); padding:14px 10px 10px}
+#tsCanvas{display:block; width:100%; height:380px; touch-action:none}
+#mapCanvas{display:block; width:100%; height:440px; touch-action:none}
+.ptip{position:absolute; pointer-events:none; opacity:0; transition:opacity .12s;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:10px 12px;
+  font-family:var(--mono); font-size:11.5px; box-shadow:var(--shadow); z-index:5; min-width:160px}
+.ptip .d{color:var(--ink); font-size:12px; margin-bottom:2px}
+.ptip .rg{color:var(--accent); font-size:10.5px; letter-spacing:.06em; margin-bottom:8px}
+.ptip .rw{display:flex; align-items:center; justify-content:space-between; gap:16px; color:var(--ink-dim)}
+.ptip .rw i{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:6px}
+.ptip .rw b{color:var(--ink); font-variant-numeric:tabular-nums}
+.chart-cap{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin:12px 2px 0;
+  display:flex; gap:8px; align-items:baseline; flex-wrap:wrap}
+.chart-cap b{color:var(--ink-dim); font-weight:500}
+.zoom-reset{position:absolute; top:10px; right:10px; z-index:4;
+  font-family:var(--mono); font-size:11.5px; color:var(--ink-dim);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+  padding:6px 12px; cursor:pointer; transition:.15s}
+.zoom-reset:hover{color:var(--ink); border-color:var(--accent-line)}
+
+/* ---- quadrant scoreboard ---- */
+.tscroll{overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:var(--surface);
+  box-shadow:var(--shadow)}
+table.hm{border-collapse:collapse; width:100%; min-width:760px}
+table.hm thead th{
+  position:sticky; top:0; z-index:2; background:var(--surface-2);
+  font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:500; text-align:right; padding:14px 14px; white-space:nowrap;
+  border-bottom:1px solid var(--line);
+}
+table.hm thead th.lft{text-align:left}
+table.hm thead th .px{color:var(--ink-dim)}
+.grp-ret{border-left:2px solid var(--line)}
+.grp-vol{border-left:1px solid var(--line)}
+table.hm tbody td{padding:0; border-bottom:1px solid var(--line-soft); font-variant-numeric:tabular-nums}
+table.hm tbody tr:last-child td{border-bottom:0}
+table.hm tbody tr:hover td{background:rgba(var(--acc-rgb),.045)}
+.reg-cell{display:flex; align-items:center; gap:10px; padding:12px 14px; white-space:nowrap}
+.reg-cell .days{font-family:var(--mono); font-size:12px; color:var(--ink-dim);
+  min-width:40px; text-align:right}
+.reg-cell .nm{font-size:13.5px; font-weight:600}
+.dtile{
+  width:26px; height:26px; border-radius:6px; display:grid; place-items:center;
+  font-family:var(--mono); font-size:12px; font-weight:600; border:1px solid var(--line);
+  color:var(--ink);
+}
+.dtiles{display:flex; gap:5px}
+.retc{padding:11px 14px; text-align:right; font-family:var(--mono); position:relative}
+.retc .v{font-size:15px; font-weight:600; letter-spacing:-.01em}
+.retc .x{font-size:10.5px; color:var(--ink-faint); margin-top:2px; letter-spacing:.02em}
+tr.feat td{background:rgba(var(--acc-rgb),.07)!important}
+tr.feat .reg-cell::before{content:"◆"; color:var(--accent); font-size:10px; margin-right:-3px}
+.hm-note{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin:14px 2px 0;
+  display:flex; gap:8px; align-items:baseline}
+.hm-note b{color:var(--ink-dim); font-weight:500}
+
+/* ---- replication cells ---- */
+.base{display:grid; grid-template-columns:repeat(2,1fr); gap:14px}
+.base .cell{
+  border:1px solid var(--line); border-radius:12px; background:var(--surface); padding:18px 20px;
+}
+.base .cell .lab{font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--ink-faint);
+  text-transform:uppercase; margin-bottom:12px}
+.base .cell .v{font-family:var(--mono); font-size:27px; font-weight:600; color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.base .cell .m{font-family:var(--mono); font-size:12.5px; color:var(--ink-dim); margin-top:8px}
+
+/* ---- findings ---- */
+.finds{display:grid; gap:14px}
+.find{
+  display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:start;
+  border:1px solid var(--line); border-radius:12px; background:var(--surface); padding:20px 22px;
+}
+.find .mk{color:var(--accent); font-family:var(--mono); font-size:13px; line-height:1.7}
+.find h3{margin:0 0 6px; font-size:16px; font-weight:700; letter-spacing:-.01em}
+.find p{margin:0; font-size:14.5px; color:var(--ink-dim)}
+.find p b{color:var(--ink)}
+.find .pos{color:var(--pos-ink); font-weight:600}
+.find .neg{color:var(--neg-ink); font-weight:600}
+
+/* ---- caveats ---- */
+.cav{columns:2; column-gap:32px}
+.cav .c{break-inside:avoid; margin-bottom:16px; padding-left:18px; position:relative;
+  font-size:13.5px; color:var(--ink-dim)}
+.cav .c::before{content:""; position:absolute; left:0; top:9px; width:7px; height:7px;
+  border:1px solid var(--neg); border-radius:2px; transform:rotate(45deg)}
+.cav .c b{color:var(--ink); font-weight:600}
+
+/* ---- footer ---- */
+footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
+.repro{font-family:var(--mono); font-size:13px; background:var(--surface); border:1px solid var(--line);
+  border-radius:10px; padding:16px 18px; color:var(--ink-dim); overflow-x:auto; white-space:nowrap}
+.repro .p{color:var(--accent)}
+.foot-meta{display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:20px;
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--ink-faint)}
+
+@media (max-width:720px){
+  .stat-grid{grid-template-columns:1fr}
+  .stat{border-right:0; border-bottom:1px solid var(--line)}
+  .stat:last-child{border-bottom:0}
+  .base{grid-template-columns:1fr}
+  .cav{columns:1}
+  .method .row{grid-template-columns:1fr; gap:4px}
+  .dialset{margin-left:0; width:100%}
+  .sec-h{flex-direction:column; gap:4px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important; transition:none!important}
+}
+</style>
+
+<div class="page">
+<div class="wrap">
+
+  <div class="strip">
+    <span><span class="dot"></span>GEX × dispersion barometer</span>
+    <span><b>SPX</b> &nbsp;/&nbsp; gamma × 1-mo correlation &nbsp;/&nbsp; 1-month forward</span>
+    <span id="mRange">—</span>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">Gamma × correlation → the tape's character</p>
+    <h1>One dial for <span class="g">gamma</span>, one for how much stocks <span class="g">move together</span>.</h1>
+    <p class="lede">Dealer gamma (SqueezeMetrics' <b class="gexTerm">GEX</b>) sets how hard option hedging leans on the tape;
+      <b>1-month correlation</b> across S&amp;P 500 stocks sets whether the tape moves as one trade or five
+      hundred. We compute our own 21-session realized correlation and dispersion from the <b>top-50 IVV
+      names</b> — Cboe's implied-correlation universe — check them against Cboe's published
+      <b>COR1M</b> and <b>DSPX</b>, and cross the two dials into four regimes, each scored on the
+      <b>next month's</b> SPX return and realized volatility.</p>
+
+    <div class="regime-card" id="heroCard">
+      <div class="regime-head">
+        <span class="tag">Today's quadrant</span>
+        <span class="desc" id="heroDesc">—</span>
+        <div class="dialset">
+          <span class="dialchip"><span class="gexTerm">GEX</span> <span class="lvl" id="chGex">—</span><span class="px" id="chGexP"></span></span>
+          <span class="dialchip">Corr 1M <span class="lvl" id="chCor">—</span><span class="px" id="chCorP"></span></span>
+          <span class="dialchip">COR1M <span class="lvl" id="chCor1m">—</span></span>
+          <span class="dialchip">DSPX <span class="lvl" id="chDspx">—</span></span>
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="idx">SPX · next month</div>
+          <div class="big" id="stRet" data-count="">—</div>
+          <div class="sub"><span id="stRetMed"></span><span class="delta" id="stRetDelta"></span></div>
+          <div class="bar" id="stRetBar"></div>
+        </div>
+        <div class="stat">
+          <div class="idx">Hit rate · 21 sessions up</div>
+          <div class="big" id="stHit">—</div>
+          <div class="sub"><span id="stHitBase"></span></div>
+          <div class="bar" id="stHitBar"></div>
+        </div>
+        <div class="stat">
+          <div class="idx">Realized vol · next month</div>
+          <div class="big" id="stVol">—</div>
+          <div class="sub"><span id="stVolBase"></span><span class="delta" id="stVolDelta"></span></div>
+          <div class="bar" id="stVolBar"></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">01</span>
+      <div>
+        <h2>The barometer map</h2>
+        <p class="h-sub">Every session since the dials exist: gamma rank (trailing year) across, realized
+          1-month correlation up. Color is the SPX return over the following 21 sessions. The ring is
+          today. The lower-right — long gamma, dispersed tape — is where markets grind; the upper-left —
+          gamma gone, everything one trade — is where they lurch.</p>
+      </div>
+    </div>
+    <div class="chart-legend">
+      <span class="lg"><i style="background:var(--pos)"></i>next month up</span>
+      <span class="lg"><i style="background:var(--neg)"></i>next month down</span>
+      <span class="lg"><i style="background:var(--ink-faint);height:8px;width:8px;border-radius:50%"></i>forward month not yet complete</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="mapCanvas"></canvas>
+      <div class="ptip" id="mapTip"></div>
+    </div>
+    <p class="chart-cap"><b>Axes:</b> x — <span class="gexTerm">GEX</span> percentile within its trailing 252 sessions (kills the
+      dollar drift of a growing options market); y — our realized 1-month correlation, in correlation
+      points. Dashed lines mark the quadrant boundaries (median on each dial). Hover any dot.</p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">02</span>
+      <div>
+        <h2>How it's built</h2>
+        <p class="h-sub">No look-ahead in the outcome: each session is scored by the return and realized
+          vol over the following 21 sessions.</p>
+      </div>
+    </div>
+    <div class="method">
+      <dl>
+        <div class="row"><dt class="gexTerm">GEX</dt><dd class="src-classic">SqueezeMetrics' public daily
+          SPX <b>gamma exposure</b> ($ per 1% move) — the free ancestor of the gated GEX+ series.
+          Positive = dealers long gamma, hedging <b>against</b> moves; deeply negative = hedging
+          <b>with</b> them. Ranked as a percentile within its trailing year, since raw dollars drift
+          upward with the options market.</dd><dd class="src-gexplus">SqueezeMetrics' <b>GEX+</b> —
+          their yacht-club successor to classic GEX, folding strike-level gamma <i>and</i> vanna (VEX)
+          exposure into one dealer-hedging gauge (here rescaled to $ per 1% move). Positive = dealers
+          hedging <b>against</b> moves; deeply negative = hedging <b>with</b> them. Ranked as a
+          percentile within its trailing year, since raw dollars drift upward with the options
+          market.</dd></div>
+        <div class="row"><dt>Correlation</dt><dd>Our own realized analog of Cboe's implied correlation:
+          over the <b>top-50 IVV names</b> (weights renormalized), 21-session vols feed the basket identity
+          <code>ρ = (σ²_P − Σw²σ²) / ((Σwσ)² − Σw²σ²)</code> — the average pairwise correlation implied by
+          how much basket vol exceeds the sum of its parts. Quoted 0–100 like COR1M.</dd></div>
+        <div class="row"><dt>Dispersion</dt><dd>The same inputs recombined as
+          <code>√(Σwσ²_i − σ²_P)</code>, annualized vol points — how much single-stock movement the index
+          <b>didn't</b> inherit. The realized cousin of Cboe's DSPX.</dd></div>
+        <div class="row"><dt>Quadrant</dt><dd>Gamma dial High/Low at its rolling-year 50th percentile ×
+          correlation dial High/Low at its full-sample median. Four regimes; the hero card scores
+          today's.</dd></div>
+        <div class="row"><dt>Outcome</dt><dd>SPX (SqueezeMetrics' close series) <b>21 trading days
+          ahead</b>: the % return, and the annualized realized vol of those 21 daily moves.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">03</span>
+      <div>
+        <h2>The dials through time</h2>
+        <p class="h-sub">Our realized gauges against Cboe's published ones, and the raw gamma series.
+          Pick a quadrant to band every day it was active — the same filter the scoreboard rows set.</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="seg" id="paneSeg" role="group" aria-label="series pane">
+        <button data-p="cor" aria-pressed="true">Correlation · ours vs COR1M</button>
+        <button data-p="disp" aria-pressed="false">Dispersion · ours vs DSPX</button>
+        <button data-p="gex" aria-pressed="false"><span class="gexTerm">GEX</span> · $bn</button>
+      </div>
+      <div class="seg" id="quadSeg" role="group" aria-label="quadrant filter">
+        <button data-q="HL">G+ C−</button><button data-q="HH">G+ C+</button>
+        <button data-q="LH">G− C+</button><button data-q="LL">G− C−</button>
+        <button data-q="" aria-pressed="true">None</button>
+      </div>
+    </div>
+
+    <div class="chart-legend" id="tsLegend"></div>
+    <div class="chart-wrap">
+      <canvas id="tsCanvas"></canvas>
+      <button class="zoom-reset" id="zoomReset" hidden>Reset zoom</button>
+      <div class="ptip" id="tsTip"></div>
+    </div>
+    <p class="chart-cap"><b>Tip:</b> hover for the day's values and quadrant. Scroll or pinch to zoom
+      the time axis, drag to pan, double-click to reset. Amber bands mark the selected quadrant's days.</p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">04</span>
+      <div>
+        <h2>The four regimes, scored</h2>
+        <p class="h-sub">Forward month statistics per quadrant, most frequent first. The teal↔rust scale
+          reads returns; for vol, rust marks expansion over the trailing month.
+          <b>Click a row to band its days in the chart above.</b> The ◆ row is today.</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="legend"><span>−3%</span><span class="scale"></span><span>+3%</span></div>
+    </div>
+    <div class="tscroll">
+      <table class="hm">
+        <thead>
+          <tr>
+            <th class="lft">Quadrant <span class="px">· days</span></th>
+            <th class="grp-ret">Mean <span class="px">1-mo</span></th>
+            <th>Median</th>
+            <th>Hit</th>
+            <th class="grp-vol">Fwd vol <span class="px">ann.</span></th>
+            <th>Δ vol <span class="px">vs trailing</span></th>
+          </tr>
+        </thead>
+        <tbody id="hmBody"></tbody>
+      </table>
+    </div>
+    <p class="hm-note"><b>Reading it:</b> G tile = gamma dial, C tile = correlation dial (bright = High).
+      Fwd vol is the annualized realized vol of the next 21 sessions; Δ vol subtracts the trailing 21.</p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">05</span>
+      <div>
+        <h2>Do our gauges track Cboe's?</h2>
+        <p class="h-sub">Ours are trailing <i>realized</i> measures; Cboe's are forward <i>implied</i> ones —
+          levels needn't match, comovement should. Correlations of levels and of 21-session changes over
+          the overlap.</p>
+      </div>
+    </div>
+    <div class="base">
+      <div class="cell"><div class="lab">Realized corr vs Cboe COR1M</div>
+        <div class="v" id="cmpCorV">—</div><div class="m" id="cmpCorM">—</div></div>
+      <div class="cell"><div class="lab">Realized dispersion vs Cboe DSPX</div>
+        <div class="v" id="cmpDspV">—</div><div class="m" id="cmpDspM">—</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">06</span>
+      <div>
+        <h2>What the pattern says</h2>
+        <p class="h-sub">Reads that hold across the scoreboard.</p>
+      </div>
+    </div>
+    <div class="finds">
+      <div class="find"><span class="mk">◆</span><div>
+        <h3>Gamma's edge is a volatility call, not a direction call</h3>
+        <p>The clearest split in the table is the <b>forward-vol column</b>: the unclamped-and-synchronized
+          quadrant runs about <b><span id="fVolSpread">—</span> vol points hotter</b> over the next month
+          than the pinned-and-dispersed one. Mean returns separate less than vol does.</p></div></div>
+      <div class="find"><span class="mk">◆</span><div>
+        <h3>Short gamma + one-trade tape is the storm quadrant</h3>
+        <p>Gamma below its yearly midpoint while correlation sits high — hedgers chasing a market that
+          moves as one — pays <b id="fDangerRet">—</b> on average (hit <span id="fDangerHit">—</span>%) at
+          <span class="neg" id="fDangerVol">—</span> annualized forward vol, the widest outcomes in the
+          book.</p></div></div>
+      <div class="find"><span class="mk">◆</span><div>
+        <h3>Long gamma + dispersed tape is the grind</h3>
+        <p>The opposite corner — dealers pinning the index while single stocks go their own ways — is the
+          calm regime: <b id="fCalmRet">—</b> mean forward month (hit <span id="fCalmHit">—</span>%) at just
+          <span class="pos" id="fCalmVol">—</span> forward vol. This is the stock-picker's tape.</p></div></div>
+      <div class="find"><span class="mk">◆</span><div>
+        <h3>The homemade dials track the professional ones</h3>
+        <p>Our realized correlation comoves with Cboe's implied COR1M at <b>r = <span id="fCorR">—</span></b>
+          on levels (<b><span id="fCorDR">—</span></b> on monthly changes), and the realized dispersion tracks
+          DSPX at <b>r = <span id="fDspR">—</span></b> — the same animal, one priced from the option
+          chain, one measured off the tape.</p></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">07</span>
+      <div><h2>Read with these in mind</h2></div>
+    </div>
+    <div class="cav">
+      <div class="c src-classic"><b>Classic GEX, not GEX+.</b> The public series assumes calls are
+        dealer-long and puts dealer-short at every strike; SqueezeMetrics' gated GEX+ relaxes that. Treat
+        the sign near zero as soft.</div>
+      <div class="c src-gexplus"><b>GEX+ is a model.</b> SqueezeMetrics' dealer-positioning fit is
+        proprietary; the series is consumed as published (GEX plus VEX under their assumptions) and
+        <i>ranked</i>, not re-derived — treat the dollar level as their estimate, the percentile as
+        ours.</div>
+      <div class="c"><b>Today's basket, yesterday's tape.</b> The realized gauges use the <i>current</i>
+        top-50 IVV names and weights across all of history — survivorship and weight drift grow with
+        lookback. Cboe's COR1M is the point-in-time clean version; that's why it's on the chart.</div>
+      <div class="c"><b>Implied ≠ realized.</b> COR1M and DSPX price the <i>coming</i> month with a risk
+        premium; our gauges measure the month just <i>passed</i>. Levels differ by construction — judge the
+        comovement, not the gap.</div>
+      <div class="c"><b>Overlapping windows.</b> 21-day outcomes overlap heavily; <span id="cvDays">—</span>
+        sessions is only ~<span id="cvIndep">—</span> independent months. Medians and hit-rates over
+        means.</div>
+      <div class="c"><b>In-sample midpoint.</b> The correlation dial's High/Low cut is the full-sample
+        median — live use would key off an expanding cutoff. The gamma dial's trailing-year rank has no
+        such look-ahead.</div>
+      <div class="c"><b>Quadrants are coarse.</b> A 50/50 cross treats a 51st-percentile day like a 99th.
+        The map above shows the full continuum; the table is deliberately blunt.</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="repro"><span class="p">python</span> build_gex_dispersion.py --docs-out docs/gex_dispersion.html</div>
+    <div class="foot-meta">
+      <span>SqueezeMetrics <span class="gexTerm">GEX</span> · Cboe COR1M/DSPX · Yahoo prices</span>
+      <span id="mBasket">—</span>
+      <span><span id="mNdays">—</span> sessions</span>
+      <span id="mBuilt">—</span>
+    </div>
+  </footer>
+
+</div>
+</div>
+
+<script>
+const SER = /*__SER__*/;
+const QUAD = /*__QUAD__*/;
+const META = /*__META__*/;
+
+const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+const QL = {HL:"Pinned & dispersed", HH:"Pinned but synchronized",
+            LH:"Unclamped & synchronized", LL:"Unclamped & dispersed"};
+const QSHORT = {HL:"G+ C−", HH:"G+ C+", LH:"G− C+", LL:"G− C−"};
+const pc = v => (v>=0?"+":"")+(+v).toFixed(2)+"%";
+const N = SER.dates.length;
+
+/* ===== hero: today's quadrant ===== */
+function applyHero(){
+  const t = META.today, b = META.baseline;
+  const set = (id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
+  set("mRange", META.range);
+  set("heroDesc", (QL[t.quad]||"—") + " · in effect " + t.date);
+  set("chGex", t.gex.toFixed(1)+" bn"); set("chGexP", t.gexp==null?"":" · p"+Math.round(t.gexp));
+  set("chCor", t.cor==null?"—":t.cor.toFixed(0)); set("chCorP", t.corp==null?"":" · p"+Math.round(t.corp));
+  set("chCor1m", t.cor1m==null?"—":t.cor1m.toFixed(1));
+  set("chDspx", t.dspx==null?"—":t.dspx.toFixed(1));
+  const row = QUAD.find(q=>q[0]===t.quad);
+  if(!row) return;
+  const [,,days,mean,med,hit,fvol,dvol] = row;
+  const stRet = document.getElementById("stRet");
+  if(mean!=null){
+    stRet.dataset.count = mean;
+    stRet.style.color = mean>=0 ? "var(--pos-ink)" : "var(--neg-ink)";
+    set("stRetMed", "med "+pc(med));
+    const d = document.getElementById("stRetDelta");
+    const dv = mean - b.mean;
+    d.textContent = (dv>=0?"+":"")+dv.toFixed(2)+" pp vs base";
+    d.style.color = dv>=0 ? "var(--pos-ink)" : "var(--neg-ink)";
+    const bar=document.getElementById("stRetBar");
+    bar.dataset.w = Math.min(100, Math.abs(mean)/3*100);
+    bar.style.background = mean>=0 ? "var(--pos)" : "var(--neg)";
+  }
+  if(hit!=null){
+    set("stHit", Math.round(hit)+"%");
+    document.getElementById("stHit").style.color = hit>=b.hit ? "var(--pos-ink)" : "var(--neg-ink)";
+    set("stHitBase", "baseline "+Math.round(b.hit)+"% · "+days+" days");
+    const bar=document.getElementById("stHitBar");
+    bar.dataset.w = Math.round(hit);
+    bar.style.background = hit>=b.hit ? "var(--pos)" : "var(--neg)";
+  }
+  if(fvol!=null){
+    set("stVol", fvol.toFixed(1));
+    document.getElementById("stVol").style.color = fvol<=b.fvol ? "var(--pos-ink)" : "var(--neg-ink)";
+    set("stVolBase", "baseline "+b.fvol.toFixed(1));
+    const d=document.getElementById("stVolDelta");
+    if(dvol!=null){ d.textContent = (dvol>=0?"+":"")+dvol.toFixed(1)+" vs trailing";
+      d.style.color = dvol>=0 ? "var(--neg-ink)" : "var(--pos-ink)"; }
+    const bar=document.getElementById("stVolBar");
+    bar.dataset.w = Math.min(100, fvol/40*100);
+    bar.style.background = fvol<=b.fvol ? "var(--pos)" : "var(--neg)";
+  }
+}
+const reduce = window.matchMedia("(prefers-reduced-motion:reduce)").matches;
+function animateHero(){
+  document.querySelectorAll("#heroCard .bar").forEach(b=>{ b.style.width = (b.dataset.w||0)+"%"; });
+  const el = document.getElementById("stRet");
+  const target = parseFloat(el.dataset.count);
+  if(!isFinite(target)){ return; }
+  if(reduce){ el.textContent = pc(target); return; }
+  const dur = 1000, t0 = performance.now();
+  (function step(now){
+    const p = Math.min(1, (now-t0)/dur);
+    const e = 1 - Math.pow(1-p, 3);
+    el.textContent = pc(target*e);
+    if(p<1) requestAnimationFrame(step);
+  })(performance.now());
+}
+if("IntersectionObserver" in window){
+  const io = new IntersectionObserver((ents)=>{
+    ents.forEach(e=>{ if(e.isIntersecting){ animateHero(); io.disconnect(); } });
+  }, {threshold:.4});
+  io.observe(document.getElementById("heroCard"));
+} else animateHero();
+
+/* ===== shared canvas helpers ===== */
+function sizeCanvas(cv, ctx){
+  const dpr = Math.min(2, window.devicePixelRatio||1);
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w,h};
+}
+function niceTicks(min,max,n){
+  const span=max-min, step0=span/n, mag=Math.pow(10,Math.floor(Math.log10(step0)));
+  const norm=step0/mag, step=(norm<1.5?1:norm<3?2:norm<7?5:10)*mag;
+  const out=[]; for(let t=Math.ceil(min/step)*step; t<=max+1e-9; t+=step) out.push(t);
+  return out;
+}
+
+/* ===== 01: barometer map (scatter) ===== */
+const mapCv = document.getElementById("mapCanvas");
+const mapCtx = mapCv.getContext("2d");
+const mapTip = document.getElementById("mapTip");
+let MPLOT = null, mapHover = -1;
+
+// median correlation level = the horizontal quadrant boundary
+const corVals = SER.cor.filter(v=>v!=null).slice().sort((a,b)=>a-b);
+const corMid = corVals.length ? corVals[Math.floor(corVals.length/2)] : 50;
+
+function drawMap(){
+  const {w,h} = sizeCanvas(mapCv, mapCtx);
+  const ctx = mapCtx;
+  const line=css("--line"), soft=css("--line-soft"), faint=css("--ink-faint"),
+        dim=css("--ink-dim"), posRGB=css("--pos-rgb"), negRGB=css("--neg-rgb"),
+        acc=css("--accent");
+  ctx.clearRect(0,0,w,h);
+  const pad={l:52,r:16,t:18,b:34};
+  const pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
+  let cmn=Infinity, cmx=-Infinity;
+  for(const v of SER.cor){ if(v!=null){ if(v<cmn)cmn=v; if(v>cmx)cmx=v; } }
+  const padv=(cmx-cmn)*0.06; cmn=Math.max(0,cmn-padv); cmx=Math.min(100,cmx+padv);
+  const xF = p => pad.l + p/100*pw;
+  const yF = c => pad.t + (1-(c-cmn)/(cmx-cmn))*ph;
+  MPLOT = {pad,pw,ph,xF,yF,cmn,cmx};
+
+  ctx.font = "11px ui-monospace, Menlo, monospace";
+  ctx.textBaseline="middle";
+  ctx.textAlign="right";
+  niceTicks(cmn,cmx,5).forEach(t=>{
+    const y=yF(t);
+    ctx.strokeStyle=soft; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l,y+.5); ctx.lineTo(w-pad.r,y+.5); ctx.stroke();
+    ctx.fillStyle=faint; ctx.fillText(Math.round(t), pad.l-8, y);
+  });
+  ctx.textAlign="center";
+  [0,25,50,75,100].forEach(t=>{
+    const x=xF(t);
+    ctx.strokeStyle=soft; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x+.5,pad.t); ctx.lineTo(x+.5,pad.t+ph); ctx.stroke();
+    ctx.fillStyle=faint; ctx.fillText("p"+t, x, pad.t+ph+16);
+  });
+  // quadrant boundaries
+  ctx.setLineDash([5,4]); ctx.strokeStyle=dim; ctx.globalAlpha=.55; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(xF(50)+.5,pad.t); ctx.lineTo(xF(50)+.5,pad.t+ph); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad.l,yF(corMid)+.5); ctx.lineTo(w-pad.r,yF(corMid)+.5); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha=1;
+  // corner labels
+  ctx.fillStyle=faint; ctx.font="10.5px ui-monospace, Menlo, monospace";
+  ctx.textAlign="left";  ctx.fillText(QL.LH, pad.l+8, pad.t+12);
+  ctx.textAlign="right"; ctx.fillText(QL.HH, w-pad.r-8, pad.t+12);
+  ctx.textAlign="left";  ctx.fillText(QL.LL, pad.l+8, pad.t+ph-10);
+  ctx.textAlign="right"; ctx.fillText(QL.HL, w-pad.r-8, pad.t+ph-10);
+
+  for(let i=0;i<N;i++){
+    const g=SER.gexp[i], c=SER.cor[i];
+    if(g==null || c==null) continue;
+    const r=SER.r21[i];
+    if(r==null){ ctx.fillStyle="rgba(120,130,140,.35)"; }
+    else{
+      const t=Math.max(-1,Math.min(1,r/8));
+      const a=0.14+Math.pow(Math.abs(t),0.8)*0.65;
+      ctx.fillStyle=`rgba(${t>=0?posRGB:negRGB},${a.toFixed(3)})`;
+    }
+    ctx.beginPath(); ctx.arc(xF(g),yF(c),2.3,0,7); ctx.fill();
+  }
+  // hover marker
+  if(mapHover>=0){
+    const g=SER.gexp[mapHover], c=SER.cor[mapHover];
+    if(g!=null && c!=null){
+      ctx.strokeStyle=dim; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.arc(xF(g),yF(c),5.5,0,7); ctx.stroke();
+    }
+  }
+  // today
+  const g=SER.gexp[N-1], c=SER.cor[N-1];
+  if(g!=null && c!=null){
+    ctx.strokeStyle=acc; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(xF(g),yF(c),6.5,0,7); ctx.stroke();
+    ctx.fillStyle=acc;
+    ctx.beginPath(); ctx.arc(xF(g),yF(c),2.6,0,7); ctx.fill();
+  }
+}
+mapCv.addEventListener("pointermove", e=>{
+  if(!MPLOT) return;
+  const rect=mapCv.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  let best=-1, bd=13*13;
+  for(let i=0;i<N;i++){
+    const g=SER.gexp[i], c=SER.cor[i];
+    if(g==null||c==null) continue;
+    const dx=MPLOT.xF(g)-mx, dy=MPLOT.yF(c)-my, d=dx*dx+dy*dy;
+    if(d<bd){ bd=d; best=i; }
+  }
+  if(best!==mapHover){ mapHover=best; drawMap(); }
+  if(best<0){ mapTip.style.opacity=0; return; }
+  const q=SER.quad[best];
+  mapTip.innerHTML =
+    `<div class="d">${SER.dates[best]}</div>`+
+    `<div class="rg">${QL[q]||"—"}</div>`+
+    `<div class="rw"><span>GEX pct</span><b>p${Math.round(SER.gexp[best])}</b></div>`+
+    `<div class="rw"><span>corr 1M</span><b>${SER.cor[best].toFixed(1)}</b></div>`+
+    `<div class="rw"><span>SPX +21d</span><b>${SER.r21[best]==null?"—":pc(SER.r21[best])}</b></div>`;
+  mapTip.style.opacity=1;
+  const wrap=mapCv.parentElement.getBoundingClientRect();
+  let tx=MPLOT.xF(SER.gexp[best])+14;
+  if(tx>wrap.width-180) tx=MPLOT.xF(SER.gexp[best])-mapTip.offsetWidth-14;
+  mapTip.style.left=Math.max(6,tx)+"px";
+  mapTip.style.top=Math.max(6, MPLOT.yF(SER.cor[best])-30)+"px";
+});
+mapCv.addEventListener("pointerleave", ()=>{ mapHover=-1; mapTip.style.opacity=0; drawMap(); });
+
+/* ===== 03: time-series chart with panes + quadrant bands ===== */
+const tsCv = document.getElementById("tsCanvas");
+const tsCtx = tsCv.getContext("2d");
+const tsTip = document.getElementById("tsTip");
+let PANE = "cor", QFILT = "", TPLOT = null, tsHover = -1, VIEW = null;
+
+const PANES = {
+  cor:  {lines:[{k:"cor", tok:"--sOur", lab:"realized corr (ours)"},
+               {k:"cor1m", tok:"--sRef", lab:"Cboe COR1M (implied)"}], fmt:v=>v.toFixed(1)},
+  disp: {lines:[{k:"disp", tok:"--sOur", lab:"realized dispersion (ours)"},
+               {k:"dspx", tok:"--sRef", lab:"Cboe DSPX (implied)"}], fmt:v=>v.toFixed(1)},
+  gex:  {lines:[{k:"gex", tok:"--accent", lab:(META.gexLabel||"GEX")+" · $bn"}], fmt:v=>v.toFixed(2)},
+};
+function tsLegend(){
+  const el=document.getElementById("tsLegend");
+  el.innerHTML = PANES[PANE].lines.map(l=>
+    `<span class="lg"><i style="background:${css(l.tok)}"></i>${l.lab}</span>`).join("") +
+    `<span class="lg band"><i></i>selected-quadrant days</span>`;
+}
+function setView(i0, i1){
+  const maxI = N-1, minSpan = Math.min(15, maxI);
+  let span = Math.max(minSpan, Math.min(maxI, i1-i0));
+  if(i1-i0 !== span){ const c=(i0+i1)/2; i0=c-span/2; i1=c+span/2; }
+  if(i0<0){ i1-=i0; i0=0; }
+  if(i1>maxI){ i0-=(i1-maxI); i1=maxI; }
+  i0=Math.max(0,i0); i1=Math.min(maxI,i1);
+  VIEW = (i0<=0.001 && i1>=maxI-0.001) ? null : {i0,i1};
+  document.getElementById("zoomReset").hidden = !VIEW;
+  drawTS();
+}
+function drawTS(){
+  const {w,h} = sizeCanvas(tsCv, tsCtx);
+  const ctx = tsCtx;
+  const soft=css("--line-soft"), faint=css("--ink-faint"), dim=css("--ink-dim"),
+        accRGB=css("--acc-rgb");
+  ctx.clearRect(0,0,w,h);
+  const pad={l:52,r:14,t:12,b:26};
+  const pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
+  const v0 = VIEW ? VIEW.i0 : 0, v1 = VIEW ? VIEW.i1 : N-1;
+  const lo = Math.max(0, Math.floor(v0)), hi = Math.min(N-1, Math.ceil(v1));
+  const lines = PANES[PANE].lines;
+  let mn=Infinity,mx=-Infinity;
+  for(const l of lines){ const a=SER[l.k];
+    for(let i=lo;i<=hi;i++){ const v=a[i]; if(v==null) continue; if(v<mn)mn=v; if(v>mx)mx=v; } }
+  if(!isFinite(mn)){ mn=0; mx=1; }
+  const padv=(mx-mn)*0.06||1; mn-=padv; mx+=padv;
+  const xF = i => pad.l + (v1<=v0?0:(i-v0)/(v1-v0))*pw;
+  const yF = v => pad.t + (1-(v-mn)/(mx-mn))*ph;
+  TPLOT={pad,pw,ph,xF,yF,v0,v1};
+
+  ctx.font = "11px ui-monospace, Menlo, monospace";
+  ctx.textBaseline="middle";
+  ctx.textAlign="right";
+  niceTicks(mn,mx,5).forEach(t=>{
+    const y=yF(t);
+    ctx.strokeStyle=soft; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l,y+.5); ctx.lineTo(w-pad.r,y+.5); ctx.stroke();
+    ctx.fillStyle=faint; ctx.fillText(Math.abs(t)<10?t.toFixed(1):Math.round(t), pad.l-8, y);
+  });
+  ctx.textAlign="center";
+  const MONW=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const bounds=[]; let prevYM=SER.dates[lo].slice(0,7);
+  for(let i=lo+1;i<=hi;i++){
+    const ym=SER.dates[i].slice(0,7);
+    if(ym!==prevYM){ prevYM=ym; bounds.push(i); }
+  }
+  let firstLab=true;
+  bounds.forEach(i=>{
+    const m=+SER.dates[i].slice(5,7);
+    if(bounds.length>26 && m!==1) return;
+    if(bounds.length>12 && bounds.length<=26 && (m-1)%3!==0) return;
+    const x=xF(i); if(x<pad.l-1 || x>w-pad.r+1) return;
+    ctx.strokeStyle=soft; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x+.5,pad.t); ctx.lineTo(x+.5,pad.t+ph); ctx.stroke();
+    ctx.fillStyle=faint;
+    const lab = m===1 ? SER.dates[i].slice(0,4)
+              : firstLab ? MONW[m-1]+" ’"+SER.dates[i].slice(2,4) : MONW[m-1];
+    ctx.fillText(lab, x, pad.t+ph+14);
+    firstLab=false;
+  });
+  ctx.save();
+  ctx.beginPath(); ctx.rect(pad.l,pad.t,pw,ph); ctx.clip();
+  // quadrant bands
+  if(QFILT){
+    ctx.fillStyle=`rgba(${accRGB},.38)`;
+    const bw=Math.max(1.4, pw/(v1-v0+1) + 0.6);
+    for(let i=lo;i<=hi;i++){ if(SER.quad[i]===QFILT){ ctx.fillRect(xF(i)-bw/2, pad.t, bw, ph); } }
+  }
+  // zero line for the GEX pane (short-gamma episodes)
+  if(PANE==="gex" && mn<0 && mx>0){
+    ctx.strokeStyle=dim; ctx.globalAlpha=.6; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l,yF(0)+.5); ctx.lineTo(w-pad.r,yF(0)+.5); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+  }
+  ctx.lineJoin="round"; ctx.lineCap="round";
+  const a0=Math.max(0,lo-1), a1=Math.min(N-1,hi+1);
+  lines.forEach(l=>{
+    const arr=SER[l.k];
+    ctx.strokeStyle=css(l.tok); ctx.lineWidth=1.7;
+    ctx.beginPath();
+    let started=false;
+    for(let i=a0;i<=a1;i++){
+      const v=arr[i];
+      if(v==null){ started=false; continue; }
+      const x=xF(i), y=yF(v);
+      started?ctx.lineTo(x,y):ctx.moveTo(x,y); started=true;
+    }
+    ctx.stroke();
+  });
+  if(tsHover>=lo && tsHover<=hi){
+    const x=xF(tsHover);
+    ctx.strokeStyle=dim; ctx.globalAlpha=.5; ctx.lineWidth=1;
+    ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(x+.5,pad.t); ctx.lineTo(x+.5,pad.t+ph); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+    lines.forEach(l=>{
+      const v=SER[l.k][tsHover];
+      if(v==null) return;
+      ctx.fillStyle=css("--surface"); ctx.strokeStyle=css(l.tok); ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(x,yF(v),3.6,0,7); ctx.fill(); ctx.stroke();
+    });
+  }
+  ctx.restore();
+}
+function showTSTip(clientX){
+  if(!TPLOT) return;
+  const rect=tsCv.getBoundingClientRect();
+  const px=clientX-rect.left;
+  let i=Math.round(TPLOT.v0 + (px-TPLOT.pad.l)/TPLOT.pw*(TPLOT.v1-TPLOT.v0));
+  i=Math.max(0,Math.min(N-1,i));
+  tsHover=i; drawTS();
+  const q=SER.quad[i], fmt=PANES[PANE].fmt;
+  tsTip.innerHTML =
+    `<div class="d">${SER.dates[i]}</div>`+
+    `<div class="rg">${QL[q]||"—"}</div>`+
+    PANES[PANE].lines.map(l=>{
+      const v=SER[l.k][i];
+      return `<div class="rw"><span><i style="background:${css(l.tok)}"></i>${l.k.toUpperCase()}</span>`+
+             `<b>${v==null?"—":fmt(v)}</b></div>`;
+    }).join("")+
+    `<div class="rw"><span>SPX</span><b>${SER.spx[i]==null?"—":SER.spx[i].toFixed(0)}</b></div>`;
+  tsTip.style.opacity=1;
+  const wrap=tsCv.parentElement.getBoundingClientRect();
+  let tx=TPLOT.xF(i)+14; if(tx>wrap.width-180) tx=TPLOT.xF(i)-tsTip.offsetWidth-14;
+  tsTip.style.left=Math.max(6,tx)+"px";
+  tsTip.style.top="18px";
+}
+const ptrs = new Map();
+let panLast = null, pinch0 = null;
+tsCv.addEventListener("pointerdown", e=>{
+  ptrs.set(e.pointerId, e.clientX);
+  tsCv.setPointerCapture(e.pointerId);
+  if(ptrs.size===1){ panLast = e.clientX; }
+  else if(ptrs.size===2 && TPLOT){
+    panLast = null; tsHover=-1; tsTip.style.opacity=0;
+    const xs=[...ptrs.values()];
+    pinch0 = {d:Math.max(12,Math.abs(xs[0]-xs[1])), v0:TPLOT.v0, v1:TPLOT.v1,
+              cx:(xs[0]+xs[1])/2};
+  }
+});
+tsCv.addEventListener("pointermove", e=>{
+  if(ptrs.has(e.pointerId)) ptrs.set(e.pointerId, e.clientX);
+  if(ptrs.size===2 && pinch0 && TPLOT){
+    const xs=[...ptrs.values()];
+    const span0=pinch0.v1-pinch0.v0;
+    const span=span0*pinch0.d/Math.max(12,Math.abs(xs[0]-xs[1]));
+    const rect=tsCv.getBoundingClientRect();
+    const f=Math.max(0,Math.min(1,(pinch0.cx-rect.left-TPLOT.pad.l)/TPLOT.pw));
+    const anchor=pinch0.v0+f*span0;
+    setView(anchor-f*span, anchor+(1-f)*span);
+    return;
+  }
+  if(panLast!=null && VIEW && TPLOT){
+    const di=(e.clientX-panLast)/TPLOT.pw*(TPLOT.v1-TPLOT.v0);
+    panLast=e.clientX;
+    if(di){ tsHover=-1; tsTip.style.opacity=0; setView(TPLOT.v0-di, TPLOT.v1-di); return; }
+  }
+  showTSTip(e.clientX);
+});
+function endPtr(e){
+  ptrs.delete(e.pointerId);
+  if(ptrs.size<2) pinch0=null;
+  if(ptrs.size===0) panLast=null;
+  else if(ptrs.size===1) panLast=[...ptrs.values()][0];
+}
+tsCv.addEventListener("pointerup", endPtr);
+tsCv.addEventListener("pointercancel", endPtr);
+tsCv.addEventListener("pointerleave", ()=>{ if(!ptrs.size){ tsHover=-1; tsTip.style.opacity=0; drawTS(); } });
+tsCv.addEventListener("wheel", e=>{
+  if(!TPLOT) return;
+  e.preventDefault();
+  const rect=tsCv.getBoundingClientRect();
+  const f=Math.max(0,Math.min(1,(e.clientX-rect.left-TPLOT.pad.l)/TPLOT.pw));
+  const span=TPLOT.v1-TPLOT.v0;
+  const ns=span*Math.exp(Math.max(-0.4,Math.min(0.4, e.deltaY*0.002)));
+  const anchor=TPLOT.v0+f*span;
+  setView(anchor-f*ns, anchor+(1-f)*ns);
+}, {passive:false});
+tsCv.addEventListener("dblclick", ()=>setView(0, N-1));
+document.getElementById("zoomReset").addEventListener("click", ()=>setView(0, N-1));
+
+document.querySelectorAll("#paneSeg button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    PANE = b.dataset.p;
+    document.querySelectorAll("#paneSeg button").forEach(x=>x.setAttribute("aria-pressed", x===b));
+    tsLegend(); drawTS();
+  });
+});
+function setQuadFilter(q){
+  QFILT = q;
+  document.querySelectorAll("#quadSeg button").forEach(x=>
+    x.setAttribute("aria-pressed", (x.dataset.q||"")===QFILT));
+  drawTS();
+}
+document.querySelectorAll("#quadSeg button").forEach(b=>{
+  b.addEventListener("click", ()=>setQuadFilter(b.dataset.q||""));
+});
+
+/* ===== 04: quadrant scoreboard ===== */
+function retStyle(val, scale){
+  const t = Math.max(-1, Math.min(1, val/scale));
+  const a = Math.pow(Math.abs(t), 0.85) * 0.9;
+  const rgb = t>=0 ? css("--pos-rgb") : css("--neg-rgb");
+  let ink = t>=0 ? css("--pos-ink") : css("--neg-ink");
+  if(Math.abs(t) < 0.14) ink = css("--ink");
+  return {bg:`rgba(${rgb},${a.toFixed(3)})`, ink};
+}
+function renderQuad(){
+  const body = document.getElementById("hmBody");
+  body.innerHTML = "";
+  QUAD.forEach(row=>{
+    const [code,label,days,mean,med,hit,fvol,dvol] = row;
+    const tr = document.createElement("tr");
+    if(code===META.today.quad) tr.className = "feat";
+    tr.dataset.q = code; tr.style.cursor = "pointer";
+    tr.title = "Band this quadrant's days in the chart above";
+    const gHi=code[0]==="H", cHi=code[1]==="H";
+    const tdReg = document.createElement("td");
+    tdReg.innerHTML = `<div class="reg-cell">
+      <div class="dtiles">
+        <span class="dtile" style="background:rgba(var(--acc-rgb),${gHi?0.78:0.09})" title="gamma ${gHi?"High":"Low"}">G</span>
+        <span class="dtile" style="background:rgba(var(--acc-rgb),${cHi?0.78:0.09})" title="correlation ${cHi?"High":"Low"}">C</span>
+      </div>
+      <span class="nm">${label}</span>
+      <span class="days">${days}d</span>
+    </div>`;
+    tr.appendChild(tdReg);
+    const mk = (v, txt, cls, style) => {
+      const td=document.createElement("td");
+      if(cls) td.className=cls;
+      td.innerHTML=`<div class="retc"${style?` style="background:${style.bg}"`:""}>
+        <div class="v"${style?` style="color:${style.ink}"`:""}>${txt}</div></div>`;
+      tr.appendChild(td);
+    };
+    mk(mean, mean==null?"—":pc(mean), "grp-ret", mean==null?null:retStyle(mean,3));
+    mk(med, med==null?"—":pc(med), "", med==null?null:retStyle(med,3));
+    mk(hit, hit==null?"—":Math.round(hit)+"%", "", hit==null?null:retStyle(hit-50,30));
+    mk(fvol, fvol==null?"—":fvol.toFixed(1), "grp-vol",
+       fvol==null?null:retStyle(META.baseline.fvol-fvol, META.baseline.fvol*0.5));
+    mk(dvol, dvol==null?"—":(dvol>=0?"+":"")+dvol.toFixed(1), "",
+       dvol==null?null:retStyle(-dvol,4));
+    body.appendChild(tr);
+  });
+}
+document.getElementById("hmBody").addEventListener("click", e=>{
+  const tr=e.target.closest("tr[data-q]"); if(!tr) return;
+  setQuadFilter(tr.dataset.q);
+  document.querySelector("#tsCanvas").closest(".chart-wrap")
+    .scrollIntoView({behavior:"smooth", block:"center"});
+});
+
+/* ===== 05 + 06 + 07: bound figures ===== */
+function applyMeta(){
+  const set = (id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
+  const c = META.cmp;
+  set("cmpCorV", c.cor_r==null ? "—" : "r = "+c.cor_r.toFixed(2));
+  set("cmpCorM", c.cor_r==null ? "insufficient overlap" :
+      `21-day changes r = ${c.cor_dr==null?"—":c.cor_dr.toFixed(2)} · ${c.cor_n.toLocaleString()} common days`);
+  set("cmpDspV", c.dsp_r==null ? "—" : "r = "+c.dsp_r.toFixed(2));
+  set("cmpDspM", c.dsp_r==null ? "insufficient overlap" :
+      `21-day changes r = ${c.dsp_dr==null?"—":c.dsp_dr.toFixed(2)} · ${c.dsp_n.toLocaleString()} common days`);
+  const f = META.find||{};
+  set("fVolSpread", f.volSpread==null?"—":f.volSpread.toFixed(1));
+  set("fDangerRet", f.dangerRet||"—"); set("fDangerHit", f.dangerHit==null?"—":Math.round(f.dangerHit));
+  set("fDangerVol", f.dangerVol==null?"—":f.dangerVol.toFixed(1));
+  set("fCalmRet", f.calmRet||"—"); set("fCalmHit", f.calmHit==null?"—":Math.round(f.calmHit));
+  set("fCalmVol", f.calmVol==null?"—":f.calmVol.toFixed(1));
+  set("fCorR", f.corR==null?"—":f.corR.toFixed(2));
+  set("fCorDR", f.corDR==null?"—":f.corDR.toFixed(2));
+  set("fDspR", f.dspR==null?"—":f.dspR.toFixed(2));
+  set("cvDays", META.n_days.toLocaleString()); set("cvIndep", META.n_indep);
+  set("mBasket", META.basket); set("mNdays", META.n_days.toLocaleString());
+  set("mBuilt", META.built);
+}
+
+/* ===== gamma-source wording: GEX+ (yacht-club feed) vs classic GEX ===== */
+document.querySelectorAll(".gexTerm").forEach(e=>{ e.textContent = META.gexLabel || "GEX"; });
+document.querySelectorAll(META.gexSrc==="gexplus" ? ".src-classic" : ".src-gexplus")
+  .forEach(e=>e.remove());
+
+/* ===== boot + theme/resize re-renders ===== */
+function redrawAll(){ drawMap(); tsLegend(); drawTS(); renderQuad(); }
+applyHero(); applyMeta(); redrawAll();
+setQuadFilter(META.today.quad || "");
+
+let rAF=null;
+window.addEventListener("resize", ()=>{ cancelAnimationFrame(rAF); rAF=requestAnimationFrame(()=>{ drawMap(); drawTS(); }); });
+new MutationObserver(redrawAll).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", redrawAll);
+</script>

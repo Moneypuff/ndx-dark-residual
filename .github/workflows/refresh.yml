@@ -125,6 +125,19 @@ jobs:
           --docs-out docs/comovement.html
           --cache-dir .ndx_dark_cache
 
+      # GEX x dispersion barometer: SqueezeMetrics gamma + Cboe COR1M/DSPX + our own realized
+      # correlation/dispersion from the top-50 IVV names (same Yahoo cache). With the
+      # GEXPLUS_KEY repo secret set (Settings -> Secrets and variables -> Actions) the gamma
+      # gauge is the yacht-club GEX+ feed (2004->); without it, the free classic GEX CSV.
+      - name: Build GEX dispersion barometer
+        env:
+          GEXPLUS_KEY: ${{ secrets.GEXPLUS_KEY }}
+        run: >
+          python build_gex_dispersion.py
+          --docs-out docs/gex_dispersion.html
+          --cache-dir .ndx_dark_cache
+          ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
+
       # Earnings-DPI study -> docs/earnings.html (linked from the dashboard's "Earnings DIX" tab).
       - name: Refresh earnings dates from SEC EDGAR
         run: python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
