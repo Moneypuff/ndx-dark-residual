@@ -5,10 +5,13 @@ reading and found no edge — but a stock on a **high-decile DPI streak** may do
 better over the 1–2 month range. So on a downtrend, require the **10-day average
 DPI to sit in the higher deciles** (persistent dark accumulation), not one print.
 
-**Short answer: the pushback is substantially right — persistence surfaces a real,
-beta-adjusted ~+0.7%/month alpha the single print missed, and it reproduces out of
-sample at the 1-month horizon. Two caveats: the 2–3 month version is an in-sample
-artifact that fails OOS, and it's a long-only (not a clean market-neutral) edge.**
+**Short answer (updated after the reversal control): the pushback was a real
+methodological improvement — persistence surfaced the most stable single-stock
+number in the whole thread (a beta-adjusted ~+0.7%/month long-only alpha at 1
+month that reproduces out of sample). But it does NOT survive a short-term-reversal
++ benchmark control: that +0.7% is almost entirely the generic tendency of
+downtrend names to bounce, and the streak's OWN marginal is ~+0.15pp and not
+significant. See "Short-term-reversal control" below — it is the decisive test.**
 
 Full S&P 500, 2019–2026 (848,632 name-days; 40% of days are in a 3-month
 downtrend, 24% have the 10-day-avg DPI in the top quintile). Signals are
@@ -74,22 +77,55 @@ only the **1-month** horizon holds up; the 2-month does not.
   full sample is significant and the halves are near-identical, but neither half
   is independently significant at 95%.
 
-## Verdict
+## 4. Short-term-reversal control — the decisive test
 
-**Going about it with a single print was the wrong way — persistence matters.**
-A 10+ session high-decile DPI streak in a downtrend earns ~+0.7% CAPM alpha over
-the next month, monotone in streak length, and the effect size reproduces out of
-sample. This is the one single-stock dark-flow result in the whole thread worth
-taking seriously.
+**Short-term reversal (STR)** is the 1-month anomaly where recent *losers* bounce
+and recent *winners* give back (liquidity provision / overreaction correction).
+Our setup buys stocks in a *downtrend* — recent losers by construction — so the
++0.7% could be STR dressed up as dark flow. CAPM alpha removes market beta but
+*not* reversal. Two controls, among downtrend names:
 
-But keep it honest: it is a **1-month, long-only, threshold** effect. The 2–3
-month extension is an in-sample artifact; the market-neutral long-short is null;
-and each OOS half only grazes significance. Before trading it, it needs (a)
-adjustment for the short-term-reversal factor (downtrend + accumulation overlaps
-reversal — CAPM removes market beta, not that), (b) transaction-cost and
-capacity checks (it is long-only turnover in mid/large caps), and (c) a true
-forward out-of-sample as more data accrues. Treat it as a live, promising
-hypothesis — the best lead here — not a finished signal.
+**Confound check (a surprise that helps the mechanism):** the 10+ streak names had
+a prior-21d return of **+0.91%** vs **−2.52%** for the no-streak downtrend names —
+i.e. the streak names are the ones *stabilizing* inside a longer downtrend, **not**
+deeper losers. So classic STR would favor the *no-streak* names; it is not
+*selecting* the streak.
+
+**Fama-MacBeth (daily cross-sectional `alpha ~ const + rback + streak10`, averaged):**
+the streak-dummy coefficient is the alpha it adds *beyond* recent return and
+*relative to other downtrend names*:
+
+| horizon | raw 10+ long-only | reversal-adjusted streak coefficient |
+|---:|---|---|
+| **21d** | +0.71% [+0.14, +1.29] | **+0.15% [−0.35, +0.66]** · IS −0.16% · OOS +0.46% |
+| 42d | +0.60% | −0.11% [−0.81, +0.62] |
+| 63d | +0.71% | +0.11% [−0.79, +1.13] |
+
+Double-sort (10+ streak − no-streak alpha within recent-return terciles): **+0.18 /
+−0.02 / +0.45 pp** — averages ~+0.2pp, inconsistent across buckets.
+
+**The +0.71% deflates.** It decomposes as **[common downtrend-name bounce ~+0.55%]
++ [streak-specific marginal ~+0.15%]**. Almost all of it is the generic bounce of
+beaten-down names (which hits streak and no-streak alike); the streak's own
+contribution, once recent return is controlled and it is benchmarked against other
+downtrend names, is **~+0.15pp and not significant** in full, IS, or OOS.
+
+## Verdict (revised)
+
+**The single print was indeed the wrong lens — persistence is the right idea, and
+it produced the best-looking single-stock number in the thread** (+0.71% CAPM
+alpha, 1-month, monotone in streak length, stable OOS). That much stands.
+
+**But it does not survive the reversal + benchmark control.** Stripped of the
+common downtrend-bounce and the recent-return characteristic, the streak's own
+alpha is ~+0.15pp and indistinguishable from zero (full/IS/OOS); the 2–3 month
+versions were in-sample artifacts; and the market-neutral long-short is null. So
+the honest conclusion is: **beaten-down names bounce, and a high-decile DPI streak
+does not reliably add to that bounce.** Notably it is *not* classic reversal
+*selecting* the names (they are stabilizers, not deep losers) — but the dark-flow
+streak is not a confirmed independent edge on this data. Consistent with the
+thread's throughline: dark flow's tradeable signal is systematic/index-level, not
+single-stock selection.
 
 ## Caveats
 

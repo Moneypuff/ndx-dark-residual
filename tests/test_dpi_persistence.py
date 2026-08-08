@@ -59,3 +59,39 @@ def test_per_name_conditional_runs_and_bounds():
     assert r["names"] > 0
     assert 0.0 <= r["pos_pct"] <= 100.0
     assert 0.0 <= r["sign_p"] <= 1.0
+
+
+def test_fama_macbeth_recovers_coefs_controlling_for_reversal():
+    # y = -0.05*rback + 0.5*streak10 + noise ; FM must recover both, and the
+    # streak coef must be isolated from the reversal characteristic.
+    rng = np.random.default_rng(0)
+    dates = pd.bdate_range("2019-01-02", periods=250)
+    names = [f"N{i}" for i in range(40)]
+    idx = pd.MultiIndex.from_product([dates, names], names=["date", "name"])
+    m = len(idx)
+    rback = rng.normal(-5, 5, m)
+    streak10 = (rng.uniform(0, 1, m) < 0.3).astype(float)
+    alpha = -0.05 * rback + 0.5 * streak10 + rng.normal(0, 3, m)
+    long = pd.DataFrame({"trend63": np.full(m, -1.0), "rback": rback,
+                         "streak10": streak10, "alpha": alpha}, index=idx)
+    fm = P.fama_macbeth(long, "alpha", ["rback", "streak10"], long["trend63"] < 0)
+    assert abs(fm["streak10"]["mean"] - 0.5) < 0.2
+    assert fm["streak10"]["ci"][0] > 0                       # recovers the planted positive coef
+    assert abs(fm["rback"]["mean"] - (-0.05)) < 0.03
+
+
+def test_fama_macbeth_null_streak_coef_straddles_zero():
+    # streak10 carries no true effect once rback is controlled -> coef ~ 0
+    rng = np.random.default_rng(1)
+    dates = pd.bdate_range("2019-01-02", periods=250)
+    names = [f"N{i}" for i in range(40)]
+    idx = pd.MultiIndex.from_product([dates, names], names=["date", "name"])
+    m = len(idx)
+    rback = rng.normal(-5, 5, m)
+    streak10 = (rng.uniform(0, 1, m) < 0.3).astype(float)
+    alpha = -0.05 * rback + rng.normal(0, 3, m)              # no streak effect
+    long = pd.DataFrame({"trend63": np.full(m, -1.0), "rback": rback,
+                         "streak10": streak10, "alpha": alpha}, index=idx)
+    fm = P.fama_macbeth(long, "alpha", ["rback", "streak10"], long["trend63"] < 0)
+    lo, hi = fm["streak10"]["ci"]
+    assert lo < 0 < hi

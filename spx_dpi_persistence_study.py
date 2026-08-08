@@ -83,6 +83,7 @@ def build_long(SP, spy, fwd_h):
     streak = run_length(p1 >= HI)                                          # high-decile streak
     trend63 = XS.trend_slope(adj, 63)
 
+    rback = (adj / adj.shift(21) - 1.0) * 100.0                            # prior-21d return = the STR characteristic
     fwd = N.compute_forward_return(adj, fwd_h)
     xret = fwd.sub(fwd.mean(axis=1), axis=0)
     spy_i = spy.reindex(idx)
@@ -98,10 +99,11 @@ def build_long(SP, spy, fwd_h):
 
     long = pd.DataFrame({
         "p1": p1.stack(), "p10": p10.stack(), "streak": streak.stack(),
-        "trend63": trend63.stack(), "fwd": fwd.stack(),
+        "trend63": trend63.stack(), "rback": rback.stack(), "fwd": fwd.stack(),
         "xret": xret.stack(), "spyx": spyx.stack(), "alpha": alpha.stack(),
     })
     long.index.set_names(["date", "name"], inplace=True)
+    long["streak10"] = (long["streak"] >= 10).astype(float)
     return long.dropna(subset=["p1", "p10", "fwd", "trend63"])
 
 
@@ -169,6 +171,57 @@ def longshort(long, sig_col, outcome, seed=0):
     return _stat(np.asarray(daily, dtype=float), seed=seed)
 
 
+def fama_macbeth(long, ycol, xcols, mask, seed=0, min_n=8):
+    """Daily cross-sectional OLS of `ycol` on [const]+`xcols` over `mask` rows,
+    then the mean of each daily coefficient with a block-bootstrap CI (the
+    Fama-MacBeth estimator). Used to ask: does the streak dummy still carry
+    forward alpha once the short-term-reversal characteristic (rback) is in the
+    regression alongside it?"""
+    d = long[mask].dropna(subset=[ycol] + xcols)
+    series = {c: [] for c in ["const"] + xcols}
+    for _, g in d.groupby(level="date"):
+        if len(g) < len(xcols) + min_n or g[xcols].std().min() == 0:
+            continue
+        X = np.column_stack([np.ones(len(g))] + [g[c].to_numpy() for c in xcols])
+        y = g[ycol].to_numpy()
+        try:
+            b = np.linalg.lstsq(X, y, rcond=None)[0]
+        except np.linalg.LinAlgError:
+            continue
+        series["const"].append(b[0])
+        for i, c in enumerate(xcols):
+            series[c].append(b[i + 1])
+    out = {}
+    for i, c in enumerate(["const"] + xcols):
+        a = np.asarray(series[c], dtype=float)
+        ci = XS.block_boot_ci(a, seed=seed + i) if len(a) else (np.nan, np.nan)
+        out[c] = {"mean": round(float(a.mean()), 4) if len(a) else np.nan,
+                  "ci": (round(ci[0], 4), round(ci[1], 4)) if np.isfinite(ci[0]) else None,
+                  "days": int(len(a))}
+    return out
+
+
+def reversal_double_sort(long, outcome="alpha"):
+    """Hold reversal ~constant: among downtrend names, within each recent-return
+    (rback) tercile, the 10+ streak minus no-streak forward outcome. If the
+    streak still pays inside every reversal bucket, it is not just reversal."""
+    d = long[(long["trend63"] < 0)].dropna(subset=["rback", outcome]).copy()
+    # daily rback terciles so the sort is real-time
+    d["rev_t"] = d.groupby(level="date")["rback"].transform(
+        lambda s: pd.qcut(s, 3, labels=["deepest", "mid", "shallow"], duplicates="drop")
+        if s.nunique() >= 3 else np.nan)
+    rows = []
+    for t in ("deepest", "mid", "shallow"):
+        sub = d[d["rev_t"] == t]
+        hi = sub[sub["streak"] >= 10][outcome]
+        no = sub[sub["streak"] == 0][outcome]
+        rows.append({"rev_tercile": t, "streak10_mean": round(float(hi.mean()), 3) if len(hi) else np.nan,
+                     "nostreak_mean": round(float(no.mean()), 3) if len(no) else np.nan,
+                     "diff": round(float(hi.mean() - no.mean()), 3) if len(hi) and len(no) else np.nan,
+                     "n_streak10": int(len(hi))})
+    return rows
+
+
 def _slice(long, lo=None, hi=None):
     d = long.index.get_level_values("date")
     m = np.ones(len(long), dtype=bool)
@@ -216,6 +269,27 @@ def report(long_by_h, split=SPLIT_DATE):
             ls = longshort(sub, "p10", "alpha", seed=hash((h, lab)) % 1000)
             out.append(f"   {lab:10s} alpha L/S {ls['mean']:+.3f}%  hit {ls['hit']}%  "
                        f"95% CI {_ci(ls['ci'])}  ({ls['days']} days)")
+
+        out.append("\n4) SHORT-TERM-REVERSAL CONTROL (among downtrend names)")
+        down = long["trend63"] < 0
+        rb_s = long.loc[down & (long["streak"] >= 10), "rback"].mean()
+        rb_n = long.loc[down & (long["streak"] == 0), "rback"].mean()
+        out.append(f"   confound check -- mean prior-21d return: 10+ streak {rb_s:+.2f}%  vs  "
+                   f"no-streak {rb_n:+.2f}%  (are streak names deeper losers?)")
+        out.append("   Fama-MacBeth: alpha ~ const + rback(reversal) + streak10 dummy  "
+                   "(coef on streak10 = alpha the streak adds BEYOND reversal):")
+        for lab, sub in [("full", long), (f"IS<{split[:4]}", _slice(long, hi=split)),
+                         (f"OOS>={split[:4]}", _slice(long, lo=split))]:
+            fm = fama_macbeth(sub, "alpha", ["rback", "streak10"], sub["trend63"] < 0,
+                              seed=hash((h, lab, "fm")) % 1000)
+            s10, rbk = fm["streak10"], fm["rback"]
+            out.append(f"   {lab:10s} streak10 {s10['mean']:+.3f}% {_ci(s10['ci'])}  |  "
+                       f"rback(reversal) {rbk['mean']:+.4f} {_ci(rbk['ci'])}  ({s10['days']} days)")
+        out.append("   double-sort (10+ streak - no-streak alpha, within reversal terciles):")
+        for r in reversal_double_sort(long, "alpha"):
+            out.append(f"      rback {r['rev_tercile']:>8}: streak10 {r['streak10_mean']:+.3f}%  "
+                       f"no-streak {r['nostreak_mean']:+.3f}%  diff {r['diff']:+.3f}pp "
+                       f"(n={r['n_streak10']})")
     return "\n".join(out)
 
 
@@ -248,6 +322,14 @@ def summary_rows(long_by_h, split=SPLIT_DATE):
                          "bucket": "10+&downtrend", "n": c.get("days", 0), "mean_pp": c.get("mean"),
                          "hit": c.get("hit"), "ci_lo": (c.get("ci") or [None, None])[0],
                          "ci_hi": (c.get("ci") or [None, None])[1]})
+        # short-term-reversal control: Fama-MacBeth streak10 coefficient
+        for lab, sub in [("full", long), ("IS", _slice(long, hi=split)), ("OOS", _slice(long, lo=split))]:
+            fm = fama_macbeth(sub, "alpha", ["rback", "streak10"], sub["trend63"] < 0)
+            s10 = fm["streak10"]
+            rows.append({"horizon": h, "test": "streak10_alpha_revadj", "outcome": lab,
+                         "bucket": "FM_coef", "n": s10["days"], "mean_pp": s10["mean"],
+                         "hit": None, "ci_lo": (s10["ci"] or [None, None])[0],
+                         "ci_hi": (s10["ci"] or [None, None])[1]})
     return pd.DataFrame(rows)
 
 
