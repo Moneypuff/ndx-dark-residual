@@ -10,8 +10,9 @@ Yahoo loader), and computes:
   * a 5-day moving average of each index's dollar-DIX, bucketed into deciles
     (Low = 1-3, Mid = 4-7, High = 8-10) -> the 27 comovement regimes  ->  `DATA`
   * per-day rebased price paths + regime code + forward returns -> `PX`
-    (powers the filterable price chart)
-  * baseline / requested-regime / headline figures -> `META`
+    (powers the filterable price chart; the hero "today's regime" card is
+    derived client-side from the last day's code, so it always tracks the data)
+  * baseline / headline figures -> `META`
     (so the prose figures stay correct as the dashboard refreshes)
 
 The HTML shell lives in comovement_template.html with three placeholders
@@ -35,7 +36,6 @@ import ndx_dark_residual as N
 IDX = ["NDX", "SPX", "IWM"]
 PROXY = {"NDX": "QQQ", "SPX": "SPY", "IWM": "IWM"}   # index -> ETF price proxy
 LVLW = {"L": "Low", "M": "Mid", "H": "High"}
-FEATURE = "LLH"   # the requested regime: NDX Low, SPX Low, IWM High
 
 
 def load_payload(html_path):
@@ -128,15 +128,6 @@ def build_meta(A, data, P):
         r = A[k + "_ret"].dropna()
         base[k] = [round(float(r.mean()), 2), round(float(r.median()), 2),
                    round(float((r > 0).mean() * 100))]
-    # requested-regime stats (+ delta vs baseline mean)
-    fg = A[A["code"] == FEATURE]
-    feat = {}
-    for k in IDX:
-        r = fg[k + "_ret"].dropna()
-        m = round(float(r.mean()), 2) if len(r) else 0.0
-        feat[k] = [m, round(float(r.median()), 2) if len(r) else 0.0,
-                   round(float((r > 0).mean() * 100)) if len(r) else 0,
-                   round(m - base[k][0], 2)]
     # findings ranges, all derived from the table so prose never drifts
     by = {r[0]: r for r in data}
 
@@ -153,7 +144,8 @@ def build_meta(A, data, P):
         return f"{'+' if min(vals) >= 0 else ''}{min(vals):.1f}% to {'+' if max(vals) >= 0 else ''}{max(vals):.1f}%"
 
     comov = means_for(["HHH", "LLL"])
-    feat_means = [feat[k][0] for k in IDX]
+    # the Low/Low/High divergence finding (finding 03) stays pinned to that regime
+    feat_means = means_for(["LLH"])
     # high-IWM-alone weakness: the purest case -- IWM DIX High while both large caps
     # sit only Mid (N=Mid, S=Mid, I=High) -- a single, definitionally-stable regime.
     pure = by.get("N=Mid,S=Mid,I=High")
@@ -171,12 +163,11 @@ def build_meta(A, data, P):
         "built": "Data " + P.get("generated", "").split()[0] + " · built "
                  + datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "baseline": base,
-        "feature": {"stats": feat},
         "find": {
             "comov": rng(comov) if comov else "—",
             "iwmVal": iwm_val,
             "iwmHit": iwm_hit,
-            "feat": rng(feat_means),
+            "feat": rng(feat_means) if feat_means else "—",
             "bestVal": f"+{best[2][0]:.2f}%",
             "bestHit": f"{best[2][2]:.0f}%",
             "bestReg": f"NDX {best_parts['N']} / SPX {best_parts['S']} / IWM {best_parts['I']}",
