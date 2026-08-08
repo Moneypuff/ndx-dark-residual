@@ -4,9 +4,13 @@ Build the GEX x dispersion barometer (docs/gex_dispersion.html).
 
 Two dials, one tape:
 
-  * GAMMA -- SqueezeMetrics' public daily SPX gamma exposure (GEX, $ per 1%
-    move; the free ancestor of the gated GEX+ series), ranked against its own
+  * GAMMA -- SqueezeMetrics' daily SPX gamma exposure, ranked against its own
     trailing year so the dollar drift of a growing options market washes out.
+    With a yacht-club key (env GEXPLUS_KEY or --gexplus-key) the gauge is
+    their GEX+ series (GEX + VEX under their fitted dealer-positioning model,
+    daily since 2004); without one it falls back to the free classic GEX CSV
+    (2011->). The key is a secret: pass it via the environment / CLI, never
+    commit it.
   * CORRELATION -- how much S&P 500 stocks move together. We compute our OWN
     1-month (21-session) realized correlation with Cboe's implied-correlation
     weighting -- the top-50 IVV constituents by index weight -- via the basket
@@ -23,7 +27,8 @@ Crossing the two dials at their midpoints gives four regimes ("quadrants"),
 each scored by the SPX return AND realized volatility over the following 21
 sessions -- the 1-month horizon where gamma positioning has its bite.
 
-Data sources (all free, all fetched with a day-stamped cache):
+Data sources (all fetched with a day-stamped cache):
+  * https://squeezemetrics.com/monitor/api/yachtclub/gexplus?key=...  (GEX+; 2004->, keyed)
   * https://squeezemetrics.com/monitor/static/DIX.csv      (SPX close, DIX, GEX; 2011->)
   * https://cdn.cboe.com/api/global/us_indices/daily_prices/COR1M_History.csv  (2006->)
   * https://cdn.cboe.com/api/global/us_indices/daily_prices/DSPX_History.csv   (2014->)
@@ -38,6 +43,7 @@ The HTML shell lives in gex_dispersion_template.html with three placeholders
 import argparse
 import io
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -48,6 +54,10 @@ import pandas as pd
 import ndx_dark_residual as N
 
 SQUEEZE_CSV_URL = "https://squeezemetrics.com/monitor/static/DIX.csv"
+GEXPLUS_URL_TMPL = "https://squeezemetrics.com/monitor/api/yachtclub/gexplus?key={key}"
+# The yacht-club feed quotes GEX/VEX/GEX+ in $M per unit (100%) return; the public
+# CSV quotes $ per 1% move. x1e4 puts GEX+ on the public series' dollar scale.
+GEXPLUS_DOLLARS = 1e4
 CBOE_HISTORY_TMPL = ("https://cdn.cboe.com/api/global/us_indices/daily_prices/"
                      "{sym}_History.csv")
 
@@ -126,6 +136,30 @@ def parse_squeeze_csv(text):
     for c in ("price", "dix", "gex"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
     return df[["price", "dix", "gex"]].dropna(how="all")
+
+
+def parse_gexplus_csv(text):
+    """SqueezeMetrics yacht-club gexplus CSV -> DataFrame indexed by date with
+    columns price (SPX close), dix, gex ($ per 1% move -- the GEX+ column
+    rescaled onto the public series' dollar units). The feed carries many more
+    columns (GEX, VEX, GIV, NPD, ...); only the barometer's inputs are kept.
+    Empty frame if the body is unusable (bad key, HTML gate, schema drift)."""
+    try:
+        df = pd.read_csv(io.StringIO(text))
+    except Exception:  # noqa: BLE001
+        return pd.DataFrame()
+    df.columns = [c.strip().upper() for c in df.columns]
+    if not {"DATE", "GEX+", "CLOSE"}.issubset(df.columns):
+        return pd.DataFrame()
+    out = pd.DataFrame({
+        "date": pd.to_datetime(df["DATE"], errors="coerce"),
+        "price": pd.to_numeric(df["CLOSE"], errors="coerce"),
+        "dix": (pd.to_numeric(df["DIX"], errors="coerce")
+                if "DIX" in df.columns else np.nan),
+        "gex": pd.to_numeric(df["GEX+"], errors="coerce") * GEXPLUS_DOLLARS,
+    })
+    out = out.dropna(subset=["date"]).set_index("date").sort_index()
+    return out[["price", "dix", "gex"]].dropna(subset=["price", "gex"], how="all")
 
 
 def parse_cboe_csv(text, value_col=None):
@@ -363,6 +397,10 @@ def main():
                          "matching Cboe's implied-correlation universe)")
     ap.add_argument("--refresh", action="store_true",
                     help="force re-download of the GEX / Cboe / holdings docs")
+    ap.add_argument("--gexplus-key", default=None,
+                    help="SqueezeMetrics yacht-club key for the GEX+ feed "
+                         "(default: the GEXPLUS_KEY env var; without a key the "
+                         "build falls back to the public classic-GEX CSV)")
     args = ap.parse_args()
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
@@ -371,14 +409,29 @@ def main():
     cpath = (lambda name: cache_dir / name if cache_dir else None)
     session = N.make_session(4) if N.requests else None
 
-    # ---- GEX (+ SPX close) --------------------------------------------------
-    body = fetch_text_cached(SQUEEZE_CSV_URL, cpath("gexdisp_squeeze.csv"),
-                             refresh=args.refresh, label="SqueezeMetrics GEX",
-                             session=session)
-    G = parse_squeeze_csv(body or "")
+    # ---- gamma (+ SPX close): GEX+ with a key, classic GEX without ----------
+    G, gex_src = pd.DataFrame(), "classic"
+    key = args.gexplus_key or os.environ.get("GEXPLUS_KEY", "").strip()
+    if key:
+        body = fetch_text_cached(GEXPLUS_URL_TMPL.format(key=key),
+                                 cpath("gexdisp_gexplus.csv"),
+                                 refresh=args.refresh, label="SqueezeMetrics GEX+",
+                                 session=session)
+        G = parse_gexplus_csv(body or "")
+        if G.empty:
+            print("  ! GEX+ feed unusable (bad key?); falling back to classic GEX",
+                  file=sys.stderr)
+    if not G.empty:
+        gex_src = "gexplus"
+    else:
+        body = fetch_text_cached(SQUEEZE_CSV_URL, cpath("gexdisp_squeeze.csv"),
+                                 refresh=args.refresh, label="SqueezeMetrics GEX",
+                                 session=session)
+        G = parse_squeeze_csv(body or "")
     if G.empty:
         raise SystemExit("No usable GEX series (SqueezeMetrics fetch failed and no cache).")
-    print(f"GEX: {len(G)} days [{G.index.min().date()} -> {G.index.max().date()}]",
+    gex_label = "GEX+" if gex_src == "gexplus" else "GEX"
+    print(f"{gex_label}: {len(G)} days [{G.index.min().date()} -> {G.index.max().date()}]",
           file=sys.stderr)
 
     # ---- Cboe reference gauges ---------------------------------------------
@@ -416,6 +469,18 @@ def main():
                                  cache_dir=args.cache_dir or None,
                                  refresh=args.refresh, label="GEXDISP")
     adj = panels["adjclose"].dropna(how="all")
+    # The shared Yahoo cache only backfills a symbol forward from its cached
+    # range, so a cache built for a shallower window (e.g. classic GEX's 2011
+    # start) silently truncates the GEX+ era. If the panel starts well after
+    # the gamma series does, re-pull the basket in full once.
+    if not args.refresh and (adj.empty or
+                             adj.index.min() > pd.Timestamp(start) + pd.Timedelta(days=400)):
+        print("Yahoo panel shallower than the gamma history; re-fetching the basket in full...",
+              file=sys.stderr)
+        panels = N.load_yahoo_panels(list(w.index), start, end,
+                                     cache_dir=args.cache_dir or None,
+                                     refresh=True, label="GEXDISP")
+        adj = panels["adjclose"].dropna(how="all")
     returns = adj.pct_change(fill_method=None)
     RC = realized_cor_disp(returns, w, window=WINDOW, min_names=MIN_NAMES)
     print(f"Realized gauges: {RC['cor'].notna().sum()} defined days", file=sys.stderr)
@@ -438,7 +503,8 @@ def main():
     ser, quad, meta = build_payloads(
         F, cor1m, dspx,
         {"basket": f"top {len(w)} IVV names · {coverage:.0f}% of index weight",
-         "top_n": int(len(w))})
+         "top_n": int(len(w)),
+         "gexSrc": gex_src, "gexLabel": gex_label})
 
     body = (Path(args.template).read_text(encoding="utf-8")
             .replace("/*__SER__*/", json.dumps(ser, separators=(",", ":")))

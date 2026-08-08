@@ -125,9 +125,13 @@ jobs:
           --docs-out docs/comovement.html
           --cache-dir .ndx_dark_cache
 
-      # GEX x dispersion barometer: SqueezeMetrics GEX + Cboe COR1M/DSPX + our own realized
-      # correlation/dispersion from the top-50 IVV names (same Yahoo cache).
+      # GEX x dispersion barometer: SqueezeMetrics gamma + Cboe COR1M/DSPX + our own realized
+      # correlation/dispersion from the top-50 IVV names (same Yahoo cache). With the
+      # GEXPLUS_KEY repo secret set (Settings -> Secrets and variables -> Actions) the gamma
+      # gauge is the yacht-club GEX+ feed (2004->); without it, the free classic GEX CSV.
       - name: Build GEX dispersion barometer
+        env:
+          GEXPLUS_KEY: ${{ secrets.GEXPLUS_KEY }}
         run: >
           python build_gex_dispersion.py
           --docs-out docs/gex_dispersion.html

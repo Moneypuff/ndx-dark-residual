@@ -303,7 +303,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
   <header class="hero">
     <p class="eyebrow">Gamma × correlation → the tape's character</p>
     <h1>One dial for <span class="g">gamma</span>, one for how much stocks <span class="g">move together</span>.</h1>
-    <p class="lede">Dealer gamma (SqueezeMetrics' <b>GEX</b>) sets how hard option hedging leans on the tape;
+    <p class="lede">Dealer gamma (SqueezeMetrics' <b class="gexTerm">GEX</b>) sets how hard option hedging leans on the tape;
       <b>1-month correlation</b> across S&amp;P 500 stocks sets whether the tape moves as one trade or five
       hundred. We compute our own 21-session realized correlation and dispersion from the <b>top-50 IVV
       names</b> — Cboe's implied-correlation universe — check them against Cboe's published
@@ -315,7 +315,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
         <span class="tag">Today's quadrant</span>
         <span class="desc" id="heroDesc">—</span>
         <div class="dialset">
-          <span class="dialchip">GEX <span class="lvl" id="chGex">—</span><span class="px" id="chGexP"></span></span>
+          <span class="dialchip"><span class="gexTerm">GEX</span> <span class="lvl" id="chGex">—</span><span class="px" id="chGexP"></span></span>
           <span class="dialchip">Corr 1M <span class="lvl" id="chCor">—</span><span class="px" id="chCorP"></span></span>
           <span class="dialchip">COR1M <span class="lvl" id="chCor1m">—</span></span>
           <span class="dialchip">DSPX <span class="lvl" id="chDspx">—</span></span>
@@ -364,7 +364,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
       <canvas id="mapCanvas"></canvas>
       <div class="ptip" id="mapTip"></div>
     </div>
-    <p class="chart-cap"><b>Axes:</b> x — GEX percentile within its trailing 252 sessions (kills the
+    <p class="chart-cap"><b>Axes:</b> x — <span class="gexTerm">GEX</span> percentile within its trailing 252 sessions (kills the
       dollar drift of a growing options market); y — our realized 1-month correlation, in correlation
       points. Dashed lines mark the quadrant boundaries (median on each dial). Hover any dot.</p>
   </section>
@@ -380,10 +380,16 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     </div>
     <div class="method">
       <dl>
-        <div class="row"><dt>GEX</dt><dd>SqueezeMetrics' public daily SPX <b>gamma exposure</b> ($ per 1%
-          move) — the free ancestor of the gated GEX+ series. Positive = dealers long gamma, hedging
-          <b>against</b> moves; deeply negative = hedging <b>with</b> them. Ranked as a percentile within
-          its trailing year, since raw dollars drift upward with the options market.</dd></div>
+        <div class="row"><dt class="gexTerm">GEX</dt><dd class="src-classic">SqueezeMetrics' public daily
+          SPX <b>gamma exposure</b> ($ per 1% move) — the free ancestor of the gated GEX+ series.
+          Positive = dealers long gamma, hedging <b>against</b> moves; deeply negative = hedging
+          <b>with</b> them. Ranked as a percentile within its trailing year, since raw dollars drift
+          upward with the options market.</dd><dd class="src-gexplus">SqueezeMetrics' <b>GEX+</b> —
+          their yacht-club successor to classic GEX, folding strike-level gamma <i>and</i> vanna (VEX)
+          exposure into one dealer-hedging gauge (here rescaled to $ per 1% move). Positive = dealers
+          hedging <b>against</b> moves; deeply negative = hedging <b>with</b> them. Ranked as a
+          percentile within its trailing year, since raw dollars drift upward with the options
+          market.</dd></div>
         <div class="row"><dt>Correlation</dt><dd>Our own realized analog of Cboe's implied correlation:
           over the <b>top-50 IVV names</b> (weights renormalized), 21-session vols feed the basket identity
           <code>ρ = (σ²_P − Σw²σ²) / ((Σwσ)² − Σw²σ²)</code> — the average pairwise correlation implied by
@@ -414,7 +420,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
       <div class="seg" id="paneSeg" role="group" aria-label="series pane">
         <button data-p="cor" aria-pressed="true">Correlation · ours vs COR1M</button>
         <button data-p="disp" aria-pressed="false">Dispersion · ours vs DSPX</button>
-        <button data-p="gex" aria-pressed="false">GEX · $bn</button>
+        <button data-p="gex" aria-pressed="false"><span class="gexTerm">GEX</span> · $bn</button>
       </div>
       <div class="seg" id="quadSeg" role="group" aria-label="quadrant filter">
         <button data-q="HL">G+ C−</button><button data-q="HH">G+ C+</button>
@@ -524,9 +530,13 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
       <div><h2>Read with these in mind</h2></div>
     </div>
     <div class="cav">
-      <div class="c"><b>Classic GEX, not GEX+.</b> The public series assumes calls are dealer-long and puts
-        dealer-short at every strike; SqueezeMetrics' gated GEX+ relaxes that. Treat the sign near zero as
-        soft.</div>
+      <div class="c src-classic"><b>Classic GEX, not GEX+.</b> The public series assumes calls are
+        dealer-long and puts dealer-short at every strike; SqueezeMetrics' gated GEX+ relaxes that. Treat
+        the sign near zero as soft.</div>
+      <div class="c src-gexplus"><b>GEX+ is a model.</b> SqueezeMetrics' dealer-positioning fit is
+        proprietary; the series is consumed as published (GEX plus VEX under their assumptions) and
+        <i>ranked</i>, not re-derived — treat the dollar level as their estimate, the percentile as
+        ours.</div>
       <div class="c"><b>Today's basket, yesterday's tape.</b> The realized gauges use the <i>current</i>
         top-50 IVV names and weights across all of history — survivorship and weight drift grow with
         lookback. Cboe's COR1M is the point-in-time clean version; that's why it's on the chart.</div>
@@ -547,7 +557,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
   <footer>
     <div class="repro"><span class="p">python</span> build_gex_dispersion.py --docs-out docs/gex_dispersion.html</div>
     <div class="foot-meta">
-      <span>SqueezeMetrics GEX · Cboe COR1M/DSPX · Yahoo prices</span>
+      <span>SqueezeMetrics <span class="gexTerm">GEX</span> · Cboe COR1M/DSPX · Yahoo prices</span>
       <span id="mBasket">—</span>
       <span><span id="mNdays">—</span> sessions</span>
       <span id="mBuilt">—</span>
@@ -775,7 +785,7 @@ const PANES = {
                {k:"cor1m", tok:"--sRef", lab:"Cboe COR1M (implied)"}], fmt:v=>v.toFixed(1)},
   disp: {lines:[{k:"disp", tok:"--sOur", lab:"realized dispersion (ours)"},
                {k:"dspx", tok:"--sRef", lab:"Cboe DSPX (implied)"}], fmt:v=>v.toFixed(1)},
-  gex:  {lines:[{k:"gex", tok:"--accent", lab:"GEX · $bn"}], fmt:v=>v.toFixed(2)},
+  gex:  {lines:[{k:"gex", tok:"--accent", lab:(META.gexLabel||"GEX")+" · $bn"}], fmt:v=>v.toFixed(2)},
 };
 function tsLegend(){
   const el=document.getElementById("tsLegend");
@@ -1058,6 +1068,11 @@ function applyMeta(){
   set("mBasket", META.basket); set("mNdays", META.n_days.toLocaleString());
   set("mBuilt", META.built);
 }
+
+/* ===== gamma-source wording: GEX+ (yacht-club feed) vs classic GEX ===== */
+document.querySelectorAll(".gexTerm").forEach(e=>{ e.textContent = META.gexLabel || "GEX"; });
+document.querySelectorAll(META.gexSrc==="gexplus" ? ".src-classic" : ".src-gexplus")
+  .forEach(e=>e.remove());
 
 /* ===== boot + theme/resize re-renders ===== */
 function redrawAll(){ drawMap(); tsLegend(); drawTS(); renderQuad(); }

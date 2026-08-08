@@ -40,6 +40,32 @@ def test_parse_squeeze_rejects_html_and_wrong_columns():
     assert B.parse_squeeze_csv("").empty
 
 
+GEXPLUS_BODY = (
+    "DATE,SPX,CHG(%),GEX,VEX,GEX+,GIV,GIV(MAD%),NPD,VGR,VIX,VIX(MAD%),CR(x),"
+    "SU,MID,MO,DIX,RISC,VIBE,OPEN,HIGH,LOW,CLOSE\n"
+    "2004-01-02,1108.48,1.24,64521,72414,136935,16.07,0.81,-2.44,-2.22,18.22,"
+    "0.92,0.84,1103.95,1110.74,1117.54,,,,1111.92,1118.85,1105.08,1108.48\n"
+    "2004-01-05,1122.22,0.13,82869,73166,156035,15.56,0.78,-8.82,-1.91,17.49,"
+    "0.88,0.84,1117.95,1124.35,1130.76,,,,1108.48,1122.22,1108.48,1122.22\n"
+)
+
+
+def test_parse_gexplus_takes_gexplus_column_in_public_dollar_units():
+    df = B.parse_gexplus_csv(GEXPLUS_BODY)
+    assert list(df.columns) == ["price", "dix", "gex"]
+    assert len(df) == 2
+    assert df.index[0] == pd.Timestamp("2004-01-02")
+    assert df["price"].iloc[0] == pytest.approx(1108.48)     # CLOSE, not SPX/OPEN
+    assert df["gex"].iloc[0] == pytest.approx(136935 * B.GEXPLUS_DOLLARS)
+    assert df["dix"].isna().all()                            # empty pre-2011 DIX cells
+
+
+def test_parse_gexplus_rejects_html_and_missing_columns():
+    assert B.parse_gexplus_csv("<html>bad key</html>").empty
+    assert B.parse_gexplus_csv("DATE,GEX,CLOSE\n2020-01-02,1,2\n").empty  # no GEX+
+    assert B.parse_gexplus_csv("").empty
+
+
 COR1M_BODY = (
     "DATE,OPEN,HIGH,LOW,CLOSE\n"
     "01/03/2006,23.50,24.00,23.10,23.80\n"
