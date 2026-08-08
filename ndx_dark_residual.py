@@ -1784,6 +1784,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <button data-t="spxtbl">SP500 decile table</button>
     <a class="tablink" href="earnings.html" target="_blank" rel="noopener" title="DPI into earnings vs post-earnings performance -- opens the earnings study in a new tab">Earnings DIX &#8599;</a>
     <a class="tablink" href="comovement.html" target="_blank" rel="noopener" title="Cross-index DIX comovement (NDX/SPX/IWM) vs 1-month forward returns -- opens the comovement study in a new tab">Comovement &#8599;</a>
+    <a class="tablink" href="gex_dispersion.html" target="_blank" rel="noopener" title="SPX gamma exposure x 1-month S&amp;P 500 correlation (vs Cboe COR1M/DSPX) scored on 1-month forward return and vol -- opens the barometer in a new tab">GEX barometer &#8599;</a>
   </div>
   <div class="controls" id="ctl-grid" style="display:none">
     <div class="seg" id="univ" title="which universe's constituents to show as small multiples">

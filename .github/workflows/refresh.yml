@@ -125,6 +125,15 @@ jobs:
           --docs-out docs/comovement.html
           --cache-dir .ndx_dark_cache
 
+      # GEX x dispersion barometer: SqueezeMetrics GEX + Cboe COR1M/DSPX + our own realized
+      # correlation/dispersion from the top-50 IVV names (same Yahoo cache).
+      - name: Build GEX dispersion barometer
+        run: >
+          python build_gex_dispersion.py
+          --docs-out docs/gex_dispersion.html
+          --cache-dir .ndx_dark_cache
+          ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
+
       # Earnings-DPI study -> docs/earnings.html (linked from the dashboard's "Earnings DIX" tab).
       - name: Refresh earnings dates from SEC EDGAR
         run: python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
