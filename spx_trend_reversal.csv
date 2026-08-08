@@ -1,0 +1,10 @@
+test,group,n,value,ci_lo,ci_hi
+p_trough_within,LOW p10,70286,28.66,,
+p_trough_within,HIGH p10,78124,20.99,,
+p_trough_within,no streak,247388,25.59,,
+p_trough_within,streak 10+,16675,18.63,,
+daily_diff_pp,HIGH-LOW,1668,-6.97,-8.52,-5.36
+daily_diff_pp,streak10-none,1078,-6.53,-8.53,-4.48
+fm_hi10_pp,full,1688,-1.1,-2.1,-0.07
+fm_hi10_pp,IS,881,-0.66,-2.09,0.86
+fm_hi10_pp,OOS,807,-1.58,-2.96,-0.1
