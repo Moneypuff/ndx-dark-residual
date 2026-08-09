@@ -1,0 +1,100 @@
+name: Option-chain snapshot (fixed-strike vol tracker)
+
+# Captures the daily option-chain snapshot (snapshot_option_chains.py) and appends it to the
+# `optsnap-data` branch. This is the ONE dataset the pipeline cannot rebuild: Yahoo keeps no
+# option-chain history, so a day not captured is lost. The snapshots are small (~0.7 MB/day
+# compressed) and live on their own branch so main's history stays clean (see VOL_TRACKER.md;
+# squash the data branch periodically if it grows tiresome -- scripts/shrink_history.sh
+# documents the precedent).
+#
+# Unlike refresh.yml (which deliberately has contents: read and deploys artifacts only), this
+# workflow needs contents: write -- it pushes ONLY to optsnap-data, never to main.
+
+on:
+  workflow_dispatch: {}
+  # 6:30pm America/New_York on trading days. GitHub cron is fixed-UTC and cannot follow US
+  # daylight-saving, so BOTH candidate times fire and the gate lets exactly one through --
+  # whichever lands on 18:xx ET today. OCC-settled open interest shown by Yahoo is T+1
+  # regardless of capture time; 6:30pm gives closing IV marks a settle-down buffer.
+  schedule:
+    - cron: "30 22 * * 1-5"   # 22:30 UTC = 6:30pm ET during EDT (UTC-4)
+    - cron: "30 23 * * 1-5"   # 23:30 UTC = 6:30pm ET during EST (UTC-5)
+
+permissions:
+  contents: write
+
+concurrency:
+  group: optsnap
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Decide whether to run (6:30pm ET on trading days)
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Non-schedule trigger (${{ github.event_name }}) -> proceed."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          hour=$(TZ=America/New_York date +%H)
+          dow=$(TZ=America/New_York date +%u)
+          if [ "$hour" = "18" ] && [ "$dow" -ge 1 ] && [ "$dow" -le 5 ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not 18:xx ET weekday (ET hour=$hour dow=$dow) -> skip."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  snapshot:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch (or bootstrap) the optsnap-data branch
+        run: |
+          REPO_URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git clone --depth 1 --branch optsnap-data "$REPO_URL" snapdata; then
+            echo "Fetched existing optsnap-data branch."
+          else
+            echo "Branch missing -- bootstrapping an orphan optsnap-data."
+            mkdir -p snapdata && cd snapdata
+            git init -q -b optsnap-data
+            git remote add origin "$REPO_URL"
+            printf '# optsnap-data\n\nDaily option-chain snapshots for the fixed-strike vol tracker.\nWritten by .github/workflows/optsnap.yml; consumed by the vol-tracker build.\nSee VOL_TRACKER.md on main.\n' > README.md
+          fi
+
+      - name: Capture today's chains
+        run: python snapshot_option_chains.py --out snapdata/optsnap
+
+      - name: Commit and push the snapshot
+        run: |
+          cd snapdata
+          git add -A
+          if git -c user.name="github-actions[bot]" \
+                 -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                 commit -m "optsnap: $(date -u +%F)"; then
+            git push origin optsnap-data
+          else
+            echo "Nothing to commit."
+          fi
+
+      - name: Capture report
+        if: always()
+        run: cat snapdata/optsnap/_status-*.json 2>/dev/null | tail -60 || true
