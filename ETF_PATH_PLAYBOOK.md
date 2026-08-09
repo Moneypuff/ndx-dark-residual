@@ -145,6 +145,10 @@ Trade them long in SMH/EEM/XLE/XBI/GDX with capitulation-style sizing
 underperformance regime "cracking" has historically been the middle of the
 crisis, not the end (q25 excursion −36%).
 
+**Options expression.** The signal-conditional expected moves (and whether
+the option market prices them rich or cheap) are in
+`EXPECTED_MOVE_FINDINGS.md` / `etf_expected_move_study.py`.
+
 **Portfolio arithmetic.** With every position sized to 1% NAV at its q25
 excursion, a book of 4–6 concurrent signals risks ~4–6% NAV in the bad
 quantile with an expected quarter of roughly +0.3 to +0.9% NAV per position
