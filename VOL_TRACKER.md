@@ -54,22 +54,29 @@ across expiries, so rolls can't fake a flow.
   branch on first run and pushes only there. Yahoo has no chain history —
   this capture is the only unrepeatable step in the repo.
 
-## Derived analytics (phase 2 — after ~5 sessions of data)
+## Derived analytics (phase 2 — CODE LIVE, outputs accrue with data)
 
-`build_vol_tracker.py`: fixed-strike IV series per contract, per-tenor
+`build_vol_tracker.py`: fixed-strike IV series per contract, per-expiry
 ATM series, local re-pricing, the ΔOI×ΔIV classification, per-symbol
 pressure indices, and the big-OI strike map (the standing structured-note
-positions and their drift).
+positions and their drift). Output degrades honestly with history: day 1
+gives entry marks and the OI map, IV deltas start with snapshot 2, the
+lagged aggressor read with snapshot 3, and the pressure index is worth
+reading after ~5.
 
-## Signal linkage (phase 3 — after ~2 weeks)
+## Signal linkage (phase 3 — CODE LIVE)
 
-For each live regime-log signal (≤63 sessions), resolve the playbook
-structure to actual contracts on event day (e.g. GDX 6M ATM call / +10%
-wing / 3M −8% short put) and track daily: entry vs current fixed-strike
-IV per leg, and aggressor flow at those strikes. Alerts of the form
-"your short wing is being bought (ΔOI↑, local ΔIV↑) — roll up" or "OI
-building on the short-put strike with IV falling — the trade is
-crowding". Rendered into the docs artifact next to the regime log.
+Same script: for each live regime-log signal (≤63 sessions), the playbook
+structure (ETF_PATH_PLAYBOOK class → `STRUCTURES`) is resolved to actual
+listed contracts on the first snapshot at/after the event date — e.g. the
+Aug 2026 GDX up-break resolves to long Jan-2027 ATM call / short +10%
+wing / short Nov −8% put — and each leg is tracked daily: entry vs
+current fixed-strike IV, OI drift, and (once flows exist) the aggressor
+read at that strike. Entries that predate the first capture are marked
+`entry proxied`. Rendering into the docs artifact next to the regime log
+is deliberately deferred until a couple of weeks of data make the page
+worth deploying (`--out-dir` already writes the CSVs the page will
+consume).
 
 ## Calibration (phase 4 — after a quarter)
 
