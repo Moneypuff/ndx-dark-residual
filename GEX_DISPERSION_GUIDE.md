@@ -139,6 +139,20 @@ bucket tags and the n's from §5 verbatim — the framework's honesty about its
 own sample sizes is the feature — and scores each past signal once its
 forward 63 sessions have elapsed.
 
+The leaderboard also carries a **conviction column** (0–4, one point per
+confirmed component: MA side of the 21/50/200d stack; a 200d cross or
+trailing-year volume-profile value-area exit within 10 sessions; a close
+beyond the 21d ±2σ Bollinger band within 5; 5d volume ≥ 1.25× 63d) next to
+each ETF's **own historical follow-through** for breaks in that direction.
+Two hard-won calibrations: conviction is *asymmetric* — high-conviction
+up-breaks followed through (+3.0% median next quarter, 67%, n≈1,600) while
+down-breaks historically *faded* (the ETF rallied ~5% on average after them;
+capitulation reads contrarian) — and follow-through is a property of the
+ETF, not the setup: SMH chases well (+9.8% med, 74%), GDX punishes chasers
+(−0.5%, 48%) even though GDX's *turn signals* are 5-for-5. High conviction
+tells you the break is real; the follow-through column tells you whether
+that ETF rewards buying it late.
+
 ## 8. Worked example — semis vs software, 2026
 
 * **May 29:** Pinned & dispersed; GEX+ p86; SMH/IGV theme +20pp/quarter.

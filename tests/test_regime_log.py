@@ -148,3 +148,55 @@ def test_posture_priority_order():
     assert R.posture(False, True, True)[0] == "open"
     assert R.posture(False, False, True)[0] == "settling"
     assert R.posture(False, False, False)[0] == "stable"
+
+
+# ---------------------------------------------------------------------------
+# conviction: value area, scoring, events
+# ---------------------------------------------------------------------------
+def test_value_area_concentrates_where_volume_is():
+    idx = pd.bdate_range("2020-01-02", periods=300)
+    # price wanders 100->120, but ALL the volume trades in the 100-105 leg
+    c = pd.Series(np.linspace(100, 120, 300), index=idx)
+    v = pd.Series(np.where(c < 105, 5e6, 1e4), index=idx)
+    lo, hi = R.value_area_edges(c, v, window=252)
+    assert lo.iloc[:251].isna().all() and np.isfinite(lo.iloc[251])
+    assert hi.iloc[-1] < 112     # value area hugs the high-volume 100-105 zone
+    assert lo.iloc[-1] >= 99
+
+
+def test_conviction_scores_confirmed_breakout():
+    rng = np.random.default_rng(2)
+    idx = pd.bdate_range("2019-01-02", periods=298)
+    # flat coil, then a FRESH hard upside break (8 sessions old) on 2.5x volume --
+    # the level/band components carry 10- and 5-session recency windows, so the
+    # break must still be recent on the last bar
+    px = np.concatenate([100 + rng.normal(0, 0.4, 290), np.linspace(101, 112, 8)])
+    c = pd.Series(px, index=idx)
+    v = pd.Series(np.concatenate([np.full(290, 1e6), np.full(8, 2.5e6)]), index=idx)
+    conv = R.conviction_frame(c, v)
+    last = conv.iloc[-1]
+    assert last["dir"] == 1
+    assert last["score"] >= 3            # MA side, level break, band thrust, volume
+    assert bool(last["level"]) and bool(last["vol"])
+
+
+def test_conviction_quiet_tape_scores_low():
+    rng = np.random.default_rng(4)
+    idx = pd.bdate_range("2019-01-02", periods=320)
+    c = pd.Series(100 + rng.normal(0, 0.3, 320).cumsum() * 0.05, index=idx)
+    v = pd.Series(1e6, index=idx)
+    conv = R.conviction_frame(c, v)
+    assert conv["score"].iloc[-1] <= 2   # no level break, no thrust, no volume
+
+
+def test_conviction_events_direction_sign_and_cooldown():
+    idx = pd.bdate_range("2019-01-02", periods=400)
+    c = pd.Series(np.concatenate([np.full(300, 100.0), np.linspace(100, 130, 100)]), index=idx)
+    conv = pd.DataFrame({"dir": 0, "score": 0, "mas": False, "level": False,
+                         "band": False, "vol": False}, index=idx)
+    conv.loc[idx[310], ["dir", "score"]] = [1, 3]
+    conv.loc[idx[315], ["dir", "score"]] = [1, 4]   # inside cooldown -> skipped
+    conv.loc[idx[350], ["dir", "score"]] = [1, 3]
+    ev = R.conviction_events(c, conv, horizon=21)
+    assert list(ev["date"]) == [idx[310], idx[350]]
+    assert (ev["fwd"] > 0).all()          # rising tape, up direction -> positive signed fwd

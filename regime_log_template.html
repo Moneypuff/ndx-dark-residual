@@ -227,8 +227,11 @@ footer{border-top:1px solid var(--line); margin-top:16px; padding:32px 0 56px}
       <div>
         <h2>Sector &amp; theme leaderboard</h2>
         <p class="h-sub">Relative strength vs SPY: 63-day spread (the regime), 21-day spread and its z
-          (the pressure on it). <b>A screen, not a signal</b> — sector-vs-index spreads are tamer than
-          pair spreads, so these thresholds run hot.</p>
+          (the pressure on it). <b>Conviction</b> scores the ETF's own tape, one point per confirmed
+          component — <b>MA</b> (right side of ≥2 of the 21/50/200d averages), <b>LVL</b> (200d cross or
+          a trailing-year volume-profile value-area exit within 10 sessions), <b>BB</b> (close beyond the
+          21d ±2σ band within 5), <b>VOL</b> (5d volume ≥ 1.25× 63d) — and <b>follow-through</b> is what
+          that ETF's own past ≥3-score breaks in the same direction did over the next quarter.</p>
       </div>
     </div>
     <div class="tscroll">
@@ -236,10 +239,12 @@ footer{border-top:1px solid var(--line); margin-top:16px; padding:32px 0 56px}
         <thead><tr>
           <th>Sector / theme</th><th class="r">63d vs SPY</th><th class="r">21d</th>
           <th class="r">z</th><th>State</th><th>Recent signal</th>
+          <th>Conviction</th><th>Follow-through <span class="px">· fwd 63d</span></th>
         </tr></thead>
         <tbody id="lbBody"></tbody>
       </table>
     </div>
+    <p class="note" id="convNote"></p>
   </section>
 
   <section>
@@ -360,7 +365,21 @@ if(!SIG.length){
 /* ---- leaderboard ---- */
 const maxAbs = Math.max(8, ...LB.map(r=>Math.abs(r[2])));
 document.getElementById("lbBody").innerHTML = LB.map(r=>{
-  const [name, etf, r63, r21, z, state, recent] = r;
+  const [name, etf, r63, r21, z, state, recent, score, cdir, comps, ft] = r;
+  let convCell = `<span style="color:var(--ink-faint)">—</span>`;
+  if(cdir && score>0){
+    const arrow = cdir>0 ? "▲" : "▼";
+    const col = score>=3 ? (cdir>0 ? "var(--pos-ink)" : "var(--neg-ink)") : "var(--ink-dim)";
+    convCell = `<b class="mono" style="color:${col}" title="components confirmed: ${esc(comps||"none")}">`+
+               `${arrow} ${score}/4</b> <span class="mono" style="color:var(--ink-faint);font-size:11px">${esc(comps)}</span>`;
+  }
+  let ftCell = `<span style="color:var(--ink-faint)">—</span>`;
+  if(ft){
+    const [med, hit, n] = ft;
+    const col = med>=0 ? "var(--pos-ink)" : "var(--neg-ink)";
+    ftCell = `<b class="mono" style="color:${col}">${med>=0?"+":""}${med.toFixed(1)}%</b> `+
+             `<span class="mono" style="color:var(--ink-dim);font-size:11.5px">hit ${hit}% · n=${n}</span>`;
+  }
   const w = Math.min(50, Math.abs(r63)/maxAbs*50);
   const barCol = r63>=0 ? "var(--pos)" : "var(--neg)";
   const bar = `<span class="bar-wrap"><i style="${r63>=0?"left:50%":"right:50%"};width:${w}%;background:${barCol}"></i>`+
@@ -375,6 +394,20 @@ document.getElementById("lbBody").innerHTML = LB.map(r=>{
     <td class="r">${z.toFixed(2)}</td>
     <td><span class="st" style="color:${stCol}">${esc(state)}</span></td>
     <td class="mono" style="color:var(--ink-dim)">${esc(recent||"—")}</td>
+    <td>${convCell}</td>
+    <td>${ftCell}</td>
   </tr>`;
 }).join("");
+
+/* conviction asymmetry note, from the pooled backtest run at build time */
+if(CTX.conv){
+  const f = s => s ? `${s[0]>=0?"+":""}${s[0].toFixed(1)}% med, ${s[1]}% follow through (n=${s[2]})` : "—";
+  document.getElementById("convNote").innerHTML =
+    `<b>Conviction is asymmetric:</b> across this universe since 2005, high-conviction `+
+    `<span style="color:var(--pos-ink)">up-breaks</span> followed through — ${esc(f(CTX.conv.up))} — while `+
+    `<span style="color:var(--neg-ink)">down-breaks</span> historically FADED (${esc(f(CTX.conv.down))}; `+
+    `a signed median below zero means the ETF rallied after the breakdown). Capitulation breaks read as `+
+    `contrarian, not momentum. Follow-through is each ETF's own history — some chase well (SMH), some `+
+    `punish chasers (GDX) even when their turn signals work.`;
+}
 </script>

@@ -146,6 +146,98 @@ def bucket_for(is_shock, is_grel):
     return "fade" if is_shock else ("rotation" if is_grel else "derisk")
 
 
+def value_area_edges(close, volume, window=252, pct=0.70, nbins=40):
+    """Rolling volume-profile value area: for each day, bin the trailing
+    `window` closes weighted by volume and keep the tightest set of bins
+    holding `pct` of it. Returns (va_lo, va_hi) Series. Close-anchored (daily
+    closes, not intraday ranges) -- coarse but honest at daily granularity."""
+    c = close.to_numpy(dtype=float)
+    v = np.nan_to_num(volume.reindex(close.index).to_numpy(dtype=float))
+    lo_s = np.full(len(c), np.nan)
+    hi_s = np.full(len(c), np.nan)
+    for i in range(window - 1, len(c)):
+        cs, vs = c[i - window + 1:i + 1], v[i - window + 1:i + 1]
+        m = np.isfinite(cs)
+        cs, vs = cs[m], vs[m]
+        if len(cs) < window // 2 or vs.sum() <= 0:
+            continue
+        lo, hi = cs.min(), cs.max()
+        if hi <= lo:
+            continue
+        idx = np.clip(((cs - lo) / (hi - lo) * nbins).astype(int), 0, nbins - 1)
+        prof = np.bincount(idx, weights=vs, minlength=nbins)
+        order = np.argsort(prof)[::-1]
+        k = int(np.searchsorted(prof[order].cumsum(), pct * prof.sum())) + 1
+        sel = order[:k]
+        lo_s[i] = lo + sel.min() * (hi - lo) / nbins
+        hi_s[i] = lo + (sel.max() + 1) * (hi - lo) / nbins
+    return (pd.Series(lo_s, index=close.index), pd.Series(hi_s, index=close.index))
+
+
+def conviction_frame(close, volume, va_window=252):
+    """Per-day directional conviction score, 0-4 -- one point per confirmed
+    component, all judged in the direction of the trailing 21-session move:
+
+      mas    -- close on the move's side of >=2 of the 21/50/200d SMAs
+      level  -- major level broken within 10 sessions: 200d SMA cross, or an
+                exit through the trailing-year volume-profile value area edge
+      band   -- a close beyond the 21d +/-2-sigma Bollinger band within 5 sessions
+      vol    -- 5-day mean volume >= 1.25x the 63-day mean
+
+    Returns a DataFrame with dir (+1/-1/0), score, and the four booleans."""
+    c = close.dropna()
+    v = volume.reindex(c.index)
+    s21, s50, s200 = (c.rolling(w).mean() for w in (21, 50, 200))
+    sd21 = c.rolling(21).std()
+    up_band, dn_band = s21 + 2 * sd21, s21 - 2 * sd21
+    dirn = np.sign(c - c.shift(21)).fillna(0)
+
+    side = sum(((c > s) & (dirn > 0)) | ((c < s) & (dirn < 0))
+               for s in (s21, s50, s200))
+    mas = (side >= 2) & (dirn != 0)
+
+    cross_up_200 = (c > s200) & (c.shift(1) <= s200.shift(1))
+    cross_dn_200 = (c < s200) & (c.shift(1) >= s200.shift(1))
+    va_lo, va_hi = value_area_edges(c, v, window=va_window)
+    exit_up = (c > va_hi) & (c.shift(1) <= va_hi.shift(1))
+    exit_dn = (c < va_lo) & (c.shift(1) >= va_lo.shift(1))
+    brk_up = (cross_up_200 | exit_up).rolling(10, min_periods=1).max().astype(bool)
+    brk_dn = (cross_dn_200 | exit_dn).rolling(10, min_periods=1).max().astype(bool)
+    level = (brk_up & (dirn > 0)) | (brk_dn & (dirn < 0))
+
+    thrust_up = (c > up_band).rolling(5, min_periods=1).max().astype(bool)
+    thrust_dn = (c < dn_band).rolling(5, min_periods=1).max().astype(bool)
+    band = (thrust_up & (dirn > 0)) | (thrust_dn & (dirn < 0))
+
+    vol_ok = v.rolling(5).mean() >= 1.25 * v.rolling(63).mean()
+
+    F = pd.DataFrame({"dir": dirn, "mas": mas, "level": level,
+                      "band": band, "vol": vol_ok.fillna(False)})
+    F["score"] = F[["mas", "level", "band", "vol"]].sum(axis=1).astype(int)
+    return F
+
+
+def conviction_events(close, conv, min_score=3, cooldown=21, horizon=63):
+    """First-day high-conviction events (score >= min_score, `cooldown`
+    sessions apart per direction) with the direction-signed forward return
+    over `horizon` sessions -- 'did the break follow through?'."""
+    c = close.dropna()
+    out = []
+    last = {1: None, -1: None}
+    hot = (conv["score"] >= min_score) & (conv["dir"] != 0)
+    for d in conv.index[hot]:
+        sgn = int(conv.loc[d, "dir"])
+        i = c.index.get_loc(d)
+        if last[sgn] is not None and i - last[sgn] < cooldown:
+            continue
+        last[sgn] = i
+        fwd = (float((c.iloc[i + horizon] / c.iloc[i] - 1) * 100 * sgn)
+               if i + horizon < len(c) else np.nan)
+        out.append({"date": d, "dir": sgn, "score": int(conv.loc[d, "score"]),
+                    "fwd": fwd})
+    return pd.DataFrame(out)
+
+
 def lb_state(r63, z21, on_cut=ON_CUT):
     if r63 > on_cut:
         return "HOT" if z21 > -1.0 else "HOT, breaking"
@@ -223,10 +315,11 @@ def main():
     # ---- prices -------------------------------------------------------------
     syms = sorted({s for a, b, _ in PAIRS for s in (a, b)}
                   | set(SECTORS) | set(THEMES) | {"SPY", "GLD"})
-    adj = N.load_yahoo_panels(syms, "2004-01-01", pd.Timestamp.today().normalize(),
-                              cache_dir=args.cache_dir or None,
-                              refresh=args.refresh,
-                              label="REGLOG")["adjclose"].dropna(how="all")
+    panels = N.load_yahoo_panels(syms, "2004-01-01", pd.Timestamp.today().normalize(),
+                                 cache_dir=args.cache_dir or None,
+                                 refresh=args.refresh, label="REGLOG")
+    adj = panels["adjclose"].dropna(how="all")
+    volp = panels["volume"]
 
     # ---- signal log ---------------------------------------------------------
     log_start = pd.Timestamp.today() - pd.DateOffset(months=LOG_MONTHS)
@@ -252,9 +345,9 @@ def main():
             })
     sig_rows.sort(key=lambda r: r["date"], reverse=True)
 
-    # ---- leaderboard --------------------------------------------------------
+    # ---- leaderboard + conviction ------------------------------------------
     spy = adj["SPY"]
-    lb_rows = []
+    lb_rows, all_ev = [], []
     for t, name in {**SECTORS, **THEMES}.items():
         if t not in adj:
             continue
@@ -267,9 +360,33 @@ def main():
             if (pd.Timestamp.today() - d).days <= 63:
                 recent = ("broke" if sgn > 0 else "turned") + " " + d.strftime("%m-%d")
             break
+        # conviction: absolute price action of the ETF itself, plus its own
+        # historical follow-through in the current direction
+        c = adj[t].dropna()
+        conv = conviction_frame(c, volp[t])
+        ev = conviction_events(c, conv)
+        ev["etf"] = t
+        all_ev.append(ev)
+        cur = conv.iloc[-1]
+        score, cdir = int(cur["score"]), int(cur["dir"])
+        comps = "·".join(lbl for k, lbl in (("mas", "MA"), ("level", "LVL"),
+                                            ("band", "BB"), ("vol", "VOL")) if cur[k])
+        ft = None
+        if cdir:
+            evd = ev[(ev["dir"] == cdir)].dropna(subset=["fwd"])
+            if len(evd) >= 10:
+                ft = [round(float(evd["fwd"].median()), 1),
+                      int(round(100 * float((evd["fwd"] > 0).mean()))), int(len(evd))]
         lb_rows.append([name, t, round(r63, 1), round(r21, 1), round(zz, 2),
-                        lb_state(r63, zz), recent])
+                        lb_state(r63, zz), recent, score, cdir, comps, ft])
     lb_rows.sort(key=lambda r: -r[2])
+    AE = pd.concat(all_ev, ignore_index=True).dropna(subset=["fwd"]) if all_ev else pd.DataFrame()
+
+    def _pool(d):
+        s = AE[AE["dir"] == d]
+        return ([round(float(s["fwd"].median()), 1),
+                 int(round(100 * float((s["fwd"] > 0).mean()))), int(len(s))]
+                if len(s) else None)
 
     # ---- context / posture --------------------------------------------------
     last_shock = max([s for s in shocks], default=None)
@@ -294,6 +411,7 @@ def main():
         "posture": pk, "postureText": ptext,
         "built": "built " + datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "logMonths": LOG_MONTHS,
+        "conv": {"up": _pool(1), "down": _pool(-1)},
     }
 
     body = (Path(args.template).read_text(encoding="utf-8")
