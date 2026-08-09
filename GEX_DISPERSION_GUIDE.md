@@ -125,11 +125,19 @@ GEXPLUS_KEY=... python build_gex_dispersion.py --docs-out docs/gex_dispersion.ht
     --cache-dir .ndx_dark_cache
 ```
 
-The nightly Pages workflow rebuilds it after each close (set the `GEXPLUS_KEY`
-Actions secret). The pair detector currently lives in this guide and the
-session analyses; if it graduates to a page, its signals should carry the
+```bash
+# the playbook page (docs/regime_log.html): posture, dated break signals with
+# bucket tags and realized outcomes, sector leaderboard. Needs the barometer
+# page built first.
+GEXPLUS_KEY=... python build_regime_log.py --docs-out docs/regime_log.html \
+    --cache-dir .ndx_dark_cache
+```
+
+The nightly Pages workflow rebuilds both after each close (set the
+`GEXPLUS_KEY` Actions secret). The regime log shows every signal with the
 bucket tags and the n's from §5 verbatim — the framework's honesty about its
-own sample sizes is the feature.
+own sample sizes is the feature — and scores each past signal once its
+forward 63 sessions have elapsed.
 
 ## 8. Worked example — semis vs software, 2026
 

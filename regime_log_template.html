@@ -1,0 +1,380 @@
+<style>
+:root{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8;
+  --neg:#d4635f; --neg-ink:#f0938f;
+  --pos-rgb:70,179,154; --neg-rgb:212,99,95; --acc-rgb:227,179,65;
+  --shadow:0 1px 0 rgba(255,255,255,.03), 0 18px 40px -24px rgba(0,0,0,.8);
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+    --line:#d3dbe3; --line-soft:#e3e9ef;
+    --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+    --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+    --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+    --pos-rgb:31,143,121; --neg-rgb:192,65,60; --acc-rgb:154,108,18;
+    --shadow:0 1px 0 rgba(255,255,255,.6), 0 16px 34px -26px rgba(20,40,60,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8; --neg:#d4635f; --neg-ink:#f0938f;
+  --pos-rgb:70,179,154; --neg-rgb:212,99,95; --acc-rgb:227,179,65;
+}
+:root[data-theme="light"]{
+  --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+  --line:#d3dbe3; --line-soft:#e3e9ef;
+  --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+  --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+  --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+  --pos-rgb:31,143,121; --neg-rgb:192,65,60; --acc-rgb:154,108,18;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+.page{
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono",Menlo,"Roboto Mono","DejaVu Sans Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-family:var(--sans);
+  color:var(--ink);
+  background:
+    radial-gradient(120% 60% at 85% -10%, var(--accent-soft), transparent 60%),
+    linear-gradient(var(--grad), var(--ground) 340px);
+  background-attachment:fixed;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+.wrap{max-width:1000px; margin:0 auto; padding:0 24px}
+.mono{font-family:var(--mono)}
+
+.strip{
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:18px 0 16px; border-bottom:1px solid var(--line-soft);
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.strip .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-soft); display:inline-block; margin-right:9px; vertical-align:middle}
+.strip b{color:var(--ink-dim); font-weight:500}
+.strip a{color:var(--ink-dim); text-decoration:none}
+.strip a:hover{color:var(--accent)}
+
+.hero{padding:56px 0 30px}
+.eyebrow{
+  font-family:var(--mono); font-size:12px; letter-spacing:.24em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 22px; display:flex; align-items:center; gap:12px;
+}
+.eyebrow::before{content:""; width:26px; height:1px; background:var(--accent-line)}
+h1{font-size:clamp(30px,5vw,50px); line-height:1.06; letter-spacing:-.022em; font-weight:800;
+  margin:0; text-wrap:balance; max-width:20ch}
+h1 .g{color:var(--accent)}
+.lede{font-size:clamp(15.5px,2vw,18px); color:var(--ink-dim); max-width:62ch; margin:22px 0 0}
+.lede b{color:var(--ink); font-weight:600}
+
+.posture{
+  margin-top:38px; border:1px solid var(--accent-line); border-radius:16px;
+  background:linear-gradient(180deg, var(--accent-soft), transparent 70%), var(--surface);
+  box-shadow:var(--shadow); overflow:hidden;
+}
+.posture-head{display:flex; flex-wrap:wrap; align-items:center; gap:12px 18px;
+  padding:18px 24px; border-bottom:1px solid var(--line)}
+.posture-head .tag{font-family:var(--mono); font-size:11px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); padding:5px 11px;
+  border:1px solid var(--accent-line); border-radius:100px}
+.posture-line{font-size:16px; font-weight:600; padding:18px 24px 6px}
+.chips{display:flex; flex-wrap:wrap; gap:8px; padding:12px 24px 20px}
+.chip{font-family:var(--mono); font-size:12px; display:flex; align-items:center; gap:7px;
+  padding:6px 11px; border-radius:8px; border:1px solid var(--line);
+  background:var(--surface-2); white-space:nowrap; color:var(--ink-dim)}
+.chip b{color:var(--ink); font-weight:600}
+.chip .warn{color:var(--neg-ink)} .chip .ok{color:var(--pos-ink)}
+
+section{padding:46px 0}
+.sec-h{display:flex; align-items:baseline; gap:16px; margin:0 0 24px}
+.sec-h .n{font-family:var(--mono); font-size:12px; color:var(--accent); letter-spacing:.1em;
+  padding-top:5px}
+.sec-h h2{font-size:clamp(20px,3vw,27px); letter-spacing:-.015em; font-weight:750; margin:0}
+.sec-h .h-sub{color:var(--ink-dim); font-size:14.5px; margin:5px 0 0; max-width:64ch}
+
+.tscroll{overflow-x:auto; border:1px solid var(--line); border-radius:14px;
+  background:var(--surface); box-shadow:var(--shadow)}
+table.lg{border-collapse:collapse; width:100%; min-width:760px}
+table.lg thead th{
+  position:sticky; top:0; z-index:2; background:var(--surface-2);
+  font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:500; text-align:left; padding:13px 14px; white-space:nowrap;
+  border-bottom:1px solid var(--line);
+}
+table.lg thead th.r{text-align:right}
+table.lg tbody td{padding:11px 14px; border-bottom:1px solid var(--line-soft);
+  font-size:13.5px; font-variant-numeric:tabular-nums; white-space:nowrap}
+table.lg tbody tr:last-child td{border-bottom:0}
+table.lg tbody tr:hover td{background:rgba(var(--acc-rgb),.045)}
+td.r{text-align:right; font-family:var(--mono)}
+td .mono{font-size:12.5px}
+.bk{font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+  padding:4px 10px; border-radius:100px; border:1px solid var(--line); font-weight:600}
+.bk.fade{color:var(--pos-ink); border-color:rgba(var(--pos-rgb),.5); background:rgba(var(--pos-rgb),.1)}
+.bk.rotation{color:var(--neg-ink); border-color:rgba(var(--neg-rgb),.5); background:rgba(var(--neg-rgb),.1)}
+.bk.derisk{color:var(--accent); border-color:var(--accent-line); background:var(--accent-soft)}
+.st{font-family:var(--mono); font-size:11.5px; font-weight:600}
+.bar-wrap{display:inline-block; width:110px; height:8px; border-radius:4px;
+  background:var(--surface-2); border:1px solid var(--line-soft); vertical-align:middle;
+  position:relative; overflow:hidden; margin-right:9px}
+.bar-wrap i{position:absolute; top:0; bottom:0}
+.note{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin:14px 2px 0;
+  display:flex; gap:8px; align-items:baseline; flex-wrap:wrap}
+.note b{color:var(--ink-dim); font-weight:500}
+
+.play{border:1px solid var(--line); border-left:2px solid var(--accent-line);
+  border-radius:12px; background:var(--surface); overflow:hidden}
+.play .row{display:grid; grid-template-columns:minmax(220px,1fr) 2fr; gap:18px;
+  padding:16px 22px; border-bottom:1px solid var(--line-soft)}
+.play .row:last-child{border-bottom:0}
+.play .sit{font-family:var(--mono); font-size:13px; color:var(--accent)}
+.play .act{font-size:14px; color:var(--ink-dim)}
+.play .act b{color:var(--ink)}
+
+.cav{columns:2; column-gap:32px}
+.cav .c{break-inside:avoid; margin-bottom:16px; padding-left:18px; position:relative;
+  font-size:13.5px; color:var(--ink-dim)}
+.cav .c::before{content:""; position:absolute; left:0; top:9px; width:7px; height:7px;
+  border:1px solid var(--neg); border-radius:2px; transform:rotate(45deg)}
+.cav .c b{color:var(--ink); font-weight:600}
+
+footer{border-top:1px solid var(--line); margin-top:16px; padding:32px 0 56px}
+.repro{font-family:var(--mono); font-size:13px; background:var(--surface);
+  border:1px solid var(--line); border-radius:10px; padding:15px 18px; color:var(--ink-dim);
+  overflow-x:auto; white-space:nowrap}
+.repro .p{color:var(--accent)}
+.foot-meta{display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:18px;
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--ink-faint)}
+
+@media (max-width:720px){
+  .cav{columns:1}
+  .play .row{grid-template-columns:1fr; gap:6px}
+  .sec-h{flex-direction:column; gap:4px}
+}
+@media (prefers-reduced-motion:reduce){ *{animation:none!important; transition:none!important} }
+</style>
+
+<div class="page">
+<div class="wrap">
+
+  <div class="strip">
+    <span><span class="dot"></span>Regime log</span>
+    <span><a href="gex_dispersion.html" title="the barometer's dials, quadrants and charts">← GEX × dispersion barometer</a></span>
+    <span id="mDate">—</span>
+  </div>
+
+  <header class="hero">
+    <p class="eyebrow">The barometer, operationalized</p>
+    <h1>What broke, what's <span class="g">hot</span>, and how much to trust it.</h1>
+    <p class="lede">The <b>playbook page</b>: today's posture from the dials, a dated log of theme-break
+      signals with their context bucket and — once the forward month elapses — the <b>realized
+      outcome</b>, and a relative-strength screen of every sector against SPY. Bucket statistics come
+      from the 2005–2026 backtest and are shown with their sample sizes on purpose.</p>
+
+    <div class="posture" id="postureCard">
+      <div class="posture-head">
+        <span class="tag">Posture</span>
+        <span class="mono" style="font-size:12px;color:var(--ink-dim)" id="pQuad">—</span>
+      </div>
+      <div class="posture-line" id="pText">—</div>
+      <div class="chips" id="pChips"></div>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">01</span>
+      <div>
+        <h2>Signal log</h2>
+        <p class="h-sub">Every break signal across the backtested pair universe, last
+          <span id="mLogMonths">24</span> months, newest first. <b>Fwd 63d</b> is the old theme's
+          realized spread after the signal — positive means it resumed, negative means it stayed
+          broken. The page keeps score on itself.</p>
+      </div>
+    </div>
+    <div class="tscroll">
+      <table class="lg">
+        <thead><tr>
+          <th>Date</th><th>Theme</th><th>What broke</th><th class="r">z</th>
+          <th>Bucket</th><th>What history says</th><th class="r">Fwd 63d</th>
+        </tr></thead>
+        <tbody id="sigBody"></tbody>
+      </table>
+    </div>
+    <p class="note"><b>Buckets:</b> <span class="bk fade">fade</span> = break near a correlation shock
+      (old theme resumed +3.7pp on average, n=28) · <span class="bk rotation">rotation</span> = gamma
+      released, no shock (−1.6pp, 64% negative, n=36 — a lean, p≈0.1) ·
+      <span class="bk derisk">de-risk</span> = neither (edge gone, coin flip, n=86).</p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">02</span>
+      <div>
+        <h2>Sector &amp; theme leaderboard</h2>
+        <p class="h-sub">Relative strength vs SPY: 63-day spread (the regime), 21-day spread and its z
+          (the pressure on it). <b>A screen, not a signal</b> — sector-vs-index spreads are tamer than
+          pair spreads, so these thresholds run hot.</p>
+      </div>
+    </div>
+    <div class="tscroll">
+      <table class="lg">
+        <thead><tr>
+          <th>Sector / theme</th><th class="r">63d vs SPY</th><th class="r">21d</th>
+          <th class="r">z</th><th>State</th><th>Recent signal</th>
+        </tr></thead>
+        <tbody id="lbBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">03</span>
+      <div>
+        <h2>The playbook</h2>
+        <p class="h-sub">Situation → action, from the usage guide. The dials size risk and manage
+          themes; they do not call index direction.</p>
+      </div>
+    </div>
+    <div class="play">
+      <div class="row"><div class="sit">Gamma releases 40+ pts in a month</div>
+        <div class="act"><b>Rotation window open.</b> Tighten stops on crowded themes, trim
+          relative-value gross. This is the warning, not the signal.</div></div>
+      <div class="row"><div class="sit">Theme breaks · no shock nearby</div>
+        <div class="act"><b>Exit or trim.</b> Expected value of holding ≈ zero from here. With the
+          gamma tag too — especially on simultaneous multi-theme breaks — lean against re-entry.</div></div>
+      <div class="row"><div class="sit">Theme breaks · correlation shock just hit</div>
+        <div class="act"><b>Sit on your hands.</b> Historically the theme going on sale, not
+          ending.</div></div>
+      <div class="row"><div class="sit">DSPX unwinding · realized dispersion still high</div>
+        <div class="act"><b>Audit crowded relative-value</b> before the unwind finds it — the street is
+          taking the dispersion trade down.</div></div>
+      <div class="row"><div class="sit">Tape re-pinned after a rotation</div>
+        <div class="act"><b>New leadership settles.</b> Fresh breaks without the gamma tag get de-risk
+          weight, not conviction.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">04</span>
+      <div><h2>Read with these in mind</h2></div>
+    </div>
+    <div class="cav">
+      <div class="c"><b>Not a direction machine.</b> The quadrant forecasts volatility, not returns;
+        the rotation bucket is worth ~2pp/quarter at p≈0.1. Use for sizing and exits, never as a
+        standalone short signal.</div>
+      <div class="c"><b>Fixed thresholds.</b> z ±1.5, 40-pt gamma drop, ±5pp theme cut — chosen on a
+        robust plateau, but in-sample. The bucket stats are frozen backtest numbers, not live-updating
+        estimates.</div>
+      <div class="c"><b>Leaderboard ≠ signals.</b> Sector-vs-SPY spreads are structurally tamer than
+        pair spreads; HOT/UNFAVORED states are a screen for candidates you'd hold for independent
+        reasons.</div>
+      <div class="c"><b>Signals are close-to-close.</b> Everything computes off daily closes with a
+        63-session cooldown per pair; nothing here is intraday.</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="repro"><span class="p">python</span> build_regime_log.py --docs-out docs/regime_log.html</div>
+    <div class="foot-meta">
+      <span>Dials · gex_dispersion.html payload</span>
+      <span>Signals · 12-pair universe, both directions</span>
+      <span id="mBuilt">—</span>
+    </div>
+  </footer>
+
+</div>
+</div>
+
+<script>
+const CTX = /*__CTX__*/;
+const SIG = /*__SIG__*/;
+const LB = /*__LB__*/;
+const BK = /*__BK__*/;
+
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const set = (id, txt) => { const e=document.getElementById(id); if(e) e.textContent = txt; };
+
+/* ---- posture card ---- */
+set("mDate", CTX.date);
+set("mBuilt", CTX.built);
+set("mLogMonths", CTX.logMonths);
+set("pQuad", `quadrant: ${CTX.quadLabel} (${CTX.quad||"—"})`);
+set("pText", CTX.postureText);
+const chips = [];
+const gchg = CTX.gexp_chg21==null ? "" : ` (${CTX.gexp_chg21>=0?"+":""}${CTX.gexp_chg21} / 21d)`;
+chips.push(`<span class="chip">${esc(CTX.gexLabel)} pct <b>p${Math.round(CTX.gexp)}</b>${esc(gchg)}` +
+  (CTX.grel ? ` <span class="warn">· released</span>` : "") + `</span>`);
+const dchg = CTX.dspx_chg21==null ? "" : ` (${CTX.dspx_chg21>=0?"+":""}${CTX.dspx_chg21} / 21d)`;
+chips.push(`<span class="chip">DSPX <b>${CTX.dspx==null?"—":CTX.dspx.toFixed(1)}</b>${esc(dchg)}</span>`);
+chips.push(`<span class="chip">realized disp <b>${CTX.disp==null?"—":CTX.disp.toFixed(1)}</b></span>`);
+chips.push(`<span class="chip">COR1M <b>${CTX.cor1m==null?"—":CTX.cor1m.toFixed(1)}</b></span>`);
+chips.push(`<span class="chip">last corr shock <b${CTX.shockRecent?' class="warn"':''}>${esc(CTX.lastShock||"—")}</b>` +
+  (CTX.shockRecent ? ` <span class="warn">· active</span>` : ` <span class="ok">· quiet</span>`) + `</span>`);
+document.getElementById("pChips").innerHTML = chips.join("");
+
+/* ---- signal log ---- */
+const sb = document.getElementById("sigBody");
+if(!SIG.length){
+  sb.innerHTML = `<tr><td colspan="7" style="color:var(--ink-faint)">No break signals in the window.</td></tr>`;
+} else {
+  sb.innerHTML = SIG.map(s=>{
+    const b = BK[s.bucket]||{};
+    const hist = s.bucket==="fade" ? `resumed +${b.mean}pp avg (n=${b.n})`
+               : s.bucket==="rotation" ? `${b.mean}pp avg, ${b.neg}% negative (n=${b.n})`
+               : `+${b.mean}pp avg, coin flip (n=${b.n})`;
+    let fwd = `<span style="color:var(--ink-faint)">pending</span>`;
+    if(s.fwd63!=null){
+      const col = s.fwd63>=0 ? "var(--pos-ink)" : "var(--neg-ink)";
+      const word = s.fwd63>=0 ? "resumed" : "stayed broken";
+      fwd = `<b style="color:${col}">${s.fwd63>=0?"+":""}${s.fwd63.toFixed(1)}pp</b> <span class="mono" style="color:var(--ink-faint)">${word}</span>`;
+    }
+    return `<tr>
+      <td class="mono">${esc(s.date)}</td>
+      <td>${esc(s.pair)}</td>
+      <td class="mono">${esc(s.broke)} <span style="color:var(--neg-ink)">✕</span></td>
+      <td class="r">${s.z.toFixed(2)}</td>
+      <td><span class="bk ${esc(s.bucket)}">${esc((BK[s.bucket]||{}).label||s.bucket)}</span></td>
+      <td style="color:var(--ink-dim);font-size:12.5px">${esc(hist)}</td>
+      <td class="r">${fwd}</td>
+    </tr>`;
+  }).join("");
+}
+
+/* ---- leaderboard ---- */
+const maxAbs = Math.max(8, ...LB.map(r=>Math.abs(r[2])));
+document.getElementById("lbBody").innerHTML = LB.map(r=>{
+  const [name, etf, r63, r21, z, state, recent] = r;
+  const w = Math.min(50, Math.abs(r63)/maxAbs*50);
+  const barCol = r63>=0 ? "var(--pos)" : "var(--neg)";
+  const bar = `<span class="bar-wrap"><i style="${r63>=0?"left:50%":"right:50%"};width:${w}%;background:${barCol}"></i>`+
+              `<i style="left:50%;width:1px;background:var(--line)"></i></span>`;
+  const stCol = state.startsWith("HOT") ? (state.includes("breaking") ? "var(--neg-ink)" : "var(--pos-ink)")
+              : state.startsWith("UNFAVORED") ? (state.includes("turning") ? "var(--pos-ink)" : "var(--neg-ink)")
+              : "var(--ink-faint)";
+  return `<tr>
+    <td>${esc(name)} <span class="mono" style="color:var(--ink-faint)">${esc(etf)}</span></td>
+    <td class="r">${bar}<b>${r63>=0?"+":""}${r63.toFixed(1)}</b></td>
+    <td class="r" style="color:${r21>=0?"var(--pos-ink)":"var(--neg-ink)"}">${r21>=0?"+":""}${r21.toFixed(1)}</td>
+    <td class="r">${z.toFixed(2)}</td>
+    <td><span class="st" style="color:${stCol}">${esc(state)}</span></td>
+    <td class="mono" style="color:var(--ink-dim)">${esc(recent||"—")}</td>
+  </tr>`;
+}).join("");
+</script>

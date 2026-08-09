@@ -138,6 +138,19 @@ jobs:
           --cache-dir .ndx_dark_cache
           ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
 
+      # Regime log: the barometer's playbook page -- posture, dated break signals with
+      # context buckets and realized outcomes, sector leaderboard. Reads the barometer
+      # payload written by the previous step.
+      - name: Build regime log
+        env:
+          GEXPLUS_KEY: ${{ secrets.GEXPLUS_KEY }}
+        run: >
+          python build_regime_log.py
+          --barometer docs/gex_dispersion.html
+          --docs-out docs/regime_log.html
+          --cache-dir .ndx_dark_cache
+          ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
+
       # Earnings-DPI study -> docs/earnings.html (linked from the dashboard's "Earnings DIX" tab).
       - name: Refresh earnings dates from SEC EDGAR
         run: python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
