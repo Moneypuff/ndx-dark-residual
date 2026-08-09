@@ -103,6 +103,55 @@ def test_implied_move_straddle_mid():
     assert E.implied_move(ch, 100.0, expiry, today) == pytest.approx(10.0)
 
 
+def _smile_chain(spot=100.0, atm_iv=0.20, put_slope=0.10, call_slope=-0.05):
+    """OTM chain whose IV is linear in moneyness: below spot IV rises by
+    `put_slope` per -10% moneyness (a normal put skew), above spot it falls
+    by `call_slope` per +10%. All contracts alive (OI=10)."""
+    def leg(k):
+        m = (k - spot) / spot
+        iv = atm_iv + (-m * put_slope * 10 if m < 0 else m * call_slope * 10)
+        return {"strike": k, "impliedVolatility": iv, "openInterest": 10,
+                "bid": 1.0, "ask": 1.2, "volume": 5}
+    ks = [spot * (1 + f / 100) for f in range(-30, 31, 5)]
+    return {"calls": [leg(k) for k in ks], "puts": [leg(k) for k in ks]}
+
+
+def test_otm_smile_sides_and_liveness():
+    ch = _smile_chain()
+    ch["puts"].append({"strike": 60.0, "impliedVolatility": 3.0})  # dead: no bid/OI
+    strikes, ivs = E.otm_smile(ch, 100.0)
+    assert 60.0 not in strikes
+    assert strikes == sorted(strikes)
+    # puts feed the smile below spot, calls at/above: one point per strike
+    assert len(strikes) == len(set(strikes))
+
+
+def test_smile_metrics_recovers_linear_skew():
+    today = pd.Timestamp("2026-01-05")
+    expiry = int((today + pd.Timedelta(days=91)).timestamp())
+    m = E.smile_metrics(_smile_chain(), 100.0, expiry, today)
+    assert m["atm_iv"] == pytest.approx(20.0, abs=0.2)
+    sig = m["sigma_move"] / 100                      # = atm_iv * sqrt(T)
+    assert m["put_skew"] == pytest.approx(sig * 100, rel=0.05)   # slope 1.0/vol pt per pt
+    assert m["call_skew"] == pytest.approx(-sig * 50, rel=0.05)  # half slope, negative
+    assert m["rr"] == pytest.approx(m["call_skew"] - m["put_skew"])
+    assert m["rr"] < 0                               # normal equity smile
+
+
+def test_smile_metrics_positioning_counts_full_sides():
+    today = pd.Timestamp("2026-01-05")
+    expiry = int((today + pd.Timedelta(days=91)).timestamp())
+    ch = _smile_chain()
+    m = E.smile_metrics(ch, 100.0, expiry, today)
+    total = 13 * 10
+    assert m["pc_oi"] == pytest.approx(1.0)          # symmetric hand-built OI
+    up = sum(1 for c in ch["calls"]
+             if c["strike"] >= 100 * (1 + 0.5 * m["sigma_move"] / 100)) * 10
+    assert m["upside_oi"] == pytest.approx(up / total * 100)
+    assert m["call_vol_oi"] == pytest.approx(0.5)
+    assert E.smile_metrics({"calls": [], "puts": []}, 100.0, expiry, today) is None
+
+
 def test_implied_move_iv_fallback_and_empty():
     today = pd.Timestamp("2026-01-05")
     expiry = int((today + pd.Timedelta(days=91)).timestamp())

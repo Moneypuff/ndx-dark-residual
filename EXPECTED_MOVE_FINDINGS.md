@@ -104,6 +104,45 @@ playbook (half-size now, add at −8%): a short 3M put struck ~8% below spot
 *is* the resting limit order, collected at a premium instead of placed for
 free. Sized cash-secured, its assignment is the entry you wanted anyway.
 
+## Result 4 — skew: is the upside already positioned?
+
+The same chains give the smile. Wings are measured at the ±1
+**sigma-move** strikes (σ = ATM IV·√T, so "one expected move" is the same
+yardstick for a 15-vol and a 47-vol ETF): `put_skew` / `call_skew` = wing
+IV − ATM IV, and **rr = call wing − put wing** — equity smiles normally
+run rr well below zero (downside protection over upside lottery).
+Positioning reads: put/call open interest and the share of call OI struck
+≥ +0.5σ. Snapshot (Aug 2026, ~3M tenor, liquid names):
+
+| posture | names (rr, vol pts) | read |
+|---|---|---|
+| **Upside already bid** | **GDX +4.3** (put wing *below* ATM, 31% of call OI ≥ +0.5σ, 47% at 6M), EEM +1.7, XLU +0.6 | the market is paying up for calls — the crowd is positioned for the move |
+| Normal put skew | QQQ −4.0, IWM −4.3, SMH −3.8, XBI −4.0, XLE −4.3, XLF −2.3 | no upside crowding; put wing carries the premium |
+| Steep put skew | VUG −8.7, VTV −6.5, XLK −6.7, KRE −8.9 | downside fear still dominates the smile |
+
+(Thin sector chains — XLB, XLC, XLY, XLRE, XLV — print wing IVs from
+near-dead strikes in this snapshot; treat their rows as unreliable.)
+
+Two uses. First, **rr is the "already positioned?" dial the playbook
+needs**: a chaser up-break with *normal* put skew (SMH, QQQ, IWM now)
+means the option market has not pre-paid the move — short puts collect a
+genuinely rich wing and calls are clean. A positive rr (GDX now) means
+speculators beat you to the upside: outright calls carry an extra skew
+tax on top of the level effect. Second, skew flips the *structure*, not
+the *direction*: an inverted call wing makes **call spreads** better (the
+short +1σ leg is sold at a skew premium) exactly where outright calls got
+worse — and it cheapens the put side, so the short-put financing leg
+collects less than the symmetric ≈implied/2 yardstick suggests.
+
+For the live GDX trade this refines the §Worked-example structure: the
+6M ATM/+10% call *spread* is now clearly preferred over the outright 6M
+call (buy ATM at fair-ish, sell the +1σ wing 2 vol points over ATM into
+the speculative bid), and the short 3M put leg — struck at the dip-entry
+level — is collecting a slightly *below*-symmetric premium (put wing −2
+vols under ATM), which is the options market telling you the same thing
+as the 8.67 put/call OI ratio: the downside side of GDX is where the
+hedgers are, not the speculators.
+
 ## Structure selection by family (the summary rule)
 
 - **Chaser up-breaks** (QQQ, VUG, XLK, SMH, IGV…): stock or ATM/+5–10%
@@ -132,4 +171,11 @@ free. Sized cash-secured, its assignment is the entry you wanted anyway.
   fallback is an approximation), one ATM strike per tenor, no smile — a
   real fill needs live markets.
 - The ≈ implied ÷ 2 market-call approximation ignores carry and skew;
-  it's a screening yardstick, not an execution price.
+  it's a screening yardstick, not an execution price (Result 4 is the
+  skew correction, where the chain is liquid enough to measure it).
+- Open interest is two-sided: a fat put OI can be hedgers, put *sellers*,
+  or spreads — rr (what the market *pays*) is the cleaner positioning
+  read; OI corroborates, it doesn't prove.
+- Skew has no history here (chains are a daily snapshot, no archive), so
+  "inverted vs normal" is judged cross-sectionally and against the usual
+  equity-smile prior, not against each ETF's own past skew.

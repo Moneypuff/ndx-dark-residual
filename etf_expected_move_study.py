@@ -133,6 +133,59 @@ def implied_move(chain, spot, expiry_epoch, today):
     return float(0.8 * np.mean(ivs) * math.sqrt(t_years) * 100)
 
 
+def otm_smile(chain, spot):
+    """(strikes, ivs) of the out-of-the-money smile -- puts below spot, calls
+    at/above -- keeping contracts that are alive (a bid or open interest)
+    with a sane IV, sorted by strike. Dead wings carry stale/garbage IVs on
+    Yahoo, so quoteless zero-OI contracts are dropped."""
+    pts = []
+    for side, keep in (("puts", lambda k: k < spot), ("calls", lambda k: k >= spot)):
+        for c in chain.get(side) or []:
+            k, iv = c.get("strike"), c.get("impliedVolatility")
+            alive = (c.get("bid") or 0) > 0 or (c.get("openInterest") or 0) > 0
+            if k and keep(k) and alive and iv and 0.01 < iv < 5.0:
+                pts.append((float(k), float(iv)))
+    pts.sort()
+    return [p[0] for p in pts], [p[1] for p in pts]
+
+
+def smile_metrics(chain, spot, expiry_epoch, today):
+    """Skew and positioning read off one expiration's chain.
+
+    IV wings are measured at the +/-1-sigma strikes (sigma = ATM IV * sqrt(T),
+    so 'one expected move' means the same thing for a 10-vol and a 40-vol
+    ETF): put_skew / call_skew = wing IV minus ATM IV (vol points), and
+    rr = call_skew - put_skew, the risk-reversal-style number -- equity smiles
+    normally run rr well below zero (put wing over call wing); rr near or
+    above zero means the market is paying up for upside. Positioning:
+    put/call open interest, the share of call OI at strikes >= +0.5 sigma,
+    and call volume/OI (fresh activity vs standing inventory)."""
+    strikes, ivs = otm_smile(chain, spot)
+    if len(strikes) < 5 or not spot or not (strikes[0] < spot < strikes[-1]):
+        return None
+    t_years = max((expiry_epoch - pd.Timestamp(today).timestamp()) / 86400, 1) / 365.25
+    atm = float(np.interp(spot, strikes, ivs))
+    sig = atm * math.sqrt(t_years)
+    k_dn, k_up = spot * (1 - sig), spot * (1 + sig)
+    out = {"atm_iv": atm * 100, "sigma_move": sig * 100}
+    for name, k in (("put_skew", k_dn), ("call_skew", k_up)):
+        out[name] = (float(np.interp(k, strikes, ivs)) - atm) * 100 \
+            if strikes[0] <= k <= strikes[-1] else np.nan
+    out["rr"] = out["call_skew"] - out["put_skew"]
+
+    def tot(side, field, keep=lambda c: True):
+        return sum((c.get(field) or 0) for c in chain.get(side) or [] if keep(c))
+
+    c_oi, p_oi = tot("calls", "openInterest"), tot("puts", "openInterest")
+    up_oi = tot("calls", "openInterest",
+                lambda c: (c.get("strike") or 0) >= spot * (1 + 0.5 * sig))
+    out["pc_oi"] = p_oi / c_oi if c_oi else np.nan
+    out["upside_oi"] = up_oi / c_oi * 100 if c_oi else np.nan
+    c_vol = tot("calls", "volume")
+    out["call_vol_oi"] = c_vol / c_oi if c_oi else np.nan
+    return out
+
+
 # ----------------------------------------------------------------------------
 # Live option chains (best-effort)
 # ----------------------------------------------------------------------------
@@ -194,14 +247,16 @@ def fetch_chains(symbols, cache_dir, refresh=False, targets=TARGET_DTE):
             except Exception as exc:  # noqa: BLE001
                 print(f"  [options] {sym}: {type(exc).__name__} -- skipping live overlay")
                 continue
-        imp = {}
+        imp, raw = {}, {}
         for dte, ch in payload.get("chains", {}).items():
             m = implied_move(ch, payload.get("spot"), ch.get("expiry"),
                              pd.Timestamp.today())
             if m is not None:
                 imp[int(dte)] = m
+            raw[int(dte)] = ch
         if imp:
-            out[sym] = {"spot": payload.get("spot"), "implied": imp}
+            out[sym] = {"spot": payload.get("spot"), "implied": imp,
+                        "chains": raw}
     return out
 
 
@@ -292,6 +347,29 @@ def main():
             fmt = lambda v, w=7, p=1: f"{v:>{w}.{p}f}" if v is not None and np.isfinite(v) else " " * (w - 3) + "---"
             print(f"{t:<5}{chains[t]['spot']:>9.2f}{fmt(i3, 8)}{fmt(i6, 8)}"
                   f"{fmt(u63)}{fmt(d63)}{fmt(u126, 8)}{fmt(d126, 8)}   {fmt(ratio, 7, 2)}")
+        print("\n== skew & positioning (per tenor: wings at +/-1 sigma-move strikes) ==")
+        print("rr = call-wing IV minus put-wing IV, vol pts (equity smiles normally deeply negative);")
+        print("upOI% = share of call open interest struck >= +0.5 sigma; c v/oi = call volume/OI\n")
+        print(f"{'etf':<5}" + "".join(f"{'atmIV':>8}{'putsk':>7}{'callsk':>8}{'rr':>7}"
+                                      f"{'P/C oi':>8}{'upOI%':>7}{'c v/oi':>8}   "
+                                      for _ in TARGET_DTE)
+              + "   (~3M block, then ~6M)")
+        skew_rows = {}
+        for t in sorted(chains):
+            cells = []
+            for dte in TARGET_DTE:
+                ch = chains[t]["chains"].get(dte)
+                m = smile_metrics(ch, chains[t]["spot"], ch.get("expiry"),
+                                  pd.Timestamp.today()) if ch else None
+                skew_rows[(t, dte)] = m
+                if m:
+                    cells.append(f"{m['atm_iv']:>8.1f}{m['put_skew']:>+7.1f}"
+                                 f"{m['call_skew']:>+8.1f}{m['rr']:>+7.1f}"
+                                 f"{m['pc_oi']:>8.2f}{m['upside_oi']:>7.0f}"
+                                 f"{m['call_vol_oi']:>8.2f}   ")
+                else:
+                    cells.append(f"{'---':>53}   ")
+            print(f"{t:<5}" + "".join(cells))
     else:
         print("\n[options] no live chains available -- historical tables only")
 
