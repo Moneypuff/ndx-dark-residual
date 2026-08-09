@@ -64,13 +64,14 @@ jobs:
             echo "proceed=false" >> "$GITHUB_OUTPUT"
           fi
 
-  build-deploy:
+  # Build is separate from deploy so a workflow_dispatch on a feature branch can
+  # exercise the whole pipeline (tests, data fetch, all page builds, artifact) --
+  # the github-pages environment's branch policy would otherwise reject the job
+  # outright. Only main deploys the live site.
+  build:
     needs: gate
     if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -167,13 +168,22 @@ jobs:
       - name: Rebuild interactive earnings report (Pages copy)
         run: python build_report.py --cache-dir .ndx_dark_cache --docs-out docs/earnings.html
 
-      # Publish the whole docs/ folder (index.html, comovement.html, earnings.html, .nojekyll)
-      # as the Pages artifact, then deploy. No git commit anywhere in this workflow.
+      # Publish the whole docs/ folder (index.html, comovement.html, earnings.html,
+      # gex_dispersion.html, regime_log.html, .nojekyll) as the Pages artifact for the
+      # deploy job. No git commit anywhere in this workflow.
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
 
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v4
