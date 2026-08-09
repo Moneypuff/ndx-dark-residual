@@ -503,7 +503,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     <div class="finds">
       <div class="find"><span class="mk">◆</span><div>
         <h3>Gamma's edge is a volatility call, not a direction call</h3>
-        <p>The clearest split in the table is the <b>forward-vol column</b>: the unclamped-and-synchronized
+        <p>The clearest split in the table is the <b>forward-vol column</b>: the unclamped-and-correlated
           quadrant runs about <b><span id="fVolSpread">—</span> vol points hotter</b> over the next month
           than the pinned-and-dispersed one. Mean returns separate less than vol does.</p></div></div>
       <div class="find"><span class="mk">◆</span><div>
@@ -575,8 +575,8 @@ const QUAD = /*__QUAD__*/;
 const META = /*__META__*/;
 
 const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
-const QL = {HL:"Pinned & dispersed", HH:"Pinned but synchronized",
-            LH:"Unclamped & synchronized", LL:"Unclamped & dispersed"};
+const QL = {HL:"Pinned & dispersed", HH:"Pinned but correlated",
+            LH:"Unclamped & correlated", LL:"Unclamped & dispersed"};
 const QSHORT = {HL:"G+ C−", HH:"G+ C+", LH:"G− C+", LL:"G− C−"};
 const pc = v => (v>=0?"+":"")+(+v).toFixed(2)+"%";
 const N = SER.dates.length;

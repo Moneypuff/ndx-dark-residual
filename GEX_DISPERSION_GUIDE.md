@@ -31,8 +31,8 @@ Size positions off the quadrant; don't pick direction off it.
 | Quadrant | Days | Fwd 1-mo SPX | Hit | Fwd vol | How to treat it |
 |---|---|---|---|---|---|
 | **Pinned & dispersed** (G+ C−) | 1,961 | +0.51% | 64% | **11.6** | The grind. Carry, pair trades, and stock-picking work; index options are sellable; moves mean-revert intraday. Complacency risk builds the longer it runs. |
-| **Pinned but synchronized** (G+ C+) | 1,126 | +1.13% | 70% | 14.0 | Macro-driven but damped. Trends persist gently; the best hit-rate bucket. |
-| **Unclamped & synchronized** (G− C+) | 1,660 | +1.17% | 67% | **21.8** | The storm quadrant. Widest outcomes in both directions — returns average fine *because* rebounds live here, but paths are violent. Cut gross, buy convexity, don't sell vol. |
+| **Pinned but correlated** (G+ C+) | 1,126 | +1.13% | 70% | 14.0 | Macro-driven but damped. Trends persist gently; the best hit-rate bucket. |
+| **Unclamped & correlated** (G− C+) | 1,660 | +1.17% | 67% | **21.8** | The storm quadrant. Widest outcomes in both directions — returns average fine *because* rebounds live here, but paths are violent. Cut gross, buy convexity, don't sell vol. |
 | **Unclamped & dispersed** (G− C−) | 813 | +0.54% | 63% | 14.9 | The transition state. Leadership rotations happen here (see §4). Vol tends to *expand* out of it (+3.3 pts vs trailing). |
 
 Baseline for comparison: +0.84% mean, 66% hit, 15.6 fwd vol.

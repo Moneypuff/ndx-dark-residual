@@ -70,8 +70,8 @@ ANN = np.sqrt(252.0)
 
 QUAD_LABEL = {
     "HL": "Pinned & dispersed",
-    "HH": "Pinned but synchronized",
-    "LH": "Unclamped & synchronized",
+    "HH": "Pinned but correlated",
+    "LH": "Unclamped & correlated",
     "LL": "Unclamped & dispersed",
 }
 
