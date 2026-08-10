@@ -157,7 +157,10 @@ def implied_forward(expiry_rows, spot, moneyness=0.10, max_spread=40.0):
     live = live[(live["spr"] <= max_spread) &
                 ((live["strike"] / spot - 1).abs() <= moneyness)]
     piv = live.pivot_table(index="strike", columns="right", values="mid",
-                           aggfunc="last").dropna()
+                           aggfunc="last")
+    if not {"C", "P"}.issubset(piv.columns):
+        return spot, 1.0          # one-sided quotes: no parity pairs
+    piv = piv.dropna()
     if len(piv) < 3:
         return spot, 1.0
     k = piv.index.to_numpy(dtype=float)

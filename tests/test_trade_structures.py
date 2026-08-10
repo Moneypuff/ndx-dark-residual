@@ -224,3 +224,13 @@ def test_structure_mark_signs():
     short_leg = next(d for d in det if d["qty"] == -1)
     assert net == pytest.approx(long_leg["mark_pct"] - short_leg["mark_pct"])
     assert net > 0                                     # debit call spread
+
+
+def test_implied_forward_one_sided_quotes_fall_back():
+    # an expiry where only calls carry tight quotes: no parity pairs
+    rows = [{"date": "2026-08-10", "symbol": "X", "expiry": "2026-11-20",
+             "right": "C", "strike": float(k), "iv": 0.3, "oi": 10,
+             "volume": 1, "bid": 2.0, "ask": 2.2, "last": 2.1, "spot": 100.0}
+            for k in (95, 100, 105)]
+    f, d = T.implied_forward(pd.DataFrame(rows), 100.0)
+    assert (f, d) == (100.0, 1.0)
