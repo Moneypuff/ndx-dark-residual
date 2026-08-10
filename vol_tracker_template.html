@@ -70,6 +70,8 @@ td.l{text-align:left}
 .tag.open{background:var(--accent-soft); color:var(--accent)}
 .tag.closed{background:rgba(128,128,128,.14); color:var(--ink-dim)}
 .tag.off{background:rgba(128,128,128,.10); color:var(--ink-faint)}
+.tag.tp{background:rgba(70,179,154,.16); color:var(--pos-ink)}
+.tag.stop{background:rgba(212,99,95,.16); color:var(--neg-ink)}
 .note{background:var(--surface-2); border:1px solid var(--line-soft); border-radius:10px;
   padding:10px 14px; color:var(--ink-dim); font-size:13px; margin:0 0 22px}
 .foot{color:var(--ink-faint); font-size:12px; padding:8px 0 40px}
@@ -93,7 +95,9 @@ td.l{text-align:left}
     <h2>Trade log</h2>
     <p class="hint">deterministic replay: enter on the first snapshot at/after each signal,
     exit at event + 63 sessions &middot; marks in % of spot, debit positive &middot;
-    smile-marked, quote-bounded only when the market is tight</p>
+    smile-marked, quote-bounded only when the market is tight &middot; illiquid chains get
+    the <b>delta-1 stock trade</b>: stop at the family's q25 excursion, take-profit at its
+    median max-favorable, sized so the stop costs 1% of NAV</p>
     <div class="tblwrap"><table id="log"></table></div>
   </div>
 
@@ -142,14 +146,17 @@ function table(el, cols, rows) {
     rows.map(r => "<tr>" + cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("") + "</tr>").join("");
 }
 
-const statusTag = s => `<span class="tag ${s === "open" ? "open" : s === "closed" ? "closed" : "off"}">${esc(s)}</span>`;
+const statusTag = s => `<span class="tag ${
+  s === "open" ? "open" : s === "closed" ? "closed" :
+  s === "target" ? "tp" : s === "stopped" ? "stop" : "off"}">${esc(s)}</span>`;
 
 table("log", [
   ["signal", r => `<b>${esc(r.symbol)}</b> ${esc(r.family)} ${esc(r.event)}`, "l"],
   ["structure", r => r.structure ? `${esc(r.structure)}${r.proxied ? " *" : ""}` : "&mdash;", "l"],
   ["entry %", r => num(r.entry_cost_pct, 2, true)],
   ["now %", r => num(r.value_pct, 2, true)],
-  ["P&L %", r => num(r.pnl_pct, 2, true)],
+  ["P&L %", r => num(r.pnl_pct, 2, true) + (r.nav_pnl_pct != null ?
+     ` <span class="why" style="white-space:nowrap">(${(r.nav_pnl_pct > 0 ? "+" : "") + Number(r.nav_pnl_pct).toFixed(2)} NAV)</span>` : "")],
   ["status", r => statusTag(r.status)],
   ["context", r => r.rich == null ? "&mdash;" :
      `imp ${Number(r.imp3m).toFixed(1)}% / cond ${Number(r.cond63).toFixed(1)}% (x${Number(r.rich).toFixed(2)}) · rr ${(r.rr3m > 0 ? "+" : "") + Number(r.rr3m).toFixed(1)}`, "l"],

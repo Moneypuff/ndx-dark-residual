@@ -123,12 +123,48 @@ def test_chain_liquidity_gate():
     assert L.loc["VTV", "med_spread"] > 20
 
 
-def test_trade_log_gates_illiquid_symbols():
-    sig = [{"symbol": "VTV", "family": "up", "event": pd.Timestamp("2026-08-10"),
-            "roundtrip": False, "cond_eabs63": 5.0, "exit_date": None}]
-    log = V.trade_log(_panel_3d(), sig, liquid={"GDX"})
-    assert log.iloc[0]["status"] == "illiquid_chain"
-    assert log.iloc[0]["structure"] is None
+def _d1_sig(**over):
+    s = {"symbol": "GDX", "family": "up", "event": pd.Timestamp("2026-08-10"),
+         "roundtrip": True, "cond_eabs63": 13.0, "mae_q25": -16.0,
+         "mfe_med": 11.0, "exit_date": None}
+    s.update(over)
+    return s
+
+
+def test_trade_log_illiquid_gets_delta1_with_1pct_risk_sizing():
+    log = V.trade_log(_panel_3d(), [_d1_sig()], liquid=set())
+    r = log.iloc[0]
+    assert r["structure"] == "delta-1 stock" and r["status"] == "open"
+    assert r["entry_px"] == pytest.approx(100.0)
+    assert r["stop_px"] == pytest.approx(84.0)          # entry * (1 - 16%)
+    assert r["tp_px"] == pytest.approx(111.0)
+    assert r["weight_pct"] == pytest.approx(100 * V.RISK_NAV / 16.0, abs=0.05)
+    assert "1% NAV" in r["rationale"]
+
+
+def _panel_spots(path):
+    """3-day panel whose spot follows `path` (list of 3 prices)."""
+    df = _panel_3d()
+    for d, px in zip(sorted(df["date"].unique()), path):
+        df.loc[df["date"] == d, "spot"] = px
+    return df
+
+
+def test_delta1_replay_stop_and_target():
+    stopped = V.trade_log(_panel_spots([100, 92, 80]), [_d1_sig()], liquid=set()).iloc[0]
+    assert stopped["status"] == "stopped"
+    assert stopped["pnl_pct"] == pytest.approx(-16.0)   # exits AT the stop
+    assert stopped["nav_pnl_pct"] == pytest.approx(-V.RISK_NAV, abs=0.01)
+    hit = V.trade_log(_panel_spots([100, 105, 115]), [_d1_sig()], liquid=set()).iloc[0]
+    assert hit["status"] == "target"
+    assert hit["pnl_pct"] == pytest.approx(11.0)
+
+
+def test_delta1_defaults_without_family_stats():
+    sig = _d1_sig(mae_q25=np.nan, mfe_med=np.nan)
+    r = V.trade_log(_panel_3d(), [sig], liquid=set()).iloc[0]
+    assert r["stop_px"] == pytest.approx(100 * (1 + V.D1_STOP_DEFAULT / 100))
+    assert r["tp_px"] == pytest.approx(100 * (1 + V.D1_TP_DEFAULT / 100))
 
 
 def test_resolve_leg_nearest_expiry_then_strike():

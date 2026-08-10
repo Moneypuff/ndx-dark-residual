@@ -43,6 +43,17 @@ import trade_structures as T
 from build_regime_log import (SECTORS, THEMES, conviction_frame,
                               conviction_events, detect_breaks, spread_frames)
 from etf_expected_move_study import fwd_returns
+from etf_path_study import family_stats
+
+# Delta-1 fallback for illiquid chains: long stock sized so the stop-loss
+# costs RISK_NAV of the portfolio. The stop sits at the family's q25 max
+# adverse excursion (thesis-broken territory -- only the worst quartile of
+# historical winners ever traded there; the playbook showed tighter stops
+# amputate the recovery), the take-profit at the family's median max
+# favorable excursion. Defaults cover the rare family without n >= 8.
+RISK_NAV = 1.0             # % of NAV lost if the stop trades
+D1_STOP_DEFAULT = -12.0    # % from entry, when no family stats exist
+D1_TP_DEFAULT = 10.0
 
 DOI_MIN = 100          # contracts of OI change below this are noise, unclassified
 TOP_OI = 15            # strikes per symbol in the big-OI map
@@ -241,10 +252,13 @@ def signal_context(cache_dir, refresh=False):
             if len(c) - 1 - i > LIVE_SESSIONS:
                 continue
             r = fwd_returns(c, dates, 63)
+            st = family_stats(c, dates)
             out.append({"symbol": t, "family": fam,
                         "event": pd.Timestamp(dates[-1]),
                         "roundtrip": t in ROUND_TRIP,
                         "cond_eabs63": float(np.mean(np.abs(r))) if len(r) >= 8 else np.nan,
+                        "mae_q25": st[0]["mae_q25"] if st else np.nan,
+                        "mfe_med": st[0]["mfe_med"] if st else np.nan,
                         "exit_date": c.index[i + 63] if i + 63 < len(c) else None})
     return out
 
@@ -297,23 +311,75 @@ def resolve_suggestion(day_df, symbol, legs, asof):
     return resolved
 
 
+def delta1_trade(spots, s, dates):
+    """Delta-1 (stock) trade for a signal whose chain fails the liquidity
+    gate: long at the entry snapshot's spot, stop at the family's q25 max
+    adverse excursion, take-profit at its median max favorable excursion,
+    weight sized so the stop costs RISK_NAV% of the portfolio. Replayed on
+    snapshot closes (close-through, no intraday fills): stop, then target,
+    then the 63-session time exit."""
+    entry_snap = next((d for d in dates if pd.Timestamp(d) >= s["event"]), None)
+    entry = spots.get((entry_snap, s["symbol"])) if entry_snap else None
+    if entry is None or not np.isfinite(entry):
+        return None
+    stop_pct = s["mae_q25"] if np.isfinite(s["mae_q25"]) else D1_STOP_DEFAULT
+    tp_pct = s["mfe_med"] if np.isfinite(s["mfe_med"]) else D1_TP_DEFAULT
+    stop_px, tp_px = entry * (1 + stop_pct / 100), entry * (1 + tp_pct / 100)
+    weight = RISK_NAV / abs(stop_pct) * 100
+    exit_snap = (next((d for d in dates if pd.Timestamp(d) >= s["exit_date"]), None)
+                 if s["exit_date"] is not None else None)
+    status, last_px, mark_snap = "open", entry, entry_snap
+    for d in dates:
+        if d <= entry_snap:
+            continue
+        px = spots.get((d, s["symbol"]))
+        if px is None or not np.isfinite(px):
+            continue
+        last_px, mark_snap = px, d
+        if px <= stop_px:
+            status, last_px = "stopped", stop_px
+            break
+        if px >= tp_px:
+            status, last_px = "target", tp_px
+            break
+        if exit_snap is not None and d >= exit_snap:
+            status = "closed"
+            break
+    move = (last_px / entry - 1) * 100
+    return {"structure": "delta-1 stock", "entry_snap": entry_snap,
+            "proxied": pd.Timestamp(entry_snap) > s["event"],
+            "legs": (f"long stock @ {entry:.2f} · stop {stop_px:.2f} "
+                     f"({stop_pct:+.1f}%) · tp {tp_px:.2f} ({tp_pct:+.1f}%) "
+                     f"· wt {weight:.1f}% NAV"),
+            "entry_px": round(entry, 2), "stop_px": round(stop_px, 2),
+            "tp_px": round(tp_px, 2), "weight_pct": round(weight, 1),
+            "mark_snap": mark_snap, "value_pct": move, "pnl_pct": move,
+            "nav_pnl_pct": move * weight / 100, "status": status,
+            "rationale": (f"illiquid chain -- delta-1 with the stop at the "
+                          f"family's q25 excursion; stop costs {RISK_NAV:.0f}% NAV")}
+
+
 def trade_log(df, signals, liquid=None):
     """Deterministic replay of the established rules over the snapshot
     history: enter each live signal's suggested structure on the first
     snapshot at/after the event (flagged when proxied from a later first
     capture), exit at event + 63 sessions (the playbook horizon). Marks
     are smile-based (trade_structures.leg_mark), never raw closing mids.
-    Symbols outside `liquid` (a set; None = no gate) are logged as
-    illiquid_chain and never resolved -- wide chains don't get trades."""
+    Symbols outside `liquid` (a set; None = no gate) get the delta-1
+    stock trade instead -- entry/stop/take-profit prices sized to RISK_NAV
+    -- wide chains don't get option structures."""
     dates = sorted(df["date"].unique())
+    spots = df.groupby(["date", "symbol"])["spot"].first().to_dict()
     rows = []
     for s in signals:
         if liquid is not None and s["symbol"] not in liquid:
-            rows.append({"symbol": s["symbol"], "family": s["family"],
-                         "event": str(s["event"].date()),
-                         "structure": None, "status": "illiquid_chain",
-                         "rationale": "chain fails the liquidity gate "
-                         "(near-ATM spread / total OI) -- stock expression only"})
+            base = {"symbol": s["symbol"], "family": s["family"],
+                    "event": str(s["event"].date())}
+            d1 = delta1_trade(spots, s, dates)
+            rows.append({**base, **d1} if d1 else
+                        {**base, "structure": None, "status": "unresolvable",
+                         "rationale": "illiquid chain and no snapshot spot to "
+                         "anchor a delta-1 entry"})
             continue
         entry_snap = next((d for d in dates if pd.Timestamp(d) >= s["event"]), None)
         if entry_snap is None:
@@ -447,14 +513,20 @@ def main():
                 if np.isfinite(r.get("rich", np.nan)) else
                 f"\n{r['symbol']} {r['family']} {r['event']}")
         print(head)
-        if r["status"] in ("no_trade", "unresolvable", "illiquid_chain"):
+        if r["status"] in ("no_trade", "unresolvable"):
             print(f"  {r['status'].upper()}: {r['rationale']}")
             continue
         tag = " (entry proxied)" if r["proxied"] else ""
-        print(f"  {r['structure']}: {r['legs']}{tag}")
-        print(f"  entry {r['entry_cost_pct']:+.2f}% -> {r['value_pct']:+.2f}% "
-              f"({r['mark_snap']})  P&L {r['pnl_pct']:+.2f}% of spot  "
-              f"[{r['status'].upper()}]")
+        if r["structure"] == "delta-1 stock":
+            print(f"  delta-1: {r['legs']}{tag}")
+            print(f"  move {r['pnl_pct']:+.2f}% -> NAV P&L "
+                  f"{r['nav_pnl_pct']:+.2f}% ({r['mark_snap']})  "
+                  f"[{r['status'].upper()}]")
+        else:
+            print(f"  {r['structure']}: {r['legs']}{tag}")
+            print(f"  entry {r['entry_cost_pct']:+.2f}% -> {r['value_pct']:+.2f}% "
+                  f"({r['mark_snap']})  P&L {r['pnl_pct']:+.2f}% of spot  "
+                  f"[{r['status'].upper()}]")
         print(f"  why: {r['rationale']}")
 
     if args.out_dir:
