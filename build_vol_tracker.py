@@ -223,10 +223,10 @@ def resolve_leg(day_df, symbol, right, tenor_days, moneyness, asof):
 # ----------------------------------------------------------------------------
 # Phase 3: structure suggestions + the replayed trade log
 # ----------------------------------------------------------------------------
-def signal_context(cache_dir, refresh=False):
-    """Live regime-log signals with the context the suggester needs:
-    conditional E|move| 63d over the family's full event history, the
-    playbook class, and the rule-based exit date (event + 63 sessions)."""
+def universe_data(cache_dir, refresh=False):
+    """{symbol: {"close": Series, "fams": {up/dn/turn: [event dates]}}} for
+    the leaderboard ETFs -- the one expensive pass (prices + conviction)
+    shared by the signal context and the chart inputs."""
     univ = {**SECTORS, **THEMES}
     syms = sorted(set(univ) | {"SPY"})
     panels = N.load_yahoo_panels(syms, "2004-01-01", pd.Timestamp.today().normalize(),
@@ -234,7 +234,7 @@ def signal_context(cache_dir, refresh=False):
                                  label="VOLTRK")
     adj = panels["adjclose"].dropna(how="all")
     spy = adj["SPY"].dropna()
-    out = []
+    out = {}
     for t in sorted(univ):
         if t not in adj:
             continue
@@ -242,10 +242,21 @@ def signal_context(cache_dir, refresh=False):
         conv = conviction_frame(c, panels["volume"][t])
         ev = conviction_events(c, conv, min_score=3, cooldown=21, horizon=63)
         s21, s63, z, _ = spread_frames(c, spy)
-        fams = {"up": list(ev[ev["dir"] == 1]["date"]),
-                "dn": list(ev[ev["dir"] == -1]["date"]),
-                "turn": [d for d, s in detect_breaks(s63, z) if s == -1]}
-        for fam, dates in fams.items():
+        out[t] = {"close": c, "fams": {
+            "up": list(ev[ev["dir"] == 1]["date"]),
+            "dn": list(ev[ev["dir"] == -1]["date"]),
+            "turn": [d for d, s in detect_breaks(s63, z) if s == -1]}}
+    return out
+
+
+def signal_context(universe):
+    """Live regime-log signals with the context the suggester needs:
+    conditional E|move| 63d over the family's full event history, the
+    playbook class, and the rule-based exit date (event + 63 sessions)."""
+    out = []
+    for t, dat in universe.items():
+        c = dat["close"]
+        for fam, dates in dat["fams"].items():
             if not dates:
                 continue
             i = c.index.get_loc(dates[-1])
@@ -261,6 +272,44 @@ def signal_context(cache_dir, refresh=False):
                         "mfe_med": st[0]["mfe_med"] if st else np.nan,
                         "exit_date": c.index[i + 63] if i + 63 < len(c) else None})
     return out
+
+
+def chart_inputs(universe, latest_day_df, asof, liquid):
+    """Assemble the plain-data payloads vol_tracker_charts renders: the
+    universe path map (median up-break path + family stats per ETF), the
+    implied-vs-conditional expected-move rows, and the skew/positioning
+    rows (~3M tenor, liquid chains only)."""
+    from etf_path_study import class_of
+    paths = {"med_paths": {}, "up": {}, "dn": {}, "turn": {}}
+    exp_rows, skew_rows = [], []
+    for t, dat in universe.items():
+        c = dat["close"]
+        for fam in ("up", "dn", "turn"):
+            st = family_stats(c, dat["fams"][fam])
+            if st is None:
+                continue
+            row, med_path = st
+            if fam == "up":
+                paths["med_paths"][t] = med_path
+                paths["up"][t] = {"med63": row["med63"], "hit63": row["hit63"],
+                                  "mae_q25": row["mae_q25"], "cls": class_of(row)}
+            else:
+                paths[fam][t] = {"med63": row["med63"], "hit63": row["hit63"],
+                                 "n": row["n"]}
+        r63 = fwd_returns(c, dat["fams"]["up"], 63)
+        r126 = fwd_returns(c, dat["fams"]["up"], 126)
+        if len(latest_day_df) and len(r63) >= 8:
+            st3 = expiry_stats(latest_day_df, t, 91, asof)
+            st6 = expiry_stats(latest_day_df, t, 182, asof)
+            exp_rows.append({"symbol": t,
+                             "cond63": float(np.mean(np.abs(r63))),
+                             "cond126": float(np.mean(np.abs(r126))),
+                             "imp3m": st3["imp_move"] if st3 else np.nan,
+                             "imp6m": st6["imp_move"] if st6 else np.nan})
+            if t in liquid and st3 and np.isfinite(st3.get("rr", np.nan)):
+                skew_rows.append({"symbol": t, "rr": st3["rr"],
+                                  "upside": st3.get("upside_oi", np.nan)})
+    return paths, exp_rows, skew_rows
 
 
 def expiry_stats(day_df, symbol, target_days, asof):
@@ -287,6 +336,11 @@ def expiry_stats(day_df, symbol, target_days, asof):
         def wing(k):
             return float(np.interp(k, ks, vs)) if ks[0] <= k <= ks[-1] else np.nan
         st["rr"] = ((wing(spot * (1 + sig)) - a) - (wing(spot * (1 - sig)) - a)) * 100
+    calls = rows[rows["right"] == "C"]
+    c_oi = calls["oi"].fillna(0).sum()
+    st["upside_oi"] = (float(calls[calls["strike"] >= spot * (1 + 0.5 * sig)]
+                             ["oi"].fillna(0).sum() / c_oi * 100)
+                       if c_oi > 0 else np.nan)
     return st
 
 
@@ -425,9 +479,10 @@ def trade_log(df, signals, liquid=None):
 
 
 # ----------------------------------------------------------------------------
-def render_page(template, docs_out, ctx, log, bigmap, liq):
+def render_page(template, docs_out, ctx, log, bigmap, liq, charts=None):
     """docs/vol_tracker.html -- payloads injected into the template the
-    same way the other pages do it."""
+    same way the other pages do it. `charts` is {key: {"light": b64png,
+    "dark": b64png}} from vol_tracker_charts (empty when unavailable)."""
     def records(frame):
         return (json.loads(frame.replace({np.nan: None}).to_json(orient="records"))
                 if len(frame) else [])
@@ -435,7 +490,8 @@ def render_page(template, docs_out, ctx, log, bigmap, liq):
             .replace("/*__CTX__*/", json.dumps(ctx, separators=(",", ":")))
             .replace("/*__LOG__*/", json.dumps(records(log), separators=(",", ":")))
             .replace("/*__BIG__*/", json.dumps(records(bigmap), separators=(",", ":")))
-            .replace("/*__LIQ__*/", json.dumps(records(liq), separators=(",", ":"))))
+            .replace("/*__LIQ__*/", json.dumps(records(liq), separators=(",", ":")))
+            .replace("/*__IMG__*/", json.dumps(charts or {}, separators=(",", ":"))))
     doc = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
            '<meta name="viewport" content="width=device-width,initial-scale=1">'
            '<title>Vol Tracker</title></head>'
@@ -502,7 +558,8 @@ def main():
     print(show[["symbol", "expiry", "right", "strike", "moneyness", "oi",
                 "iv", "days_seen"]].to_string(index=False))
 
-    signals = signal_context(args.cache_dir, refresh=args.refresh)
+    universe = universe_data(args.cache_dir, refresh=args.refresh)
+    signals = signal_context(universe)
     log = trade_log(df, signals, liquid=liquid_set)
     print(f"\n== suggested structures & trade log ({len(log)} signals; "
           f"smile-marked, % of spot, debit positive) ==")
@@ -541,6 +598,15 @@ def main():
         print(f"\nwrote {out}/")
 
     if args.docs_out:
+        charts = {}
+        try:
+            import vol_tracker_charts as C
+            paths, exp_rows, skew_rows = chart_inputs(
+                universe, df[df["date"] == days[-1]], days[-1], liquid_set)
+            charts = C.render_all(paths, exp_rows, skew_rows)
+            print(f"[charts] rendered {len(charts)} figures x2 themes")
+        except Exception as exc:  # noqa: BLE001 -- the page must build without charts
+            print(f"[charts] skipped: {type(exc).__name__}: {exc}")
         bigmap2 = bigmap.merge(liq[["symbol", "liquid"]], on="symbol", how="left")
         render_page(args.template, args.docs_out, {
             "built": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -550,7 +616,7 @@ def main():
             "note": None if len(days) >= 3 else (
                 "IV deltas need 2 snapshots and aggressor reads 3 -- "
                 f"{len(days)} captured so far; columns fill in as history accrues."),
-        }, log, bigmap2, liq)
+        }, log, bigmap2, liq, charts)
 
 
 if __name__ == "__main__":
