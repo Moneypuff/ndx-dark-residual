@@ -35,9 +35,16 @@ def _skew_rows():
                             ("EEM", 1.7, 6))]
 
 
+def _near_rows():
+    return [{"symbol": s, "rr1": r1, "rr2": r2, "dte1": 40, "dte2": 68}
+            for s, r1, r2 in (("GDX", 5.0, 3.5), ("QQQ", -5.5, -4.0),
+                              ("SMH", -4.5, -3.5), ("IWM", -5.0, -4.2),
+                              ("EEM", 2.0, 1.5))]
+
+
 def test_render_all_both_themes():
-    out = C.render_all(_paths(), _exp_rows(), _skew_rows())
-    assert set(out) == {"paths", "expmove", "skew"}
+    out = C.render_all(_paths(), _exp_rows(), _skew_rows(), _near_rows())
+    assert set(out) == {"paths", "expmove", "skew", "skewnear"}
     for key, imgs in out.items():
         assert set(imgs) == {"light", "dark"}
         for b64 in imgs.values():
@@ -46,7 +53,7 @@ def test_render_all_both_themes():
 
 def test_empty_inputs_are_skipped():
     out = C.render_all({"med_paths": {}, "up": {}, "dn": {}, "turn": {}},
-                       [], [])
+                       [], [], [])
     assert out == {}
 
 

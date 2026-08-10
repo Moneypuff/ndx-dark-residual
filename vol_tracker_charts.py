@@ -30,12 +30,12 @@ import matplotlib.pyplot as plt  # noqa: E402
 THEMES = {
     "light": {"surface": "#ffffff", "ink": "#16202b", "dim": "#54626f",
               "faint": "#8794a1", "grid": "#e3e9ef", "base": "#d3dbe3",
-              "blue": "#2a78d6", "orange": "#eb6834", "aqua": "#1baf7a",
-              "red": "#e34948"},
+              "blue": "#2a78d6", "blue2": "#8ab4e8", "orange": "#eb6834",
+              "aqua": "#1baf7a", "red": "#e34948", "red2": "#f0a09f"},
     "dark": {"surface": "#141b24", "ink": "#e9eef3", "dim": "#96a4b3",
              "faint": "#5d6b7a", "grid": "#243040", "base": "#383f4c",
-             "blue": "#3987e5", "orange": "#d95926", "aqua": "#2bc492",
-             "red": "#e66767"},
+             "blue": "#3987e5", "blue2": "#6390c4", "orange": "#d95926",
+             "aqua": "#2bc492", "red": "#e66767", "red2": "#a95c5c"},
 }
 
 
@@ -239,13 +239,71 @@ def fig_skew(rows, t):
         return _b64(fig, t)
 
 
-def render_all(paths, exp_rows, skew_rows):
+def fig_skew_near(rows, t):
+    """1M vs 2M risk-reversal term structure: paired bars per ETF (sorted
+    by the 1M leg) and the steepening scatter."""
+    rows = [r for r in rows if np.isfinite(r.get("rr1", np.nan))
+            and np.isfinite(r.get("rr2", np.nan))]
+    if len(rows) < 5:
+        return None
+    d1 = int(np.median([r["dte1"] for r in rows]))
+    d2 = int(np.median([r["dte2"] for r in rows]))
+    with plt.rc_context(_style(t)):
+        fig, axes = plt.subplots(1, 2, figsize=(10.6, 4.9), facecolor=t["surface"])
+        fig.subplots_adjust(wspace=0.26, left=0.08, right=0.98, top=0.9,
+                            bottom=0.13)
+        ax = axes[0]
+        _ax(ax, t, grid_axis="x")
+        order = sorted(rows, key=lambda r: r["rr1"])
+        y = np.arange(len(order))
+        h = 0.36
+        for off, key, col, col_pos, lbl in (
+                (+h / 2 + 0.02, "rr1", t["blue"], t["red"], f"~1M ({d1}d)"),
+                (-h / 2 - 0.02, "rr2", t["blue2"], t["red2"], f"~2M ({d2}d)")):
+            vals = [r[key] for r in order]
+            ax.barh(y + off, vals, height=h,
+                    color=[col_pos if v > 0 else col for v in vals],
+                    alpha=0.92, label=lbl)
+        ax.set_yticks(y, [r["symbol"] for r in order], fontsize=7.5)
+        ax.axvline(0, color=t["base"], lw=1)
+        ax.set_title("Risk reversal term: ~1M vs ~2M", loc="left", pad=8)
+        ax.set_xlabel("call wing − put wing at ±1σ-move, vol pts "
+                      "(warm = upside bid)", fontsize=8.5)
+        ax.legend(frameon=False, fontsize=8, loc="lower right")
+
+        ax = axes[1]
+        _ax(ax, t, grid_axis="both")
+        vals = [v for r in rows for v in (r["rr1"], r["rr2"])]
+        lo, hi = min(vals) - 1.5, max(vals) + 1.5
+        ax.plot([lo, hi], [lo, hi], color=t["base"], lw=1.2, ls=(0, (4, 3)),
+                zorder=1)
+        for r in rows:
+            col = t["orange"] if r["symbol"] == "GDX" else t["blue"]
+            ax.scatter(r["rr1"], r["rr2"], s=40, color=col, zorder=3,
+                       edgecolors=t["surface"], linewidths=1.1)
+            ax.annotate(r["symbol"], (r["rr1"], r["rr2"]), xytext=(4, 3),
+                        textcoords="offset points", fontsize=7, color=t["dim"])
+        ax.axvline(0, color=t["grid"], lw=1)
+        ax.axhline(0, color=t["grid"], lw=1)
+        ax.set_xlim(lo, hi)
+        ax.set_ylim(lo, hi)
+        ax.set_title("Near-dated vs deferred skew", loc="left", pad=8)
+        ax.text(0.03, 0.94, "above diagonal = skew eases into the front\n"
+                "below = front-loaded (event risk priced near-dated)",
+                transform=ax.transAxes, fontsize=7, color=t["faint"])
+        ax.set_xlabel(f"rr ~1M ({d1}d), vol pts", fontsize=8.5)
+        ax.set_ylabel(f"rr ~2M ({d2}d), vol pts", fontsize=8.5)
+        return _b64(fig, t)
+
+
+def render_all(paths, exp_rows, skew_rows, near_rows=None):
     """{key: {"light": b64, "dark": b64}} for every figure whose input
     exists."""
     out = {}
     for key, fn, data in (("paths", fig_paths, paths),
                           ("expmove", fig_expmove, exp_rows),
-                          ("skew", fig_skew, skew_rows)):
+                          ("skew", fig_skew, skew_rows),
+                          ("skewnear", fig_skew_near, near_rows or [])):
         imgs = {}
         for theme, tokens in THEMES.items():
             img = fn(data, tokens)
