@@ -109,20 +109,14 @@ td.l{text-align:left}
     <div class="tblwrap"><table id="big"></table></div>
   </div>
 
-  <div class="card" id="card-skew" style="display:none">
-    <h2>Skew &amp; positioning (~3M tenor)</h2>
-    <p class="hint">risk reversal at the &plusmn;1 expected-move strikes (call wing &minus; put
-    wing, vol points; red = the market pays up for upside) and the call-open-interest
-    quadrant &middot; liquid chains only &middot; rebuilt nightly from the latest capture</p>
-    <img id="img-skew" class="figure" alt="skew and positioning chart">
-  </div>
-
-  <div class="card" id="card-skewnear" style="display:none">
-    <h2>Near-dated skew term (~1M vs ~2M)</h2>
-    <p class="hint">the same risk reversal at the two front monthlies &middot; a front leg far
-    below the deferred one = event risk priced near-dated; a front leg above = the upside
-    chase is concentrated in short tenors &middot; liquid chains only</p>
-    <img id="img-skewnear" class="figure" alt="1M vs 2M skew term chart">
+  <div class="card" id="card-skewterm" style="display:none">
+    <h2>Skew term structure &amp; positioning</h2>
+    <p class="hint">risk reversal (call wing &minus; put wing) at ~1M / ~2M / ~3M / ~6M in one
+    heatmap &mdash; wings sit at each tenor's &plusmn;1 expected-move strikes and the values are
+    IV differences, i.e. <b>annualized vol points</b>, so tenors compare directly &middot;
+    red = the market pays up for upside, blue = normal put skew &middot; alongside the ~3M
+    call-open-interest quadrant &middot; liquid chains only, rebuilt nightly</p>
+    <img id="img-skewterm" class="figure" alt="skew term structure and positioning chart">
   </div>
 
   <div class="card" id="card-expmove" style="display:none">

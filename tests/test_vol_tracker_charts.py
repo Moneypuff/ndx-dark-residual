@@ -29,22 +29,22 @@ def _exp_rows():
 
 
 def _skew_rows():
-    return [{"symbol": s, "rr": r, "upside": u}
-            for s, r, u in (("GDX", 4.3, 31), ("QQQ", -4.0, 34),
-                            ("SMH", -3.8, 37), ("IWM", -4.3, 67),
-                            ("EEM", 1.7, 6))]
-
-
-def _near_rows():
-    return [{"symbol": s, "rr1": r1, "rr2": r2, "dte1": 40, "dte2": 68}
-            for s, r1, r2 in (("GDX", 5.0, 3.5), ("QQQ", -5.5, -4.0),
-                              ("SMH", -4.5, -3.5), ("IWM", -5.0, -4.2),
-                              ("EEM", 2.0, 1.5))]
+    out = []
+    for s, base, up in (("GDX", 4.3, 31), ("QQQ", -4.0, 34), ("SMH", -3.8, 37),
+                        ("IWM", -4.3, 67), ("EEM", 1.7, 6)):
+        row = {"symbol": s, "upside": up}
+        for i, d in enumerate(C.SKEW_TENORS):
+            row[f"rr{d}"] = base + 0.3 * i
+            row[f"dte{d}"] = {30: 40, 60: 68, 91: 96, 182: 187}[d]
+        out.append(row)
+    # one hole: a missing tenor must render as a blank cell, not crash
+    out[0]["rr60"] = np.nan
+    return out
 
 
 def test_render_all_both_themes():
-    out = C.render_all(_paths(), _exp_rows(), _skew_rows(), _near_rows())
-    assert set(out) == {"paths", "expmove", "skew", "skewnear"}
+    out = C.render_all(_paths(), _exp_rows(), _skew_rows())
+    assert set(out) == {"paths", "expmove", "skewterm"}
     for key, imgs in out.items():
         assert set(imgs) == {"light", "dark"}
         for b64 in imgs.values():
@@ -53,11 +53,11 @@ def test_render_all_both_themes():
 
 def test_empty_inputs_are_skipped():
     out = C.render_all({"med_paths": {}, "up": {}, "dn": {}, "turn": {}},
-                       [], [], [])
+                       [], [])
     assert out == {}
 
 
 def test_thin_inputs_are_skipped():
     # fewer than 5 usable rows -> no scatter figures
     assert C.fig_expmove(_exp_rows()[:3], C.THEMES["light"]) is None
-    assert C.fig_skew(_skew_rows()[:3], C.THEMES["light"]) is None
+    assert C.fig_skew_term(_skew_rows()[:3], C.THEMES["light"]) is None

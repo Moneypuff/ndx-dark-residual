@@ -281,7 +281,8 @@ def chart_inputs(universe, latest_day_df, asof, liquid):
     rows (~3M tenor, liquid chains only)."""
     from etf_path_study import class_of
     paths = {"med_paths": {}, "up": {}, "dn": {}, "turn": {}}
-    exp_rows, skew_rows, near_rows = [], [], []
+    exp_rows, skew_rows = [], []
+    skew_tenors = (30, 60, 91, 182)
     for t, dat in universe.items():
         c = dat["close"]
         for fam in ("up", "dn", "turn"):
@@ -306,18 +307,17 @@ def chart_inputs(universe, latest_day_df, asof, liquid):
                              "cond126": float(np.mean(np.abs(r126))),
                              "imp3m": st3["imp_move"] if st3 else np.nan,
                              "imp6m": st6["imp_move"] if st6 else np.nan})
-            if t in liquid and st3 and np.isfinite(st3.get("rr", np.nan)):
-                skew_rows.append({"symbol": t, "rr": st3["rr"],
-                                  "upside": st3.get("upside_oi", np.nan)})
             if t in liquid:
-                st1 = expiry_stats(latest_day_df, t, 30, asof)
-                st2 = expiry_stats(latest_day_df, t, 60, asof)
-                if (st1 and st2 and np.isfinite(st1.get("rr", np.nan))
-                        and np.isfinite(st2.get("rr", np.nan))):
-                    near_rows.append({"symbol": t, "rr1": st1["rr"],
-                                      "rr2": st2["rr"], "dte1": st1["dte"],
-                                      "dte2": st2["dte"]})
-    return paths, exp_rows, skew_rows, near_rows
+                row = {"symbol": t,
+                       "upside": st3.get("upside_oi", np.nan) if st3 else np.nan}
+                for tgt in skew_tenors:
+                    st = (st3 if tgt == 91 else st6 if tgt == 182
+                          else expiry_stats(latest_day_df, t, tgt, asof))
+                    row[f"rr{tgt}"] = st.get("rr", np.nan) if st else np.nan
+                    row[f"dte{tgt}"] = st.get("dte", np.nan) if st else np.nan
+                if any(np.isfinite(row[f"rr{tgt}"]) for tgt in skew_tenors):
+                    skew_rows.append(row)
+    return paths, exp_rows, skew_rows
 
 
 def expiry_stats(day_df, symbol, target_days, asof):
@@ -609,9 +609,9 @@ def main():
         charts = {}
         try:
             import vol_tracker_charts as C
-            paths, exp_rows, skew_rows, near_rows = chart_inputs(
+            paths, exp_rows, skew_rows = chart_inputs(
                 universe, df[df["date"] == days[-1]], days[-1], liquid_set)
-            charts = C.render_all(paths, exp_rows, skew_rows, near_rows)
+            charts = C.render_all(paths, exp_rows, skew_rows)
             print(f"[charts] rendered {len(charts)} figures x2 themes")
         except Exception as exc:  # noqa: BLE001 -- the page must build without charts
             print(f"[charts] skipped: {type(exc).__name__}: {exc}")

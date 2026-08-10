@@ -12,8 +12,10 @@ swaps with the viewer's theme:
                turn-signal bars (the ETF_PATH_PLAYBOOK view).
   * expmove -- implied ~3M / ~6M straddle moves vs the signal-conditional
                E|move| at 63/126 sessions (EXPECTED_MOVE_FINDINGS view).
-  * skew    -- risk reversal at the +/-1 sigma-move strikes and the
-               upside-call-positioning quadrant, ~3M tenor, liquid chains.
+  * skewterm -- the risk-reversal term structure in one view: a tenor x
+               ETF heatmap (~1M/2M/3M/6M, annualized vol points, wings at
+               each tenor's +/-1 expected-move strikes) plus the ~3M
+               upside-call-positioning quadrant. Liquid chains only.
 
 This module only draws: build_vol_tracker.chart_inputs() assembles the
 data. Everything degrades -- a figure whose input is empty is skipped.
@@ -196,114 +198,91 @@ def fig_expmove(rows, t):
         return _b64(fig, t)
 
 
-def fig_skew(rows, t):
-    """Risk-reversal bars + the positioning quadrant, ~3M tenor."""
-    rows = [r for r in rows if np.isfinite(r.get("rr", np.nan))]
+SKEW_TENORS = (30, 60, 91, 182)
+
+
+def fig_skew_term(rows, t):
+    """The whole skew term structure in one view: a tenor x ETF heatmap of
+    the risk reversal (call wing - put wing at that tenor's +/-1
+    expected-move strikes; IV differences, so the units are ANNUALIZED vol
+    points at every tenor) plus the ~3M positioning quadrant."""
+    from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+    rows = [r for r in rows
+            if any(np.isfinite(r.get(f"rr{d}", np.nan)) for d in SKEW_TENORS)]
     if len(rows) < 5:
         return None
-    with plt.rc_context(_style(t)):
-        fig, axes = plt.subplots(1, 2, figsize=(10.6, 4.7), facecolor=t["surface"])
-        fig.subplots_adjust(wspace=0.26, left=0.08, right=0.98, top=0.9,
-                            bottom=0.13)
-        ax = axes[0]
-        _ax(ax, t, grid_axis="x")
-        order = sorted(rows, key=lambda r: r["rr"])
-        y = np.arange(len(order))
-        vals = [r["rr"] for r in order]
-        ax.barh(y, vals, height=0.6,
-                color=[t["red"] if v > 0 else t["blue"] for v in vals], alpha=0.9)
-        ax.set_yticks(y, [r["symbol"] for r in order], fontsize=7.5)
-        for i, r in enumerate(order):
-            v = r["rr"]
-            ax.text(v + (0.2 if v > 0 else -0.2), i, f"{v:+.1f}", va="center",
-                    ha="left" if v > 0 else "right", fontsize=6.5, color=t["dim"])
-        ax.axvline(0, color=t["base"], lw=1)
-        ax.set_xlim(min(vals) - 2, max(vals) + 2)
-        ax.set_title("Risk reversal at ±1 expected-move strikes", loc="left", pad=8)
-        ax.set_xlabel("call wing − put wing, vol pts (red = upside bid)", fontsize=8.5)
+    dtes = {d: int(np.nanmedian([r.get(f"dte{d}", np.nan) for r in rows]))
+            for d in SKEW_TENORS}
+    labels = {30: "~1M", 60: "~2M", 91: "~3M", 182: "~6M"}
+    rows = sorted(rows, key=lambda r: -np.nanmean(
+        [r.get(f"rr{d}", np.nan) for d in SKEW_TENORS]))
+    M = np.array([[r.get(f"rr{d}", np.nan) for d in SKEW_TENORS] for r in rows])
 
+    with plt.rc_context(_style(t)):
+        fig, axes = plt.subplots(1, 2, figsize=(10.6, 5.1), facecolor=t["surface"],
+                                 gridspec_kw={"width_ratios": [1.05, 1]})
+        fig.subplots_adjust(wspace=0.24, left=0.07, right=0.98, top=0.9,
+                            bottom=0.12)
+
+        # A: tenor x ETF heatmap, diverging blue (put skew) <-> red (upside bid)
+        ax = axes[0]
+        ax.set_facecolor(t["surface"])
+        cmap = LinearSegmentedColormap.from_list(
+            "rr", [t["blue"], t["surface"], t["red"]])
+        vmax = max(np.nanmax(np.abs(M)), 1.0)
+        im = ax.imshow(M, cmap=cmap, norm=TwoSlopeNorm(0, -vmax, vmax),
+                       aspect="auto")
+        ax.set_xticks(range(len(SKEW_TENORS)),
+                      [f"{labels[d]}\n({dtes[d]}d)" for d in SKEW_TENORS],
+                      fontsize=8)
+        ax.set_yticks(range(len(rows)), [r["symbol"] for r in rows], fontsize=8)
+        for i in range(M.shape[0]):
+            for j in range(M.shape[1]):
+                v = M[i, j]
+                if np.isfinite(v):
+                    strong = abs(v) > vmax * 0.55
+                    ax.text(j, i, f"{v:+.1f}", ha="center", va="center",
+                            fontsize=7.5,
+                            color=t["surface"] if strong else t["ink"])
+                else:
+                    ax.text(j, i, "—", ha="center", va="center", fontsize=7.5,
+                            color=t["faint"])
+        for s in ax.spines.values():
+            s.set_visible(False)
+        ax.tick_params(length=0)
+        ax.set_title("Risk reversal across the term", loc="left", pad=8)
+        ax.text(0, -0.12, "annualized vol pts · wings at each tenor's ±1 "
+                "expected-move strikes · red = upside bid, blue = put skew",
+                transform=ax.transAxes, fontsize=7.5, color=t["faint"])
+
+        # B: positioning quadrant at ~3M
         ax = axes[1]
         _ax(ax, t, grid_axis="both")
         for r in rows:
+            rr, up = r.get("rr91", np.nan), r.get("upside", np.nan)
+            if not (np.isfinite(rr) and np.isfinite(up)):
+                continue
             col = t["orange"] if r["symbol"] == "GDX" else t["blue"]
-            ax.scatter(r["rr"], r["upside"], s=40, color=col, zorder=3,
+            ax.scatter(rr, up, s=40, color=col, zorder=3,
                        edgecolors=t["surface"], linewidths=1.1)
-            ax.annotate(r["symbol"], (r["rr"], r["upside"]), xytext=(4, 3),
+            ax.annotate(r["symbol"], (rr, up), xytext=(4, 3),
                         textcoords="offset points", fontsize=7, color=t["dim"])
         ax.axvline(0, color=t["base"], lw=1)
-        ax.set_title("The positioning quadrant", loc="left", pad=8)
+        ax.set_title("The positioning quadrant (~3M)", loc="left", pad=8)
         ax.text(0.97, 0.93, "positioned for upside →", transform=ax.transAxes,
                 ha="right", fontsize=7.5, color=t["faint"], style="italic")
-        ax.set_xlabel("rr, vol points", fontsize=8.5)
+        ax.set_xlabel("rr ~3M, annualized vol points", fontsize=8.5)
         ax.set_ylabel("call OI share ≥ +0.5σ, %", fontsize=8.5)
         return _b64(fig, t)
 
 
-def fig_skew_near(rows, t):
-    """1M vs 2M risk-reversal term structure: paired bars per ETF (sorted
-    by the 1M leg) and the steepening scatter."""
-    rows = [r for r in rows if np.isfinite(r.get("rr1", np.nan))
-            and np.isfinite(r.get("rr2", np.nan))]
-    if len(rows) < 5:
-        return None
-    d1 = int(np.median([r["dte1"] for r in rows]))
-    d2 = int(np.median([r["dte2"] for r in rows]))
-    with plt.rc_context(_style(t)):
-        fig, axes = plt.subplots(1, 2, figsize=(10.6, 4.9), facecolor=t["surface"])
-        fig.subplots_adjust(wspace=0.26, left=0.08, right=0.98, top=0.9,
-                            bottom=0.13)
-        ax = axes[0]
-        _ax(ax, t, grid_axis="x")
-        order = sorted(rows, key=lambda r: r["rr1"])
-        y = np.arange(len(order))
-        h = 0.36
-        for off, key, col, col_pos, lbl in (
-                (+h / 2 + 0.02, "rr1", t["blue"], t["red"], f"~1M ({d1}d)"),
-                (-h / 2 - 0.02, "rr2", t["blue2"], t["red2"], f"~2M ({d2}d)")):
-            vals = [r[key] for r in order]
-            ax.barh(y + off, vals, height=h,
-                    color=[col_pos if v > 0 else col for v in vals],
-                    alpha=0.92, label=lbl)
-        ax.set_yticks(y, [r["symbol"] for r in order], fontsize=7.5)
-        ax.axvline(0, color=t["base"], lw=1)
-        ax.set_title("Risk reversal term: ~1M vs ~2M", loc="left", pad=8)
-        ax.set_xlabel("call wing − put wing at ±1σ-move, vol pts "
-                      "(warm = upside bid)", fontsize=8.5)
-        ax.legend(frameon=False, fontsize=8, loc="lower right")
-
-        ax = axes[1]
-        _ax(ax, t, grid_axis="both")
-        vals = [v for r in rows for v in (r["rr1"], r["rr2"])]
-        lo, hi = min(vals) - 1.5, max(vals) + 1.5
-        ax.plot([lo, hi], [lo, hi], color=t["base"], lw=1.2, ls=(0, (4, 3)),
-                zorder=1)
-        for r in rows:
-            col = t["orange"] if r["symbol"] == "GDX" else t["blue"]
-            ax.scatter(r["rr1"], r["rr2"], s=40, color=col, zorder=3,
-                       edgecolors=t["surface"], linewidths=1.1)
-            ax.annotate(r["symbol"], (r["rr1"], r["rr2"]), xytext=(4, 3),
-                        textcoords="offset points", fontsize=7, color=t["dim"])
-        ax.axvline(0, color=t["grid"], lw=1)
-        ax.axhline(0, color=t["grid"], lw=1)
-        ax.set_xlim(lo, hi)
-        ax.set_ylim(lo, hi)
-        ax.set_title("Near-dated vs deferred skew", loc="left", pad=8)
-        ax.text(0.03, 0.94, "above diagonal = skew eases into the front\n"
-                "below = front-loaded (event risk priced near-dated)",
-                transform=ax.transAxes, fontsize=7, color=t["faint"])
-        ax.set_xlabel(f"rr ~1M ({d1}d), vol pts", fontsize=8.5)
-        ax.set_ylabel(f"rr ~2M ({d2}d), vol pts", fontsize=8.5)
-        return _b64(fig, t)
-
-
-def render_all(paths, exp_rows, skew_rows, near_rows=None):
+def render_all(paths, exp_rows, skew_rows):
     """{key: {"light": b64, "dark": b64}} for every figure whose input
     exists."""
     out = {}
     for key, fn, data in (("paths", fig_paths, paths),
                           ("expmove", fig_expmove, exp_rows),
-                          ("skew", fig_skew, skew_rows),
-                          ("skewnear", fig_skew_near, near_rows or [])):
+                          ("skewterm", fig_skew_term, skew_rows)):
         imgs = {}
         for theme, tokens in THEMES.items():
             img = fn(data, tokens)
