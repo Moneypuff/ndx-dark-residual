@@ -31,6 +31,8 @@ the pressure index is worth reading after ~5.
     python build_vol_tracker.py --snap-dir optsnap --out-dir vol_tracker_out
 """
 import argparse
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -47,17 +49,50 @@ TOP_OI = 15            # strikes per symbol in the big-OI map
 LIVE_SESSIONS = 63     # regime-log events younger than this get a monitor
 ROUND_TRIP = {"GDX", "KRE", "XLE", "XLRE", "XLP"}   # playbook's round-trippers
 
+# Liquidity gate: option TRADING layers (suggestions, trade log) only run on
+# chains that clear it -- recomputed from each day's snapshot, so a chain
+# that dries up drops out by itself. Capture is NOT gated (history is
+# irreplaceable and cheap). A chain is liquid when its near-ATM market is
+# tight, or its OI is so deep that %-of-mid spreads on cheap options
+# overstate the cost of trading it.
+LIQ_MIN_OI = 100_000       # total OI across captured expiries
+LIQ_MAX_SPREAD = 20.0      # median near-ATM spread, % of mid
+LIQ_DEEP_OI = 2_000_000    # OI this deep passes on depth alone
+
 
 # ----------------------------------------------------------------------------
 # Pure computation (unit tested)
 # ----------------------------------------------------------------------------
 def load_snapshots(snap_dir):
-    """All daily snapshots concatenated, sorted by date."""
+    """All daily snapshots concatenated, sorted by date. Empty frame when
+    no capture exists yet (the docs page renders a stub in that case)."""
     files = sorted(Path(snap_dir).glob("????-??-??.csv.gz"))
     if not files:
-        raise SystemExit(f"no snapshots under {snap_dir}")
+        return pd.DataFrame(columns=["date", "symbol", "expiry", "right",
+                                     "strike", "iv", "oi", "volume", "bid",
+                                     "ask", "last", "spot"])
     df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
     return df.sort_values(["date", "symbol", "expiry", "right", "strike"])
+
+
+def chain_liquidity(day_df, min_oi=LIQ_MIN_OI, max_spread=LIQ_MAX_SPREAD,
+                    deep_oi=LIQ_DEEP_OI):
+    """Per-symbol liquidity read off one day's snapshot: total OI, count of
+    live near-ATM contracts (within +/-10% moneyness), their median spread
+    (% of mid), and the gate verdict."""
+    rows = []
+    for sym, g in day_df.groupby("symbol"):
+        near = g[(g["strike"] / g["spot"]).between(0.9, 1.1) &
+                 (g["bid"].fillna(0) > 0) & (g["ask"] >= g["bid"])]
+        mid = (near["bid"] + near["ask"]) / 2
+        spr = ((near["ask"] - near["bid"]) / mid * 100)
+        tot = int(g["oi"].fillna(0).sum())
+        med = float(spr.median()) if len(near) else np.nan
+        liquid = bool((np.isfinite(med) and med <= max_spread and tot >= min_oi)
+                      or tot >= deep_oi)
+        rows.append({"symbol": sym, "tot_oi": tot, "live_near": len(near),
+                     "med_spread": med, "liquid": liquid})
+    return pd.DataFrame(rows).sort_values("med_spread")
 
 
 def atm_iv(day_rows):
@@ -262,15 +297,24 @@ def resolve_suggestion(day_df, symbol, legs, asof):
     return resolved
 
 
-def trade_log(df, signals):
+def trade_log(df, signals, liquid=None):
     """Deterministic replay of the established rules over the snapshot
     history: enter each live signal's suggested structure on the first
     snapshot at/after the event (flagged when proxied from a later first
     capture), exit at event + 63 sessions (the playbook horizon). Marks
-    are smile-based (trade_structures.leg_mark), never raw closing mids."""
+    are smile-based (trade_structures.leg_mark), never raw closing mids.
+    Symbols outside `liquid` (a set; None = no gate) are logged as
+    illiquid_chain and never resolved -- wide chains don't get trades."""
     dates = sorted(df["date"].unique())
     rows = []
     for s in signals:
+        if liquid is not None and s["symbol"] not in liquid:
+            rows.append({"symbol": s["symbol"], "family": s["family"],
+                         "event": str(s["event"].date()),
+                         "structure": None, "status": "illiquid_chain",
+                         "rationale": "chain fails the liquidity gate "
+                         "(near-ATM spread / total OI) -- stock expression only"})
+            continue
         entry_snap = next((d for d in dates if pd.Timestamp(d) >= s["event"]), None)
         if entry_snap is None:
             continue
@@ -315,6 +359,27 @@ def trade_log(df, signals):
 
 
 # ----------------------------------------------------------------------------
+def render_page(template, docs_out, ctx, log, bigmap, liq):
+    """docs/vol_tracker.html -- payloads injected into the template the
+    same way the other pages do it."""
+    def records(frame):
+        return (json.loads(frame.replace({np.nan: None}).to_json(orient="records"))
+                if len(frame) else [])
+    body = (Path(template).read_text(encoding="utf-8")
+            .replace("/*__CTX__*/", json.dumps(ctx, separators=(",", ":")))
+            .replace("/*__LOG__*/", json.dumps(records(log), separators=(",", ":")))
+            .replace("/*__BIG__*/", json.dumps(records(bigmap), separators=(",", ":")))
+            .replace("/*__LIQ__*/", json.dumps(records(liq), separators=(",", ":"))))
+    doc = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+           '<meta name="viewport" content="width=device-width,initial-scale=1">'
+           '<title>Vol Tracker</title></head>'
+           '<body>\n' + body + '\n</body></html>\n')
+    out = Path(docs_out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(doc, encoding="utf-8")
+    print(f"wrote {out}  ({len(doc) // 1024} KB)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -322,13 +387,30 @@ def main():
     ap.add_argument("--cache-dir", default=N.DEFAULT_CACHE_DIR)
     ap.add_argument("--out-dir", default=None,
                     help="write pressure.csv / big_oi.csv / flows.csv here")
+    ap.add_argument("--docs-out", default=None,
+                    help="also render the dashboard page (docs/vol_tracker.html)")
+    ap.add_argument("--template", default="vol_tracker_template.html")
     ap.add_argument("--refresh", action="store_true")
     args = ap.parse_args()
 
     df = load_snapshots(args.snap_dir)
     days = sorted(df["date"].unique())
+    if not days:
+        print(f"no snapshots under {args.snap_dir}")
+        if args.docs_out:
+            render_page(args.template, args.docs_out, {
+                "built": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "days": 0, "note": "No chain capture yet -- the optsnap "
+                "workflow appends the first snapshot after the next close."},
+                pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
+        return
     print(f"{len(days)} snapshot day(s): {days[0]} .. {days[-1]}  "
           f"({len(df)} rows, {df['symbol'].nunique()} symbols)")
+
+    liq = chain_liquidity(df[df["date"] == days[-1]])
+    liquid_set = set(liq[liq["liquid"]]["symbol"])
+    print(f"\n== liquidity gate ({len(liquid_set)}/{len(liq)} chains pass) ==")
+    print("excluded: " + ", ".join(sorted(set(liq["symbol"]) - liquid_set)))
 
     iv, oi, atm = contract_panel(df)
     flows = flow_table(iv, oi, atm) if len(days) >= 3 else pd.DataFrame()
@@ -355,7 +437,7 @@ def main():
                 "iv", "days_seen"]].to_string(index=False))
 
     signals = signal_context(args.cache_dir, refresh=args.refresh)
-    log = trade_log(df, signals)
+    log = trade_log(df, signals, liquid=liquid_set)
     print(f"\n== suggested structures & trade log ({len(log)} signals; "
           f"smile-marked, % of spot, debit positive) ==")
     for _, r in log.iterrows():
@@ -365,7 +447,7 @@ def main():
                 if np.isfinite(r.get("rich", np.nan)) else
                 f"\n{r['symbol']} {r['family']} {r['event']}")
         print(head)
-        if r["status"] in ("no_trade", "unresolvable"):
+        if r["status"] in ("no_trade", "unresolvable", "illiquid_chain"):
             print(f"  {r['status'].upper()}: {r['rationale']}")
             continue
         tag = " (entry proxied)" if r["proxied"] else ""
@@ -378,12 +460,25 @@ def main():
     if args.out_dir:
         out = Path(args.out_dir)
         out.mkdir(parents=True, exist_ok=True)
+        liq.round(2).to_csv(out / "liquidity.csv", index=False)
         bigmap.round(4).to_csv(out / "big_oi.csv", index=False)
         log.round(4).to_csv(out / "trade_log.csv", index=False)
         if not flows.empty:
             flows.round(4).to_csv(out / "flows.csv", index=False)
             press.round(4).to_csv(out / "pressure.csv", index=False)
         print(f"\nwrote {out}/")
+
+    if args.docs_out:
+        bigmap2 = bigmap.merge(liq[["symbol", "liquid"]], on="symbol", how="left")
+        render_page(args.template, args.docs_out, {
+            "built": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "days": len(days), "first": days[0], "last": days[-1],
+            "nSymbols": int(df["symbol"].nunique()),
+            "nLiquid": len(liquid_set),
+            "note": None if len(days) >= 3 else (
+                "IV deltas need 2 snapshots and aggressor reads 3 -- "
+                f"{len(days)} captured so far; columns fill in as history accrues."),
+        }, log, bigmap2, liq)
 
 
 if __name__ == "__main__":

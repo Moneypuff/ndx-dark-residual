@@ -1,0 +1,179 @@
+<style>
+:root{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8;
+  --neg:#d4635f; --neg-ink:#f0938f;
+  --shadow:0 1px 0 rgba(255,255,255,.03), 0 18px 40px -24px rgba(0,0,0,.8);
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+    --line:#d3dbe3; --line-soft:#e3e9ef;
+    --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+    --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+    --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+    --shadow:0 1px 0 rgba(255,255,255,.6), 0 16px 34px -26px rgba(20,40,60,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8; --neg:#d4635f; --neg-ink:#f0938f;
+}
+:root[data-theme="light"]{
+  --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+  --line:#d3dbe3; --line-soft:#e3e9ef;
+  --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+  --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+  --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+.page{
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono",Menlo,"Roboto Mono","DejaVu Sans Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-family:var(--sans); color:var(--ink);
+  background:
+    radial-gradient(120% 60% at 85% -10%, var(--accent-soft), transparent 60%),
+    linear-gradient(var(--grad), var(--ground) 340px);
+  background-attachment:fixed; line-height:1.6;
+  -webkit-font-smoothing:antialiased; min-height:100vh;
+}
+.wrap{max-width:1060px; margin:0 auto; padding:0 24px}
+.mono{font-family:var(--mono)}
+.strip{display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:14px 0 10px; color:var(--ink-dim); font-size:13px}
+.strip a{color:var(--ink-dim)}
+h1{font-size:26px; margin:18px 0 4px}
+.sub{color:var(--ink-dim); font-size:14px; margin:0 0 22px; max-width:72ch}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:14px;
+  box-shadow:var(--shadow); padding:18px 20px; margin:0 0 22px}
+.card h2{font-size:15px; margin:0 0 4px; letter-spacing:.01em}
+.card .hint{color:var(--ink-faint); font-size:12.5px; margin:0 0 12px}
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:12.5px; font-family:var(--mono)}
+th,td{padding:5px 10px 5px 0; text-align:right; white-space:nowrap;
+  border-bottom:1px solid var(--line-soft)}
+th{color:var(--ink-faint); font-weight:600; font-size:11px; text-transform:uppercase;
+  letter-spacing:.06em}
+th:first-child,td:first-child{text-align:left}
+td.l{text-align:left}
+.pos{color:var(--pos-ink)} .neg{color:var(--neg-ink)}
+.tag{display:inline-block; padding:1px 7px; border-radius:20px; font-size:10.5px;
+  font-family:var(--sans); font-weight:600; letter-spacing:.03em}
+.tag.open{background:var(--accent-soft); color:var(--accent)}
+.tag.closed{background:rgba(128,128,128,.14); color:var(--ink-dim)}
+.tag.off{background:rgba(128,128,128,.10); color:var(--ink-faint)}
+.note{background:var(--surface-2); border:1px solid var(--line-soft); border-radius:10px;
+  padding:10px 14px; color:var(--ink-dim); font-size:13px; margin:0 0 22px}
+.foot{color:var(--ink-faint); font-size:12px; padding:8px 0 40px}
+.why{color:var(--ink-faint); font-family:var(--sans); font-size:11.5px; white-space:normal}
+</style>
+
+<div class="page"><div class="wrap">
+  <div class="strip">
+    <span><a href="regime_log.html" title="the signal log this page trades">&larr; Regime log</a></span>
+    <span class="mono" id="built"></span>
+  </div>
+  <h1>Vol tracker &amp; options trade log</h1>
+  <p class="sub">The regime log's live signals expressed in options: structures picked from
+  the signal-conditional expected move and the smile's skew, marked off the despiked
+  live surface (never raw closing quotes), entered and exited by the playbook's fixed
+  rules. Liquid chains only &mdash; the gate below is recomputed nightly.</p>
+
+  <div class="note" id="note" style="display:none"></div>
+
+  <div class="card">
+    <h2>Trade log</h2>
+    <p class="hint">deterministic replay: enter on the first snapshot at/after each signal,
+    exit at event + 63 sessions &middot; marks in % of spot, debit positive &middot;
+    smile-marked, quote-bounded only when the market is tight</p>
+    <div class="tblwrap"><table id="log"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>Big open-interest strikes</h2>
+    <p class="hint">largest standing OI lines in the latest snapshot (structured-note zone
+    lives in the January LEAPs) &middot; fixed-strike IV drift accrues as capture history grows</p>
+    <div class="tblwrap"><table id="big"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>Liquidity gate</h2>
+    <p class="hint">liquid = median near-ATM spread &le; 20% of mid with &ge; 100k total OI,
+    or &ge; 2M OI outright &middot; illiquid chains keep their signals on the regime log but
+    get no option trades</p>
+    <div class="tblwrap"><table id="liq"></table></div>
+  </div>
+
+  <div class="foot">Chains: Yahoo daily capture (optsnap-data branch) &middot; marks are
+  valuations, not executable prices &middot; see VOL_TRACKER.md for the method and
+  EXPECTED_MOVE_FINDINGS.md for the structure rules.</div>
+</div></div>
+
+<script>
+const CTX = /*__CTX__*/;
+const LOG = /*__LOG__*/;
+const BIG = /*__BIG__*/;
+const LIQ = /*__LIQ__*/;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = (v, d=2, sign=false) => (v == null || !isFinite(v)) ? "&mdash;" :
+  `<span class="${sign ? (v > 0 ? "pos" : v < 0 ? "neg" : "") : ""}">${(sign && v > 0 ? "+" : "") + Number(v).toFixed(d)}</span>`;
+
+document.getElementById("built").textContent =
+  (CTX.days ? `${CTX.days} snapshot day(s) · ${CTX.first} → ${CTX.last} · ` : "") +
+  `built ${CTX.built}`;
+if (CTX.note) {
+  const n = document.getElementById("note");
+  n.style.display = "block"; n.textContent = CTX.note;
+}
+
+function table(el, cols, rows) {
+  document.getElementById(el).innerHTML =
+    "<tr>" + cols.map(c => `<th>${c[0]}</th>`).join("") + "</tr>" +
+    rows.map(r => "<tr>" + cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("") + "</tr>").join("");
+}
+
+const statusTag = s => `<span class="tag ${s === "open" ? "open" : s === "closed" ? "closed" : "off"}">${esc(s)}</span>`;
+
+table("log", [
+  ["signal", r => `<b>${esc(r.symbol)}</b> ${esc(r.family)} ${esc(r.event)}`, "l"],
+  ["structure", r => r.structure ? `${esc(r.structure)}${r.proxied ? " *" : ""}` : "&mdash;", "l"],
+  ["entry %", r => num(r.entry_cost_pct, 2, true)],
+  ["now %", r => num(r.value_pct, 2, true)],
+  ["P&L %", r => num(r.pnl_pct, 2, true)],
+  ["status", r => statusTag(r.status)],
+  ["context", r => r.rich == null ? "&mdash;" :
+     `imp ${Number(r.imp3m).toFixed(1)}% / cond ${Number(r.cond63).toFixed(1)}% (x${Number(r.rich).toFixed(2)}) · rr ${(r.rr3m > 0 ? "+" : "") + Number(r.rr3m).toFixed(1)}`, "l"],
+  ["legs", r => esc(r.legs || ""), "l"],
+], LOG);
+
+table("big", [
+  ["symbol", r => `<b>${esc(r.symbol)}</b>${r.liquid === false ? ' <span class="tag off">illiquid</span>' : ""}`, "l"],
+  ["expiry", r => esc(r.expiry), "l"],
+  ["", r => esc(r.right), "l"],
+  ["strike", r => num(r.strike, 1)],
+  ["m%", r => num(r.moneyness, 0)],
+  ["OI", r => (r.oi == null ? "&mdash;" : Number(r.oi).toLocaleString())],
+  ["ΔOI", r => (r.oi != null && r.oi_first != null) ? num(r.oi - r.oi_first, 0, true) : "&mdash;"],
+  ["IV", r => num(r.iv == null ? null : r.iv * 100, 1)],
+  ["ΔIV", r => (r.iv != null && r.iv_first != null) ? num((r.iv - r.iv_first) * 100, 1, true) : "&mdash;"],
+  ["days", r => num(r.days_seen, 0)],
+], BIG.sort((a, b) => (b.oi ?? 0) - (a.oi ?? 0)).slice(0, 40));
+
+table("liq", [
+  ["symbol", r => `<b>${esc(r.symbol)}</b>`, "l"],
+  ["total OI", r => Number(r.tot_oi).toLocaleString()],
+  ["live near-ATM", r => num(r.live_near, 0)],
+  ["med spread %", r => num(r.med_spread, 1)],
+  ["gate", r => r.liquid ? '<span class="tag open">LIQUID</span>' : '<span class="tag off">excluded</span>'],
+], LIQ);
+</script>

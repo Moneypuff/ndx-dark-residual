@@ -104,6 +104,33 @@ def test_big_oi_map_first_vs_latest():
     assert r["days_seen"] == 3
 
 
+def test_chain_liquidity_gate():
+    def sym_rows(sym, spot, bid, ask, oi, n=6):
+        ks = np.linspace(spot * 0.92, spot * 1.08, n)
+        return [{"date": "2026-08-10", "symbol": sym, "expiry": "2026-11-20",
+                 "right": "C" if k >= spot else "P", "strike": float(k),
+                 "iv": 0.3, "oi": oi, "volume": 1, "bid": bid, "ask": ask,
+                 "last": 1.0, "spot": spot}
+                for k in ks]
+    day = pd.DataFrame(
+        sym_rows("QQQ", 700.0, 10.0, 10.4, 100_000) +     # tight + deep
+        sym_rows("VTV", 224.0, 1.0, 1.9, 1_000) +         # 62% spread, 6k OI
+        sym_rows("XLE", 57.0, 0.10, 0.40, 600_000))       # wide but 3.6M OI
+    L = V.chain_liquidity(day).set_index("symbol")
+    assert bool(L.loc["QQQ", "liquid"])
+    assert not bool(L.loc["VTV", "liquid"])               # the VTV rule
+    assert bool(L.loc["XLE", "liquid"])                   # deep-OI override
+    assert L.loc["VTV", "med_spread"] > 20
+
+
+def test_trade_log_gates_illiquid_symbols():
+    sig = [{"symbol": "VTV", "family": "up", "event": pd.Timestamp("2026-08-10"),
+            "roundtrip": False, "cond_eabs63": 5.0, "exit_date": None}]
+    log = V.trade_log(_panel_3d(), sig, liquid={"GDX"})
+    assert log.iloc[0]["status"] == "illiquid_chain"
+    assert log.iloc[0]["structure"] is None
+
+
 def test_resolve_leg_nearest_expiry_then_strike():
     day = pd.DataFrame(
         _rows("2026-08-10", "GDX", "2026-11-20", 100.0,

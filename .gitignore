@@ -9,6 +9,11 @@ __pycache__/
 # artifact, never committed (only docs/.nojekyll is tracked)
 docs/*.html
 
+# Daily option-chain snapshots: live on the optsnap-data branch (written by
+# optsnap.yml, checked out into the working tree by the Pages build) -- never
+# committed to main
+optsnap/
+
 # Editor / OS cruft
 .DS_Store
 
