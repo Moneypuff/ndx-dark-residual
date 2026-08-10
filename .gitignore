@@ -14,3 +14,8 @@ docs/*.html
 
 # Built dashboard pages (deployed as a Pages artifact by CI, never committed)
 docs/*.html
+
+# Generated earnings analysis files (rebuilt each refresh)
+earnings_dates_edgar.csv
+earnings_dpi_events.csv
+earnings_dpi_report.html
