@@ -78,6 +78,33 @@ is deliberately deferred until a couple of weeks of data make the page
 worth deploying (`--out-dir` already writes the CSVs the page will
 consume).
 
+## Structure suggester + trade log (LIVE, in the scanner)
+
+`trade_structures.py` makes the findings docs' structure-selection table
+executable. Per live signal, `suggest_structure()` maps (family, playbook
+class, implied-vs-conditional richness, risk reversal) to legs specified
+in **sigma-move units** (σ = ATM IV·√T), resolved to listed strikes at
+suggestion time: chaser up-breaks get short put spreads (−0.5σ/−1.5σ,
+~3M) when premium is rich and the put wing carries it, call spreads
+(ATM/+1σ, ~6M) when fair; round-trippers get the dip-financed call
+spread (long 6M ATM / short +1σ wing / short 3M −1σ put = the paid dip
+limit); capitulation gets long calls only when implied < conditional,
+else short put spreads; turns get long-tenor call spreads (ATM/+1.5σ)
+and are refused outright in XLF/KRE.
+
+The **trade log** is a deterministic replay, not mutable state:
+`build_vol_tracker.py` re-derives entries (first snapshot at/after each
+event, flagged when proxied) and exits (event + 63 sessions, the
+playbook horizon) from snapshot history on every run, writing
+`trade_log.csv` with entry/exit/current marks and P&L in % of spot.
+
+**Marking** never trusts a closing quote: each leg is priced off the
+**despiked live smile** (interpolated IV of neighboring live strikes →
+Black-Scholes, r=0), and the quote only bounds the mark when the market
+is tight (spread ≤ 25%) — wide or stale closing markets are exactly what
+the surface mark exists to overrule. Marks are valuations for the log,
+not executable prices; each leg's quoted spread is stored alongside.
+
 ## Calibration (phase 4 — after a quarter)
 
 Does the pressure index lead follow-through? Score it against the
