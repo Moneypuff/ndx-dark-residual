@@ -152,6 +152,24 @@ jobs:
           --cache-dir .ndx_dark_cache
           ${{ github.event.inputs.refresh == 'true' && '--refresh' || '' }}
 
+      # Vol tracker -> docs/vol_tracker.html (linked from the regime log's strip). Reads the
+      # daily chain snapshots off the optsnap-data branch (written by optsnap.yml); before the
+      # first capture exists the page renders as a stub, so this step never fails the build.
+      - name: Fetch chain snapshots (optsnap-data branch)
+        run: |
+          if git fetch origin optsnap-data --depth 1; then
+            git checkout origin/optsnap-data -- optsnap/ 2>/dev/null || echo "branch has no optsnap/ dir yet"
+          else
+            echo "no optsnap-data branch yet -- vol tracker renders a stub"
+          fi
+
+      - name: Build vol tracker
+        run: >
+          python build_vol_tracker.py
+          --snap-dir optsnap
+          --docs-out docs/vol_tracker.html
+          --cache-dir .ndx_dark_cache
+
       # Earnings-DPI study -> docs/earnings.html (linked from the dashboard's "Earnings DIX" tab).
       - name: Refresh earnings dates from SEC EDGAR
         run: python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
