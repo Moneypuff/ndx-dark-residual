@@ -78,6 +78,38 @@ def test_bs_parity_and_limits():
 
 
 # ---------------------------------------------------------------------------
+# bs_delta / delta_strike
+# ---------------------------------------------------------------------------
+def test_bs_delta_basics():
+    assert T.bs_delta(100, 100, 0.25, 0.30, "C") > 0.5      # ATM call slightly ITM-forward
+    assert T.bs_delta(100, 100, 0.25, 0.30, "P") == pytest.approx(
+        T.bs_delta(100, 100, 0.25, 0.30, "C") - 1.0)        # parity
+    assert T.bs_delta(100, 40, 1.0, 0.30, "C") > 0.99       # deep ITM
+    assert np.isnan(T.bs_delta(100, 100, 0.0, 0.30, "C"))
+
+
+def test_delta_strike_matches_flat_smile_closed_form():
+    iv, tyr, spot = 0.40, 0.25, 100.0
+    ks = np.linspace(50, 160, 45)
+    vs = np.full_like(ks, iv)
+    # flat smile: N(d1)=0.25 -> ln(S/K) = z25*iv*sqrt(T) - iv^2 T/2, z25=-0.6745
+    z25 = -0.674489750196
+    kc_true = spot * np.exp(-(z25 * iv * np.sqrt(tyr) - 0.5 * iv * iv * tyr))
+    kc = T.delta_strike(ks, vs, spot, tyr, +0.25, "C")
+    assert kc == pytest.approx(kc_true, rel=2e-3)
+    assert T.bs_delta(spot, kc, tyr, iv, "C") == pytest.approx(0.25, abs=5e-3)
+    kp = T.delta_strike(ks, vs, spot, tyr, -0.25, "P")
+    assert T.bs_delta(spot, kp, tyr, iv, "P") == pytest.approx(-0.25, abs=5e-3)
+    assert kp < spot < kc
+
+
+def test_delta_strike_outside_smile_is_nan():
+    ks = np.array([98.0, 99.0, 100.0, 101.0, 102.0])   # too narrow for 25d
+    vs = np.full_like(ks, 0.40)
+    assert np.isnan(T.delta_strike(ks, vs, 100.0, 0.25, +0.25, "C"))
+
+
+# ---------------------------------------------------------------------------
 # leg_mark / structure_mark
 # ---------------------------------------------------------------------------
 T_YRS = (pd.Timestamp("2026-11-20") - pd.Timestamp("2026-08-10")).days / 365.25

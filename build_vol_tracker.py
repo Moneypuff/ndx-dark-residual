@@ -74,15 +74,43 @@ LIQ_DEEP_OI = 2_000_000    # OI this deep passes on depth alone
 # ----------------------------------------------------------------------------
 # Pure computation (unit tested)
 # ----------------------------------------------------------------------------
+SANE_MIN_ATM_IV = 0.05   # a day whose median near-ATM IV is below 5 vols is junk
+
+
+def sane_day(day_df, min_iv=SANE_MIN_ATM_IV):
+    """Sanity check for one snapshot day: Yahoo's pre-open feed zeroes
+    quotes and prints garbage IVs (near-ATM 'IVs' of 0.1-13% on index
+    ETFs), which would poison every smile-derived stat. A day is sane when
+    the cross-universe median IV of live near-ATM contracts is plausible."""
+    near = day_df[(((day_df["strike"] / day_df["spot"]) - 1).abs() < 0.1) &
+                  ((day_df["bid"].fillna(0) > 0) | (day_df["oi"].fillna(0) > 0))]
+    near = near.dropna(subset=["iv"])
+    return bool(len(near) >= 50 and near["iv"].median() >= min_iv)
+
+
 def load_snapshots(snap_dir):
-    """All daily snapshots concatenated, sorted by date. Empty frame when
-    no capture exists yet (the docs page renders a stub in that case)."""
+    """All daily snapshots concatenated, sorted by date; snapshot days that
+    fail sane_day() (off-schedule pre-market captures) are quarantined
+    with a warning. Empty frame when no capture exists yet (the docs page
+    renders a stub in that case)."""
     files = sorted(Path(snap_dir).glob("????-??-??.csv.gz"))
     if not files:
         return pd.DataFrame(columns=["date", "symbol", "expiry", "right",
                                      "strike", "iv", "oi", "volume", "bid",
                                      "ask", "last", "spot"])
-    df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+    frames = []
+    for f in files:
+        d = pd.read_csv(f)
+        if sane_day(d):
+            frames.append(d)
+        else:
+            print(f"[snapshots] QUARANTINED {f.name}: implausible IVs "
+                  "(pre-market capture?) -- excluded from all analytics")
+    if not frames:
+        return pd.DataFrame(columns=["date", "symbol", "expiry", "right",
+                                     "strike", "iv", "oi", "volume", "bid",
+                                     "ask", "last", "spot"])
+    df = pd.concat(frames, ignore_index=True)
     return df.sort_values(["date", "symbol", "expiry", "right", "strike"])
 
 
@@ -320,9 +348,14 @@ def chart_inputs(universe, latest_day_df, asof, liquid):
     return paths, exp_rows, skew_rows
 
 
+RR_DELTA = 0.25   # the risk reversal's wing delta (25d call vs 25d put)
+
+
 def expiry_stats(day_df, symbol, target_days, asof):
     """For the captured expiry nearest `target_days` out: its ATM IV,
-    implied move (0.8*sigma), and +/-1-sigma risk reversal, from one day's
+    implied move (0.8*sigma), and the 25-delta risk reversal -- wing
+    strikes solved from the smile so every symbol/tenor measures the same
+    deltas (IV differences, hence annualized vol points) -- from one day's
     snapshot rows."""
     g = day_df[day_df["symbol"] == symbol]
     if g.empty:
@@ -337,13 +370,16 @@ def expiry_stats(day_df, symbol, target_days, asof):
           "imp_move": np.nan, "rr": np.nan}
     if not np.isfinite(a):
         return st
-    sig = a * np.sqrt(dte / 365.25)
+    t_years = dte / 365.25
+    sig = a * np.sqrt(t_years)
     st["imp_move"] = 0.8 * sig * 100
     ks, vs = T.smile_points(rows, spot)
     if len(ks) >= 4:
-        def wing(k):
-            return float(np.interp(k, ks, vs)) if ks[0] <= k <= ks[-1] else np.nan
-        st["rr"] = ((wing(spot * (1 + sig)) - a) - (wing(spot * (1 - sig)) - a)) * 100
+        kc = T.delta_strike(ks, vs, spot, t_years, +RR_DELTA, "C")
+        kp = T.delta_strike(ks, vs, spot, t_years, -RR_DELTA, "P")
+        if np.isfinite(kc) and np.isfinite(kp):
+            st["rr"] = float(np.interp(kc, ks, vs) - np.interp(kp, ks, vs)) * 100
+            st["k_call"], st["k_put"] = kc / spot * 100, kp / spot * 100
     calls = rows[rows["right"] == "C"]
     c_oi = calls["oi"].fillna(0).sum()
     st["upside_oi"] = (float(calls[calls["strike"] >= spot * (1 + 0.5 * sig)]

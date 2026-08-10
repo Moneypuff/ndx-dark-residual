@@ -12,10 +12,10 @@ swaps with the viewer's theme:
                turn-signal bars (the ETF_PATH_PLAYBOOK view).
   * expmove -- implied ~3M / ~6M straddle moves vs the signal-conditional
                E|move| at 63/126 sessions (EXPECTED_MOVE_FINDINGS view).
-  * skewterm -- the risk-reversal term structure in one view: a tenor x
-               ETF heatmap (~1M/2M/3M/6M, annualized vol points, wings at
-               each tenor's +/-1 expected-move strikes) plus the ~3M
-               upside-call-positioning quadrant. Liquid chains only.
+  * skewterm -- the 25-delta risk-reversal term structure in one view: a
+               tenor x ETF heatmap (~1M/2M/3M/6M, annualized vol points,
+               wing strikes solved from each tenor's smile at +/-25 delta)
+               plus the ~3M upside-call-positioning quadrant. Liquid only.
 
 This module only draws: build_vol_tracker.chart_inputs() assembles the
 data. Everything degrades -- a figure whose input is empty is skipped.
@@ -203,9 +203,10 @@ SKEW_TENORS = (30, 60, 91, 182)
 
 def fig_skew_term(rows, t):
     """The whole skew term structure in one view: a tenor x ETF heatmap of
-    the risk reversal (call wing - put wing at that tenor's +/-1
-    expected-move strikes; IV differences, so the units are ANNUALIZED vol
-    points at every tenor) plus the ~3M positioning quadrant."""
+    the 25-delta risk reversal (25d-call IV minus 25d-put IV, wing strikes
+    solved from each tenor's smile; IV differences, so the units are
+    ANNUALIZED vol points and every cell measures identical deltas) plus
+    the ~3M positioning quadrant."""
     from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
     rows = [r for r in rows
             if any(np.isfinite(r.get(f"rr{d}", np.nan)) for d in SKEW_TENORS)]
@@ -250,9 +251,9 @@ def fig_skew_term(rows, t):
         for s in ax.spines.values():
             s.set_visible(False)
         ax.tick_params(length=0)
-        ax.set_title("Risk reversal across the term", loc="left", pad=8)
-        ax.text(0, -0.12, "annualized vol pts · wings at each tenor's ±1 "
-                "expected-move strikes · red = upside bid, blue = put skew",
+        ax.set_title("25Δ risk reversal across the term", loc="left", pad=8)
+        ax.text(0, -0.12, "annualized vol pts · 25Δ call IV − 25Δ put IV, wings "
+                "solved from each tenor's smile · red = upside bid, blue = put skew",
                 transform=ax.transAxes, fontsize=7.5, color=t["faint"])
 
         # B: positioning quadrant at ~3M
@@ -271,7 +272,7 @@ def fig_skew_term(rows, t):
         ax.set_title("The positioning quadrant (~3M)", loc="left", pad=8)
         ax.text(0.97, 0.93, "positioned for upside →", transform=ax.transAxes,
                 ha="right", fontsize=7.5, color=t["faint"], style="italic")
-        ax.set_xlabel("rr ~3M, annualized vol points", fontsize=8.5)
+        ax.set_xlabel("25Δ rr ~3M, annualized vol points", fontsize=8.5)
         ax.set_ylabel("call OI share ≥ +0.5σ, %", fontsize=8.5)
         return _b64(fig, t)
 

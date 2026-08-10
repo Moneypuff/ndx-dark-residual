@@ -110,12 +110,13 @@ td.l{text-align:left}
   </div>
 
   <div class="card" id="card-skewterm" style="display:none">
-    <h2>Skew term structure &amp; positioning</h2>
-    <p class="hint">risk reversal (call wing &minus; put wing) at ~1M / ~2M / ~3M / ~6M in one
-    heatmap &mdash; wings sit at each tenor's &plusmn;1 expected-move strikes and the values are
-    IV differences, i.e. <b>annualized vol points</b>, so tenors compare directly &middot;
-    red = the market pays up for upside, blue = normal put skew &middot; alongside the ~3M
-    call-open-interest quadrant &middot; liquid chains only, rebuilt nightly</p>
+    <h2>Skew term structure &amp; positioning (25&Delta; risk reversal)</h2>
+    <p class="hint">25&Delta;-call IV &minus; 25&Delta;-put IV at ~1M / ~2M / ~3M / ~6M in one
+    heatmap &mdash; wing strikes are solved from each tenor's smile at exactly &plusmn;25
+    delta, and the values are IV differences, i.e. <b>annualized vol points</b>, so every
+    cell measures the same thing across names and tenors &middot; red = the market pays up
+    for upside, blue = normal put skew &middot; alongside the ~3M call-open-interest
+    quadrant &middot; liquid chains only, rebuilt nightly</p>
     <img id="img-skewterm" class="figure" alt="skew term structure and positioning chart">
   </div>
 

@@ -127,6 +127,40 @@ def despike_smile(ks, vs, tol_floor=0.06, tol_frac=0.25, window=7):
     return ks[keep], vs[keep]
 
 
+def bs_delta(spot, strike, t_years, iv, right):
+    """Black-Scholes delta (r=q=0): N(d1) for calls, N(d1)-1 for puts."""
+    if (spot <= 0 or strike <= 0 or t_years <= 0 or not np.isfinite(iv)
+            or iv <= 0):
+        return np.nan
+    v = iv * math.sqrt(t_years)
+    d1 = (math.log(spot / strike) + 0.5 * v * v) / v
+    nd1 = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+    return nd1 if right == "C" else nd1 - 1.0
+
+
+def delta_strike(ks, vs, spot, t_years, target, right):
+    """Strike on the interpolated smile where the BS delta equals `target`
+    (e.g. +0.25 for the 25-delta call, -0.25 for the 25-delta put) --
+    smile-consistent: each candidate strike is priced at its own
+    interpolated IV. Solved on a dense grid inside the smile's strike
+    range (delta is monotone in strike); NaN when the target delta falls
+    outside the live smile."""
+    if len(ks) < 4:
+        return np.nan
+    side = ks[(ks >= spot)] if right == "C" else ks[(ks <= spot)]
+    if len(side) < 2:
+        return np.nan
+    grid = np.linspace(side.min(), side.max(), 200)
+    deltas = np.array([bs_delta(spot, k, t_years, float(np.interp(k, ks, vs)),
+                                right) for k in grid])
+    ok = np.isfinite(deltas)
+    grid, deltas = grid[ok], deltas[ok]
+    if len(grid) < 2 or not (deltas.min() <= target <= deltas.max()):
+        return np.nan
+    order = np.argsort(deltas)
+    return float(np.interp(target, deltas[order], grid[order]))
+
+
 def smile_points(expiry_rows, spot):
     """(strikes, ivs) of the live, despiked OTM smile inside one
     (symbol, expiry) day-group of snapshot rows -- puts below spot, calls

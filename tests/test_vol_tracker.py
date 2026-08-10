@@ -104,6 +104,17 @@ def test_big_oi_map_first_vs_latest():
     assert r["days_seen"] == 3
 
 
+def test_sane_day_quarantines_premarket_junk():
+    good = _panel_3d()
+    assert not V.sane_day(good.head(10))            # too few contracts
+    big = pd.concat([good.assign(strike=good["strike"] + i * 0.01)
+                     for i in range(12)], ignore_index=True)
+    assert V.sane_day(big)                          # sane IVs (0.30)
+    junk = big.copy()
+    junk["iv"] = 0.004                              # pre-open garbage
+    assert not V.sane_day(junk)
+
+
 def test_chain_liquidity_gate():
     def sym_rows(sym, spot, bid, ask, oi, n=6):
         ks = np.linspace(spot * 0.92, spot * 1.08, n)
