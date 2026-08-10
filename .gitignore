@@ -19,3 +19,6 @@ optsnap/
 
 # Built dashboard pages (deployed as a Pages artifact by CI, never committed)
 docs/*.html
+
+# Generated visualization outputs
+etf_expected_move_study.png
