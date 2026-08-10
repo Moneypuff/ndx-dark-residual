@@ -98,6 +98,19 @@ event, flagged when proxied) and exits (event + 63 sessions, the
 playbook horizon) from snapshot history on every run, writing
 `trade_log.csv` with entry/exit/current marks and P&L in % of spot.
 
+**IVs are re-derived, not trusted.** Yahoo's IV field is inverted off a
+spot-like forward and splits same-strike call/put IVs by up to ~9 vol pts
+at LEAP tenors. `forward_smile` extracts each expiry's implied forward
+and discount from the chain itself (regressing tight C−P mids on strike:
+slope = −D, zero-crossing = F — no rate/dividend assumptions), then
+re-inverts every tight-quoted contract's mid via Black-76 against that
+forward; quoteless-but-open contracts fall back to the feed IV, then the
+despike. Same-strike call/put IVs agree again (residual split ~0.5 vol
+pt), ATM is measured at the forward, and 25Δ wings use forward deltas.
+The day-over-day fixed-strike panel keeps feed IVs (a stable bias cancels
+in differences); every *level* comparison — rr, ATM, marks — uses the
+forward-consistent smile.
+
 **Marking** never trusts a closing quote: each leg is priced off the
 **despiked live smile** (interpolated IV of neighboring live strikes →
 Black-Scholes, r=0), and the quote only bounds the mark when the market

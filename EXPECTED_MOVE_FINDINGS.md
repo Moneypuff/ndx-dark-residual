@@ -106,6 +106,15 @@ free. Sized cash-secured, its assignment is the entry you wanted anyway.
 
 ## Result 4 — skew: is the upside already positioned?
 
+> **Errata (Aug 2026):** the wing IVs below were read from Yahoo's IV
+> field, which is inverted off a spot-like forward — same-strike call/put
+> IVs split by +3.5 vol pts at ~3M up to ~9 at LEAPs, inflating long-tenor
+> call wings. The live pipeline (`trade_structures.forward_smile`) now
+> re-inverts every IV against the chain's own implied forward (put-call
+> parity regression), which removes the artifact; the vol-tracker page's
+> 25Δ heatmap carries the corrected numbers. Direction of this table's
+> conclusions survives; long-tenor magnitudes are overstated.
+
 The same chains give the smile. Wings are measured at the ±1
 **sigma-move** strikes (σ = ATM IV·√T, so "one expected move" is the same
 yardstick for a 15-vol and a 47-vol ETF): `put_skew` / `call_skew` = wing

@@ -136,31 +136,62 @@ def test_leg_mark_uses_smile_not_the_wide_quote():
     day = _day(wide_at=("C", 105))
     rows = day[day["expiry"] == "2026-11-20"]
     m = T.leg_mark(rows, 105.0, "C", "2026-08-10", "2026-11-20")
-    theo = T.bs_price(100.0, 105.0, (pd.Timestamp("2026-11-20") -
-                                     pd.Timestamp("2026-08-10")).days / 365.25,
-                      0.40, "C")
-    # the 0.05/20.00 quote's mid (~10) is ignored; the smile mark is theo
-    assert m["mark_pct"] == pytest.approx(theo, rel=1e-6)
-    assert m["iv_used"] == pytest.approx(0.40)
+    theo = T.bs_price(100.0, 105.0, T_YRS, 0.40, "C")
+    # the 0.05/20.00 quote's mid (~10) is ignored; the smile mark ~ theo
+    assert m["mark_pct"] == pytest.approx(theo, rel=0.02)
+    assert m["iv_used"] == pytest.approx(0.40, abs=0.01)
     assert m["spread_pct"] > 100                        # the width is reported
 
 
 def test_leg_mark_clamps_into_a_tight_quote_only():
-    # whole smile legitimately at 90 vol (despike keeps a flat level) but
-    # the quotes still price 40 vol: a TIGHT quote bounds the mark...
+    # neighbors quote 90-vol mids; the target strike's own market is a
+    # TIGHT 40-vol quote -> the interpolated smile mark clamps into it...
     rows = _day()
-    rows["iv"] = 0.90
-    ask = float(rows.loc[(rows["strike"] == 110) & (rows["right"] == "C"),
-                         "ask"].iloc[0]) / 100.0 * 100  # $ -> % of spot=100
+    tgt = (rows["strike"] == 110) & (rows["right"] == "C")
+    for i, r in rows[~tgt].iterrows():
+        theo = T.bs_price(100.0, r["strike"], T_YRS, 0.90, r["right"])
+        rows.loc[i, ["bid", "ask"]] = [round(theo * 0.98, 2),
+                                       round(theo * 1.02 + 0.02, 2)]
+    ask = float(rows.loc[tgt, "ask"].iloc[0])           # still 40-vol based
     m = T.leg_mark(rows, 110.0, "C", "2026-08-10", "2026-11-20")
-    assert m["clamped"] and m["mark_pct"] == pytest.approx(ask)
-    # ...but a WIDE quote does not: the smile mark stands unclamped
+    assert m["clamped"] and m["mark_pct"] == pytest.approx(ask, rel=1e-6)
+    # ...but with a WIDE own-quote the smile mark stands unclamped
     wide = rows.copy()
-    tgt = (wide["strike"] == 110) & (wide["right"] == "C")
     wide.loc[tgt, ["bid", "ask"]] = [0.05, 20.0]
     m2 = T.leg_mark(wide, 110.0, "C", "2026-08-10", "2026-11-20")
-    theo = T.bs_price(100.0, 110.0, T_YRS, 0.90, "C")
-    assert not m2["clamped"] and m2["mark_pct"] == pytest.approx(theo, rel=1e-6)
+    theo90 = T.bs_price(100.0, 110.0, T_YRS, 0.90, "C")
+    assert not m2["clamped"] and m2["mark_pct"] == pytest.approx(theo90, rel=0.05)
+
+
+def test_implied_forward_recovers_carry():
+    # chain priced off F = 104, D = 0.97: parity must recover both, and
+    # re-inverted call/put IVs at the same strike must agree again
+    F, D, iv, spot = 104.0, 0.97, 0.35, 100.0
+    rows = []
+    for k in np.linspace(80, 125, 19):
+        for right in ("C", "P"):
+            px = D * T.bs_price(F, float(k), T_YRS, iv, right)
+            rows.append({"date": "2026-08-10", "symbol": "X",
+                         "expiry": "2026-11-20", "right": right,
+                         "strike": float(k), "iv": 0.99, "oi": 100,
+                         "volume": 1, "bid": round(px * 0.99, 4),
+                         "ask": round(px * 1.01 + 0.001, 4), "last": px,
+                         "spot": spot})
+    day = pd.DataFrame(rows)
+    f_hat, d_hat = T.implied_forward(day, spot)
+    assert f_hat == pytest.approx(F, rel=1e-3)
+    assert d_hat == pytest.approx(D, abs=0.01)
+    ks, vs, f2, _ = T.forward_smile(day, spot, T_YRS)
+    # the garbage feed IV (0.99) is ignored; recovered smile is flat 0.35
+    assert np.allclose(vs, iv, atol=0.01)
+    assert f2 == pytest.approx(F, rel=1e-3)
+
+
+def test_invert_iv_round_trip():
+    px = 0.97 * T.bs_price(104.0, 110.0, 0.5, 0.42, "C")
+    assert T.invert_iv(px, 104.0, 110.0, 0.5, "C", 0.97) == pytest.approx(
+        0.42, abs=1e-3)
+    assert np.isnan(T.invert_iv(0.0, 104.0, 110.0, 0.5, "C"))
 
 
 def test_despike_drops_the_stale_line():

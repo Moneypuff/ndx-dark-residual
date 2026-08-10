@@ -128,7 +128,8 @@ def despike_smile(ks, vs, tol_floor=0.06, tol_frac=0.25, window=7):
 
 
 def bs_delta(spot, strike, t_years, iv, right):
-    """Black-Scholes delta (r=q=0): N(d1) for calls, N(d1)-1 for puts."""
+    """Black-Scholes delta (r=q=0): N(d1) for calls, N(d1)-1 for puts.
+    Pass the implied forward as `spot` for a Black-76 (forward) delta."""
     if (spot <= 0 or strike <= 0 or t_years <= 0 or not np.isfinite(iv)
             or iv <= 0):
         return np.nan
@@ -136,6 +137,56 @@ def bs_delta(spot, strike, t_years, iv, right):
     d1 = (math.log(spot / strike) + 0.5 * v * v) / v
     nd1 = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
     return nd1 if right == "C" else nd1 - 1.0
+
+
+def implied_forward(expiry_rows, spot, moneyness=0.10, max_spread=40.0):
+    """(forward, discount) for one expiry, extracted from the chain itself:
+    put-call parity says C - P = D*(F - K), so regressing the tight-quoted
+    call-put mid differences on strike gives D (the slope, negated) and F
+    (the zero-crossing) with no rate or dividend assumptions. Falls back
+    to (spot, 1.0) when fewer than 3 usable pairs exist or the fit is
+    implausible -- Yahoo's own long-dated IVs are inverted off a spot-like
+    forward, which splits same-strike call/put IVs by many vol points;
+    this is the correction."""
+    r = expiry_rows
+    live = r[(r["bid"].fillna(0) > 0) & (r["ask"] >= r["bid"])].copy()
+    if not len(live) or not spot:
+        return spot, 1.0
+    live["mid"] = (live["bid"] + live["ask"]) / 2
+    live["spr"] = (live["ask"] - live["bid"]) / live["mid"] * 100
+    live = live[(live["spr"] <= max_spread) &
+                ((live["strike"] / spot - 1).abs() <= moneyness)]
+    piv = live.pivot_table(index="strike", columns="right", values="mid",
+                           aggfunc="last").dropna()
+    if len(piv) < 3:
+        return spot, 1.0
+    k = piv.index.to_numpy(dtype=float)
+    cp = (piv["C"] - piv["P"]).to_numpy(dtype=float)
+    slope, intercept = np.polyfit(k, cp, 1)
+    disc, fwd = -slope, intercept / -slope if slope < 0 else (np.nan, np.nan)
+    if not (np.isfinite(disc) and np.isfinite(fwd)
+            and 0.6 < disc <= 1.05 and 0.7 < fwd / spot < 1.3):
+        return spot, 1.0
+    return float(fwd), float(min(disc, 1.0))
+
+
+def invert_iv(price, forward, strike, t_years, right, discount=1.0):
+    """Black-76 implied vol from an option price by bisection (the price is
+    discounted; undiscount via `discount`)."""
+    if price <= 0 or t_years <= 0 or forward <= 0 or strike <= 0:
+        return np.nan
+    tgt = price / discount
+    intrinsic = max(forward - strike, 0.0) if right == "C" else max(strike - forward, 0.0)
+    if tgt <= intrinsic:
+        return np.nan
+    lo, hi = 0.005, 4.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if bs_price(forward, strike, t_years, mid, right) > tgt:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2
 
 
 def delta_strike(ks, vs, spot, t_years, target, right):
@@ -165,7 +216,9 @@ def smile_points(expiry_rows, spot):
     """(strikes, ivs) of the live, despiked OTM smile inside one
     (symbol, expiry) day-group of snapshot rows -- puts below spot, calls
     at/above, only contracts with a bid or OI (dead wings carry garbage
-    IVs), then despike_smile() for the stale lines that pass liveness."""
+    IVs), then despike_smile() for the stale lines that pass liveness.
+    Uses the feed's own IVs; prefer forward_smile() wherever IV *levels*
+    are compared across strikes or tenors."""
     r = expiry_rows
     otm = r[(((r["right"] == "P") & (r["strike"] < spot)) |
              ((r["right"] == "C") & (r["strike"] >= spot))) &
@@ -173,6 +226,41 @@ def smile_points(expiry_rows, spot):
     otm = otm.dropna(subset=["iv"]).sort_values("strike")
     return despike_smile(otm["strike"].to_numpy(dtype=float),
                          otm["iv"].to_numpy(dtype=float))
+
+
+def forward_smile(expiry_rows, spot, t_years, max_spread=40.0):
+    """(strikes, ivs, forward, discount): the OTM smile with IVs
+    RE-INVERTED against the chain's own implied forward (Black-76).
+
+    Yahoo's IV field is inverted off a spot-like forward, which splits
+    same-strike call/put IVs by +3.5 vol pts at ~3M up to ~9 at LEAPs and
+    contaminates any cross-tenor skew read. Here: OTM side chosen at the
+    implied forward; contracts with a tight live quote get iv from their
+    own mid via invert_iv(); quoteless-but-open contracts fall back to
+    the feed IV; then despike."""
+    F, D = implied_forward(expiry_rows, spot)
+    r = expiry_rows
+    otm = r[(((r["right"] == "P") & (r["strike"] < F)) |
+             ((r["right"] == "C") & (r["strike"] >= F))) &
+            ((r["bid"].fillna(0) > 0) | (r["oi"].fillna(0) > 0))]
+    pts = []
+    for _, c in otm.sort_values("strike").iterrows():
+        bid, ask = c["bid"] or 0, c["ask"] or 0
+        iv = np.nan
+        if bid > 0 and ask >= bid:
+            mid = (bid + ask) / 2
+            if (ask - bid) / mid * 100 <= max_spread:
+                iv = invert_iv(mid, F, float(c["strike"]), t_years,
+                               c["right"], D)
+        if not np.isfinite(iv):
+            iv = c["iv"] if np.isfinite(c["iv"] or np.nan) else np.nan
+        if np.isfinite(iv) and 0.01 < iv < 5.0:
+            pts.append((float(c["strike"]), float(iv)))
+    if not pts:
+        return np.array([]), np.array([]), F, D
+    ks, vs = despike_smile(np.array([p[0] for p in pts]),
+                           np.array([p[1] for p in pts]))
+    return ks, vs, F, D
 
 
 CLAMP_MAX_SPREAD = 25.0   # only a tight market (spread% <= this) bounds the mark
@@ -187,10 +275,10 @@ def leg_mark(expiry_rows, strike, right, asof, expiry):
     if expiry_rows.empty:
         return None
     spot = float(expiry_rows["spot"].iloc[0])
-    ks, vs = smile_points(expiry_rows, spot)
     t_years = max((pd.Timestamp(expiry) - pd.Timestamp(asof)).days, 0) / 365.25
+    ks, vs, F, D = forward_smile(expiry_rows, spot, t_years)
     iv = float(np.interp(strike, ks, vs)) if len(ks) >= 4 else np.nan
-    px = bs_price(spot, strike, t_years, iv, right)
+    px = D * bs_price(F, strike, t_years, iv, right)
 
     row = expiry_rows[(expiry_rows["strike"] == strike) &
                       (expiry_rows["right"] == right)]

@@ -365,18 +365,19 @@ def expiry_stats(day_df, symbol, target_days, asof):
     rows = g[g["expiry"] == exp]
     spot = float(rows["spot"].iloc[0])
     dte = max((pd.Timestamp(exp) - pd.Timestamp(asof)).days, 1)
-    a = atm_iv(rows)
-    st = {"expiry": exp, "dte": dte, "spot": spot, "atm_iv": a,
-          "imp_move": np.nan, "rr": np.nan}
+    t_years = dte / 365.25
+    ks, vs, F, D = T.forward_smile(rows, spot, t_years)
+    a = (float(np.interp(F, ks, vs))
+         if len(ks) >= 4 and ks[0] < F < ks[-1] else np.nan)
+    st = {"expiry": exp, "dte": dte, "spot": spot, "fwd": F, "disc": D,
+          "atm_iv": a, "imp_move": np.nan, "rr": np.nan}
     if not np.isfinite(a):
         return st
-    t_years = dte / 365.25
     sig = a * np.sqrt(t_years)
     st["imp_move"] = 0.8 * sig * 100
-    ks, vs = T.smile_points(rows, spot)
     if len(ks) >= 4:
-        kc = T.delta_strike(ks, vs, spot, t_years, +RR_DELTA, "C")
-        kp = T.delta_strike(ks, vs, spot, t_years, -RR_DELTA, "P")
+        kc = T.delta_strike(ks, vs, F, t_years, +RR_DELTA, "C")
+        kp = T.delta_strike(ks, vs, F, t_years, -RR_DELTA, "P")
         if np.isfinite(kc) and np.isfinite(kp):
             st["rr"] = float(np.interp(kc, ks, vs) - np.interp(kp, ks, vs)) * 100
             st["k_call"], st["k_put"] = kc / spot * 100, kp / spot * 100
