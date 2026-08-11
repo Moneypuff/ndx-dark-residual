@@ -1,6 +1,6 @@
 {
  "date": "2026-08-11",
- "captured_utc": "2026-08-11T16:52:45+00:00",
+ "captured_utc": "2026-08-11T16:57:55+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -20,7 +20,7 @@
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1787
+   "rows": 1802
   },
   "IGV": {
    "ok": true,
@@ -135,7 +135,7 @@
   "GOOGL": {
    "ok": true,
    "expiries": 11,
-   "rows": 1177
+   "rows": 1175
   },
   "NVDA": {
    "ok": true,
@@ -145,7 +145,7 @@
   "AMZN": {
    "ok": true,
    "expiries": 11,
-   "rows": 890
+   "rows": 879
   },
   "MSFT": {
    "ok": true,
@@ -185,7 +185,7 @@
   "RKLB": {
    "ok": true,
    "expiries": 8,
-   "rows": 473
+   "rows": 471
   },
   "ONDS": {
    "ok": true,
@@ -200,7 +200,7 @@
   "DRAM": {
    "ok": true,
    "expiries": 11,
-   "rows": 877
+   "rows": 875
   },
   "USO": {
    "ok": true,
@@ -215,7 +215,7 @@
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1132
+   "rows": 1118
   },
   "IBIT": {
    "ok": true,
