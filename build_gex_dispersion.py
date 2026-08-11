@@ -157,9 +157,54 @@ def parse_gexplus_csv(text):
         "dix": (pd.to_numeric(df["DIX"], errors="coerce")
                 if "DIX" in df.columns else np.nan),
         "gex": pd.to_numeric(df["GEX+"], errors="coerce") * GEXPLUS_DOLLARS,
+        # SPX intraday high/low ride along in the yacht-club feed; the public
+        # DIX.csv has close only, so these are the free range source in the
+        # GEX+ era (the Yahoo ^GSPC fallback covers the classic path).
+        "high": (pd.to_numeric(df["HIGH"], errors="coerce")
+                 if "HIGH" in df.columns else np.nan),
+        "low": (pd.to_numeric(df["LOW"], errors="coerce")
+                if "LOW" in df.columns else np.nan),
     })
     out = out.dropna(subset=["date"]).set_index("date").sort_index()
-    return out[["price", "dix", "gex"]].dropna(subset=["price", "gex"], how="all")
+    return out[["price", "dix", "gex", "high", "low"]].dropna(
+        subset=["price", "gex"], how="all")
+
+
+def parse_yahoo_ohlc(text):
+    """Yahoo v8 chart JSON -> date-indexed frame with columns high, low, close.
+    The chart quote block carries full OHLC; we keep the daily high/low that the
+    SqueezeMetrics close series lacks. Empty frame if the body is unusable."""
+    cols = ["high", "low", "close"]
+    try:
+        j = json.loads(text)
+    except Exception:  # noqa: BLE001
+        return pd.DataFrame(columns=cols)
+    chart = j.get("chart") or {}
+    res = chart.get("result")
+    if not res or chart.get("error"):
+        return pd.DataFrame(columns=cols)
+    res = res[0]
+    ts = res.get("timestamp")
+    q = ((res.get("indicators") or {}).get("quote") or [{}])[0]
+    if not ts or not q:
+        return pd.DataFrame(columns=cols)
+    idx = pd.to_datetime(ts, unit="s").normalize()
+    df = pd.DataFrame({"high": q.get("high"), "low": q.get("low"),
+                       "close": q.get("close")}, index=idx)
+    return df[~df.index.duplicated(keep="last")].dropna(how="all")
+
+
+def fetch_spx_ohlc(start, end, cache_path, refresh=False, session=None):
+    """SPX (^GSPC) daily high/low from Yahoo, as the range source when the gamma
+    feed carries close only (classic-GEX path) or has gaps. Day-stamped JSON
+    cache with stale fallback via `fetch_text_cached`. Empty frame on failure."""
+    if N.requests is None:
+        return pd.DataFrame(columns=["high", "low", "close"])
+    p2 = N._unix(pd.Timestamp(end).normalize() + pd.Timedelta(days=1))
+    url = N.YAHOO_CHART.format(sym="%5EGSPC", p1=N._unix(start), p2=p2)
+    body = fetch_text_cached(url, cache_path, refresh=refresh,
+                             label="Yahoo ^GSPC OHLC", session=session)
+    return parse_yahoo_ohlc(body or "")
 
 
 def parse_cboe_csv(text, value_col=None):
@@ -297,6 +342,46 @@ def quad_stats(df):
     return rows
 
 
+def quartile_bin(pct):
+    """Quartile index 0..3 from a 0-100 percentile Series (fixed 25/50/75 cuts).
+    NaN percentiles stay NaN. 0 = bottom quartile (unclamped / dispersed),
+    3 = top quartile (pinned / synchronized)."""
+    b = np.floor(pd.to_numeric(pct, errors="coerce") / 25.0)
+    return b.clip(0.0, 3.0)
+
+
+def _hl_stats(x):
+    """n + mean / MAD / median / p90 of a high-low-range Series, rounded to 2dp.
+    MAD is the mean absolute deviation about the mean: mean(|x - mean(x)|).
+    Empty input -> n=0 and None stats."""
+    x = pd.to_numeric(x, errors="coerce").dropna()
+    if x.empty:
+        return {"n": 0, "mean": None, "mad": None, "med": None, "p90": None}
+    m = float(x.mean())
+    return {
+        "n": int(len(x)),
+        "mean": round(m, 2),
+        "mad": round(float((x - m).abs().mean()), 2),
+        "med": round(float(x.median()), 2),
+        "p90": round(float(x.quantile(0.90)), 2),
+    }
+
+
+def cell_stats(df):
+    """4x4 grid of same-day SPX high-low-range stats, one row per
+    (gamma quartile `gq`, correlation quartile `cq`) cell -- all 16 cells always
+    present, in row-major gq-then-cq order. Each row is
+    {gq, cq, n, mean, mad, med, p90} over that cell's `hlpct` values; empty
+    cells come back with n=0 and None stats. Pure -- unit tested."""
+    d = df.dropna(subset=["gq", "cq", "hlpct"])
+    rows = []
+    for gq in range(4):
+        for cq in range(4):
+            sel = d[(d["gq"] == gq) & (d["cq"] == cq)]["hlpct"]
+            rows.append({"gq": gq, "cq": cq, **_hl_stats(sel)})
+    return rows
+
+
 def series_corr(a, b, diff=0):
     """(pearson r, overlap n) of two Series aligned on their common dates;
     with diff>0, of their `diff`-day changes (comovement, not shared level)."""
@@ -316,9 +401,9 @@ def rnd(s, nd=2):
 
 
 def build_payloads(F, cor1m, dspx, meta_extra):
-    """SER / QUAD / META payload dicts from the aligned daily frame `F`
+    """SER / QUAD / CELLS / META payload dicts from the aligned daily frame `F`
     (index: dates; columns gex, gexp, cor, corp, disp, spx, r21, fvol, tvol,
-    quad) plus the full Cboe series for the overlay panes."""
+    quad, hlpct, gq, cq) plus the full Cboe series for the overlay panes."""
     ser = {
         "dates": [d.strftime("%Y-%m-%d") for d in F.index],
         "gex": rnd(F["gex"] / 1e9, 3),          # $bn
@@ -333,6 +418,15 @@ def build_payloads(F, cor1m, dspx, meta_extra):
         "quad": list(F["quad"]),
     }
     quad = quad_stats(F)
+
+    # 4x4 intraday-range matrix: same-day SPX high-low range % per regime cell
+    cells = {
+        "grid": cell_stats(F),
+        "baseline": _hl_stats(F["hlpct"]),
+        "gammaLabels": ["Unclamped", "Mild short", "Mild long", "Pinned"],
+        "corrLabels": ["Dispersed", "Mildly disp.", "Mildly sync.", "Synchronized"],
+        "metric": "SPX daily high-low range %, contemporaneous (same session)",
+    }
 
     r = F["r21"].dropna()
     fv = F["fvol"].dropna()
@@ -363,6 +457,9 @@ def build_payloads(F, cor1m, dspx, meta_extra):
             "dspx": (round(float(dspx.loc[:last].iloc[-1]), 2) if len(dspx.loc[:last]) else None),
             "disp": round(float(cur["disp"]), 1) if pd.notna(cur["disp"]) else None,
             "quad": cur["quad"], "quadLabel": QUAD_LABEL.get(cur["quad"], "—"),
+            "gq": int(cur["gq"]) if pd.notna(cur["gq"]) else None,
+            "cq": int(cur["cq"]) if pd.notna(cur["cq"]) else None,
+            "hlpct": round(float(cur["hlpct"]), 2) if pd.notna(cur["hlpct"]) else None,
         },
         "cmp": {"cor_r": c_lvl, "cor_dr": c_chg, "cor_n": c_n,
                 "dsp_r": d_lvl, "dsp_dr": d_chg, "dsp_n": d_n},
@@ -383,7 +480,7 @@ def build_payloads(F, cor1m, dspx, meta_extra):
                       if f("LH", 6) is not None and f("HL", 6) is not None else None),
         "corR": c_lvl, "corDR": c_chg, "dspR": d_lvl,
     }
-    return ser, quad, meta
+    return ser, quad, cells, meta
 
 
 def main():
@@ -431,6 +528,11 @@ def main():
     if G.empty:
         raise SystemExit("No usable GEX series (SqueezeMetrics fetch failed and no cache).")
     gex_label = "GEX+" if gex_src == "gexplus" else "GEX"
+    # the classic DIX.csv has close only; guarantee the range columns exist so
+    # the Yahoo ^GSPC fill (below) has somewhere to land on that path
+    for c in ("high", "low"):
+        if c not in G.columns:
+            G[c] = np.nan
     print(f"{gex_label}: {len(G)} days [{G.index.min().date()} -> {G.index.max().date()}]",
           file=sys.stderr)
 
@@ -465,6 +567,12 @@ def main():
     # ---- constituent prices -> realized correlation & dispersion ------------
     start = (G.index.min() - pd.Timedelta(days=45)).strftime("%Y-%m-%d")
     end = pd.Timestamp.today().normalize()
+
+    # ---- SPX intraday high/low (the range source the close series lacks) ----
+    spx_ohlc = fetch_spx_ohlc(start, end, cpath("gexdisp_spx_ohlc.json"),
+                              refresh=args.refresh, session=session)
+    print(f"^GSPC OHLC: {len(spx_ohlc)} days", file=sys.stderr)
+
     panels = N.load_yahoo_panels(list(w.index), start, end,
                                  cache_dir=args.cache_dir or None,
                                  refresh=args.refresh, label="GEXDISP")
@@ -500,7 +608,20 @@ def main():
         raise SystemExit("No days where both dials are defined -- nothing to build.")
     F["quad"] = [quad_code(g, c) for g, c in zip(F["gexp"], F["corp"])]
 
-    ser, quad, meta = build_payloads(
+    # ---- intraday high-low range % per regime cell (4x4 quartile grid) ------
+    # prefer the gamma feed's own high/low, fall back to Yahoo ^GSPC per day
+    if not spx_ohlc.empty:
+        fb = spx_ohlc.reindex(F.index)
+        F["high"] = F["high"].fillna(fb["high"])
+        F["low"] = F["low"].fillna(fb["low"])
+    prev_close = F["spx"].shift(1).fillna(F["spx"])   # first row: same-day close
+    F["hlpct"] = 100.0 * (F["high"] - F["low"]) / prev_close
+    F["gq"] = quartile_bin(F["gexp"])                 # 0 unclamped .. 3 pinned
+    F["cq"] = quartile_bin(F["corp"])                 # 0 dispersed .. 3 synced
+    print(f"Intraday range: {int(F['hlpct'].notna().sum())} of {len(F)} days "
+          f"have SPX high/low", file=sys.stderr)
+
+    ser, quad, cells, meta = build_payloads(
         F, cor1m, dspx,
         {"basket": f"top {len(w)} IVV names · {coverage:.0f}% of index weight",
          "top_n": int(len(w)),
@@ -509,6 +630,7 @@ def main():
     body = (Path(args.template).read_text(encoding="utf-8")
             .replace("/*__SER__*/", json.dumps(ser, separators=(",", ":")))
             .replace("/*__QUAD__*/", json.dumps(quad, separators=(",", ":")))
+            .replace("/*__CELLS__*/", json.dumps(cells, separators=(",", ":")))
             .replace("/*__META__*/", json.dumps(meta, separators=(",", ":"))))
     doc = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
            '<meta name="viewport" content="width=device-width,initial-scale=1">'

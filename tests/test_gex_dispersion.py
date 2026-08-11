@@ -8,6 +8,8 @@ silently corrupt the published page rather than crash, so each is pinned here
 against either a direct from-definition recomputation or a hand-built
 document.
 """
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -52,12 +54,24 @@ GEXPLUS_BODY = (
 
 def test_parse_gexplus_takes_gexplus_column_in_public_dollar_units():
     df = B.parse_gexplus_csv(GEXPLUS_BODY)
-    assert list(df.columns) == ["price", "dix", "gex"]
+    assert list(df.columns) == ["price", "dix", "gex", "high", "low"]
     assert len(df) == 2
     assert df.index[0] == pd.Timestamp("2004-01-02")
     assert df["price"].iloc[0] == pytest.approx(1108.48)     # CLOSE, not SPX/OPEN
     assert df["gex"].iloc[0] == pytest.approx(136935 * B.GEXPLUS_DOLLARS)
     assert df["dix"].isna().all()                            # empty pre-2011 DIX cells
+    # SPX intraday high/low ride along for the range stats (row 1: 1118.85/1105.08)
+    assert df["high"].iloc[0] == pytest.approx(1118.85)
+    assert df["low"].iloc[0] == pytest.approx(1105.08)
+
+
+def test_parse_gexplus_without_ohlc_columns_leaves_high_low_nan():
+    body = ("DATE,GEX+,CLOSE\n"
+            "2020-01-02,5000,3257.85\n"
+            "2020-01-03,4800,3234.85\n")
+    df = B.parse_gexplus_csv(body)
+    assert list(df.columns) == ["price", "dix", "gex", "high", "low"]
+    assert df["high"].isna().all() and df["low"].isna().all()
 
 
 def test_parse_gexplus_rejects_html_and_missing_columns():
@@ -100,6 +114,36 @@ def test_parse_cboe_garbage_returns_empty():
 def test_parse_cboe_skips_malformed_rows():
     s = B.parse_cboe_csv("DATE,DSPX\n06/19/2014,17.81\nnot-a-date,9.9\n06/20/2014,\n")
     assert len(s) == 1
+
+
+# ---------------------------------------------------------------------------
+# parse_yahoo_ohlc -- the ^GSPC high/low fallback for the intraday range
+# ---------------------------------------------------------------------------
+def _yahoo_body(highs, lows, closes, ts=(1072972800, 1073232000)):
+    return json.dumps({"chart": {"result": [{
+        "timestamp": list(ts),
+        "indicators": {"quote": [{"high": highs, "low": lows, "close": closes}]},
+    }], "error": None}})
+
+
+def test_parse_yahoo_ohlc_extracts_high_low_close():
+    df = B.parse_yahoo_ohlc(_yahoo_body([1118.85, 1122.22],
+                                        [1105.08, 1108.48],
+                                        [1108.48, 1122.22]))
+    assert list(df.columns) == ["high", "low", "close"]
+    assert len(df) == 2
+    assert df["high"].iloc[0] == pytest.approx(1118.85)
+    assert df["low"].iloc[1] == pytest.approx(1108.48)
+
+
+def test_parse_yahoo_ohlc_drops_all_nan_rows_and_handles_errors():
+    df = B.parse_yahoo_ohlc(_yahoo_body([1118.85, None], [1105.08, None],
+                                        [1108.48, None]))
+    assert len(df) == 1                                    # the all-None day dropped
+    assert B.parse_yahoo_ohlc("<html>gate</html>").empty
+    assert B.parse_yahoo_ohlc(json.dumps({"chart": {"result": None,
+                                                     "error": "x"}})).empty
+    assert B.parse_yahoo_ohlc("").empty
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +312,56 @@ def test_quad_stats_aggregates_and_sorts_by_frequency():
     assert hl[6] == pytest.approx(11.0)
     assert hl[7] == pytest.approx(-0.3, abs=0.05)    # mean fvol - tvol
     assert rows[1][1] == B.QUAD_LABEL["LH"]
+
+
+# ---------------------------------------------------------------------------
+# quartile_bin + cell_stats -- the 4x4 intraday-range matrix
+# ---------------------------------------------------------------------------
+def test_quartile_bin_fixed_cuts_and_preserves_nan():
+    b = B.quartile_bin(pd.Series([0.0, 24.9, 25.0, 50.0, 74.9, 75.0, 100.0, np.nan]))
+    assert list(b.iloc[:7]) == [0, 0, 1, 2, 2, 3, 3]     # 25/50/75 cuts, top clipped
+    assert pd.isna(b.iloc[-1])
+
+
+def test_hl_stats_mean_mad_median_p90():
+    st = B._hl_stats(pd.Series([1.0, 3.0]))
+    assert st["n"] == 2
+    assert st["mean"] == pytest.approx(2.0)
+    assert st["mad"] == pytest.approx(1.0)               # mean(|1-2|,|3-2|)
+    assert st["med"] == pytest.approx(2.0)
+    assert st["p90"] == pytest.approx(2.8)               # linear-interp 90th pct
+    empty = B._hl_stats(pd.Series([], dtype="float64"))
+    assert empty == {"n": 0, "mean": None, "mad": None, "med": None, "p90": None}
+
+
+def test_cell_stats_bins_and_aggregates_full_16_grid():
+    # gexp/corp chosen to land in known quartiles; hlpct hand-set per cell
+    df = pd.DataFrame({
+        "gexp":  [10.0, 10.0, 90.0, 90.0, 90.0],   # gq: 0,0,3,3,3
+        "corp":  [10.0, 10.0, 10.0, 10.0, 90.0],   # cq: 0,0,0,0,3
+        "hlpct": [1.0,  3.0,  2.0,  4.0,  10.0],
+    })
+    df["gq"] = B.quartile_bin(df["gexp"])
+    df["cq"] = B.quartile_bin(df["corp"])
+    grid = B.cell_stats(df)
+    assert len(grid) == 16                              # every cell present
+    by = {(c["gq"], c["cq"]): c for c in grid}
+    assert by[(0, 0)]["n"] == 2 and by[(0, 0)]["mean"] == pytest.approx(2.0)
+    assert by[(0, 0)]["mad"] == pytest.approx(1.0)
+    assert by[(3, 0)]["n"] == 2 and by[(3, 0)]["mean"] == pytest.approx(3.0)
+    assert by[(3, 3)]["n"] == 1 and by[(3, 3)]["mean"] == pytest.approx(10.0)
+    assert by[(1, 1)]["n"] == 0 and by[(1, 1)]["mean"] is None    # empty cell
+
+
+def test_cell_stats_ignores_rows_missing_bin_or_range():
+    df = pd.DataFrame({
+        "gq":    [0.0, np.nan, 0.0, 0.0],
+        "cq":    [0.0, 0.0,    np.nan, 0.0],
+        "hlpct": [5.0, 5.0,    5.0, np.nan],
+    })
+    grid = B.cell_stats(df)
+    by = {(c["gq"], c["cq"]): c for c in grid}
+    assert by[(0, 0)]["n"] == 1                          # only the fully-defined row
 
 
 # ---------------------------------------------------------------------------

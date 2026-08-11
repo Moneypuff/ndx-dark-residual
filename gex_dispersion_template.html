@@ -237,6 +237,28 @@ tr.feat .reg-cell::before{content:"◆"; color:var(--accent); font-size:10px; ma
   display:flex; gap:8px; align-items:baseline}
 .hm-note b{color:var(--ink-dim); font-weight:500}
 
+/* ---- 4x4 intraday-range matrix ---- */
+table.mx{border-collapse:separate; border-spacing:0; width:100%; min-width:660px}
+table.mx th{font-family:var(--mono); font-size:11px; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:500; padding:9px 10px; white-space:nowrap}
+table.mx th.col{text-align:center; border-bottom:1px solid var(--line)}
+table.mx th.rowlab{text-align:right; color:var(--ink-dim); font-weight:600; font-size:11.5px;
+  padding-right:14px; white-space:nowrap; text-transform:none; letter-spacing:0}
+table.mx th.corner{border-bottom:1px solid var(--line)}
+table.mx td.cx{padding:3px}
+.cx-in{border-radius:10px; border:1px solid var(--line); padding:12px 8px 11px; text-align:center;
+  min-width:108px; position:relative}
+.cx-in .v{font-family:var(--mono); font-size:20px; font-weight:600; letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums}
+.cx-in .sub{font-family:var(--mono); font-size:10.5px; color:var(--ink-faint); margin-top:6px;
+  letter-spacing:.01em; line-height:1.55}
+.cx-in.empty{opacity:.45}
+.cx-in.today{outline:2px solid var(--accent); outline-offset:1px}
+.cx-in.today::after{content:"◆"; position:absolute; top:5px; right:7px; font-size:9px;
+  color:var(--accent); font-family:var(--mono)}
+.mx-axis{font-family:var(--mono); font-size:11px; color:var(--ink-faint); text-align:center;
+  margin:12px 0 0; letter-spacing:.03em}
+
 /* ---- replication cells ---- */
 .base{display:grid; grid-template-columns:repeat(2,1fr); gap:14px}
 .base .cell{
@@ -478,6 +500,35 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     <div class="sec-h">
       <span class="n">05</span>
       <div>
+        <h2>Intraday range by regime cell</h2>
+        <p class="h-sub">Finer than the four quadrants: each dial is split into <b>quartiles</b>, giving a
+          4×4 grid — so a barely-pinned day isn't smooshed together with a deeply-pinned one. Each cell is
+          SPX's <b>daily high-low range</b> (% of the prior close) on the sessions that sat in it —
+          <b>contemporaneous</b>, the swing you actually live through in that regime, not a forecast. The big
+          number is the <b>mean</b>; under it, median · MAD · p90 · n. Cooler cells run tighter, hotter cells
+          wilder.</p>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="legend"><span>wilder</span><span class="scale"></span><span>calmer</span></div>
+      <div class="hm-note" style="margin:0"><b>All-day baseline:</b>&nbsp;<span id="mxBase">—</span></div>
+    </div>
+    <div class="tscroll">
+      <table class="mx">
+        <thead><tr id="mxHead"></tr></thead>
+        <tbody id="mxBody"></tbody>
+      </table>
+    </div>
+    <p class="mx-axis">columns → correlation quartile (dispersed → synchronized) · rows ↓ gamma quartile (pinned → unclamped)</p>
+    <p class="hm-note"><b>MAD</b> = mean absolute deviation about the mean — the typical spread of the range
+      itself day to day. <b>p90</b> = the 90th-percentile (hot) session. In thin cells lean on median and n,
+      not the mean.</p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">06</span>
+      <div>
         <h2>Do our gauges track Cboe's?</h2>
         <p class="h-sub">Ours are trailing <i>realized</i> measures; Cboe's are forward <i>implied</i> ones —
           levels needn't match, comovement should. Correlations of levels and of 21-session changes over
@@ -494,7 +545,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
 
   <section>
     <div class="sec-h">
-      <span class="n">06</span>
+      <span class="n">07</span>
       <div>
         <h2>What the pattern says</h2>
         <p class="h-sub">Reads that hold across the scoreboard.</p>
@@ -528,7 +579,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
 
   <section>
     <div class="sec-h">
-      <span class="n">07</span>
+      <span class="n">08</span>
       <div><h2>Read with these in mind</h2></div>
     </div>
     <div class="cav">
@@ -552,7 +603,8 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
         median — live use would key off an expanding cutoff. The gamma dial's trailing-year rank has no
         such look-ahead.</div>
       <div class="c"><b>Quadrants are coarse.</b> A 50/50 cross treats a 51st-percentile day like a 99th.
-        The map above shows the full continuum; the table is deliberately blunt.</div>
+        The scored table is deliberately blunt; the map and the 4×4 intraday-range matrix (section 05) both
+        show the finer continuum.</div>
     </div>
   </section>
 
@@ -572,6 +624,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
 <script>
 const SER = /*__SER__*/;
 const QUAD = /*__QUAD__*/;
+const CELLS = /*__CELLS__*/;
 const META = /*__META__*/;
 
 const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
@@ -1047,6 +1100,57 @@ document.getElementById("hmBody").addEventListener("click", e=>{
     .scrollIntoView({behavior:"smooth", block:"center"});
 });
 
+/* ===== 05: 4x4 intraday-range matrix ===== */
+function renderCells(){
+  if(typeof CELLS==="undefined" || !CELLS || !CELLS.grid) return;
+  const grid = CELLS.grid, base = CELLS.baseline || {};
+  const gLab = CELLS.gammaLabels || ["Q1","Q2","Q3","Q4"];
+  const cLab = CELLS.corrLabels  || ["Q1","Q2","Q3","Q4"];
+  const at = (gq,cq) => grid.find(x=>x.gq===gq && x.cq===cq) || {n:0};
+  // colour scale: distance of the cell mean from the all-day baseline; wider
+  // than baseline reads rust (wild), tighter reads teal (calm)
+  const spread = Math.max(0.15, (base.p90!=null && base.mean!=null)
+    ? (base.p90-base.mean) : (base.mean||0.4)*0.6);
+  const tQ = (META.today && META.today.gq!=null) ? META.today.gq : null;
+  const cQ = (META.today && META.today.cq!=null) ? META.today.cq : null;
+
+  const head = document.getElementById("mxHead");
+  head.innerHTML = `<th class="corner rowlab">gamma ↓ · corr →</th>` +
+    cLab.map(l=>`<th class="col">${l}</th>`).join("");
+
+  const bodyEl = document.getElementById("mxBody");
+  bodyEl.innerHTML = "";
+  // rows top→bottom = pinned (gq 3) → unclamped (gq 0)
+  for(let gq=3; gq>=0; gq--){
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.className = "rowlab"; th.textContent = gLab[gq];
+    tr.appendChild(th);
+    for(let cq=0; cq<4; cq++){
+      const c = at(gq,cq), td = document.createElement("td");
+      td.className = "cx";
+      const isToday = (gq===tQ && cq===cQ);
+      if(!c.n){
+        td.innerHTML = `<div class="cx-in empty${isToday?" today":""}">
+          <div class="v">—</div><div class="sub">no days</div></div>`;
+      }else{
+        const st = retStyle(base.mean!=null ? base.mean-c.mean : 0, spread);
+        td.innerHTML = `<div class="cx-in${isToday?" today":""}"
+            style="background:${st.bg}" title="gamma ${gLab[gq]} · corr ${cLab[cq]} — n=${c.n}">
+          <div class="v" style="color:${st.ink}">${c.mean.toFixed(2)}%</div>
+          <div class="sub">med ${c.med.toFixed(2)} · MAD ${c.mad.toFixed(2)}<br>
+            p90 ${c.p90.toFixed(2)} · n ${c.n.toLocaleString()}</div></div>`;
+      }
+      tr.appendChild(td);
+    }
+    bodyEl.appendChild(tr);
+  }
+  const b = document.getElementById("mxBase");
+  if(b) b.textContent = base.n
+    ? `mean ${base.mean.toFixed(2)}% · med ${base.med.toFixed(2)} · MAD ${base.mad.toFixed(2)} · p90 ${base.p90.toFixed(2)} · n ${base.n.toLocaleString()}`
+    : "no intraday range data";
+}
+
 /* ===== 05 + 06 + 07: bound figures ===== */
 function applyMeta(){
   const set = (id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
@@ -1077,7 +1181,7 @@ document.querySelectorAll(META.gexSrc==="gexplus" ? ".src-classic" : ".src-gexpl
   .forEach(e=>e.remove());
 
 /* ===== boot + theme/resize re-renders ===== */
-function redrawAll(){ drawMap(); tsLegend(); drawTS(); renderQuad(); }
+function redrawAll(){ drawMap(); tsLegend(); drawTS(); renderQuad(); renderCells(); }
 applyHero(); applyMeta(); redrawAll();
 setQuadFilter(META.today.quad || "");
 

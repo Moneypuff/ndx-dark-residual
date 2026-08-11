@@ -42,6 +42,37 @@ the map (section 01) shows where today sits inside the continuum — a
 51st-percentile day is not a 99th-percentile day, and the table above is
 deliberately blunt about that.
 
+### 2a. Intraday range by cell — the 4×4 (page section 05)
+
+The four-quadrant table smooshes a barely-pinned day into the same bucket as a
+deeply-pinned one. Section 05 of the page splits **each dial into quartiles**
+(fixed 25/50/75 cuts on the same percentiles the quadrants use) for a **4×4
+grid**, and scores each of the 16 cells by SPX's **daily high-low range** —
+`100 × (High − Low) / prior close`. This answers the sizing question the forward
+tables don't: *while I sit in this regime, how far does SPX actually travel in a
+day?*
+
+Three things to keep straight:
+
+* **It's contemporaneous, not forward.** Each session contributes its own
+  same-day range to whichever cell it sat in. This is the swing you *live
+  through* in that regime (regimes are persistent, so it's close to what comes
+  next), not a no-look-ahead forecast like the §2 forward-return columns.
+* **Each cell reports mean · median · MAD · p90 · n.** **MAD** is the mean
+  absolute deviation *about the mean* — `mean(|x − mean(x)|)` — i.e. how much the
+  daily range itself wobbles day to day inside the cell, a spread-of-the-spread.
+  **p90** is the hot session (the 90th-percentile range). As everywhere in this
+  study, trust the **median and n** over the mean in thin corner cells — the
+  high-gamma/high-corr and low-gamma/low-corr diagonals are the sparse ones.
+* **Colour = distance from the all-day baseline.** Cooler cells run tighter than
+  a typical day, hotter cells wider. The grind corner (pinned & dispersed) sits
+  cool; the storm corner (unclamped & synchronized) runs hottest — the same
+  vol story the forward table tells, now in plain intraday points.
+
+Range source: SPX high/low come from the GEX+ yacht-club feed (which ships OHLC)
+and fall back to Yahoo `^GSPC` for the classic-GEX path, which carries close
+only.
+
 ## 3. Reading the dials day to day (the 2-minute routine)
 
 1. **Quadrant + how deep into it** (hero card, then the map). Near a boundary?
