@@ -367,17 +367,17 @@ def _hl_stats(x):
     }
 
 
-def cell_stats(df):
-    """4x4 grid of same-day SPX high-low-range stats, one row per
-    (gamma quartile `gq`, correlation quartile `cq`) cell -- all 16 cells always
-    present, in row-major gq-then-cq order. Each row is
-    {gq, cq, n, mean, mad, med, p90} over that cell's `hlpct` values; empty
-    cells come back with n=0 and None stats. Pure -- unit tested."""
-    d = df.dropna(subset=["gq", "cq", "hlpct"])
+def cell_stats(df, col="hlpct"):
+    """4x4 grid of SPX high-low-range stats, one row per (gamma quartile `gq`,
+    correlation quartile `cq`) cell -- all 16 cells always present, in row-major
+    gq-then-cq order. Each row is {gq, cq, n, mean, mad, med, p90} over that
+    cell's `col` values (e.g. same-day `hl0` or next-session `hl1`); empty cells
+    come back with n=0 and None stats. Pure -- unit tested."""
+    d = df.dropna(subset=["gq", "cq", col])
     rows = []
     for gq in range(4):
         for cq in range(4):
-            sel = d[(d["gq"] == gq) & (d["cq"] == cq)]["hlpct"]
+            sel = d[(d["gq"] == gq) & (d["cq"] == cq)][col]
             rows.append({"gq": gq, "cq": cq, **_hl_stats(sel)})
     return rows
 
@@ -403,7 +403,7 @@ def rnd(s, nd=2):
 def build_payloads(F, cor1m, dspx, meta_extra):
     """SER / QUAD / CELLS / META payload dicts from the aligned daily frame `F`
     (index: dates; columns gex, gexp, cor, corp, disp, spx, r21, fvol, tvol,
-    quad, hlpct, gq, cq) plus the full Cboe series for the overlay panes."""
+    quad, hl0, hl1, gq, cq) plus the full Cboe series for the overlay panes."""
     ser = {
         "dates": [d.strftime("%Y-%m-%d") for d in F.index],
         "gex": rnd(F["gex"] / 1e9, 3),          # $bn
@@ -419,13 +419,16 @@ def build_payloads(F, cor1m, dspx, meta_extra):
     }
     quad = quad_stats(F)
 
-    # 4x4 intraday-range matrix: same-day SPX high-low range % per regime cell
+    # 4x4 intraday-range matrix: SPX high-low range % per regime cell, on two
+    # bases -- next-session (tradeable: the range you can act on given today's
+    # close-determined cell) and same-session (the environment you're sitting in)
     cells = {
-        "grid": cell_stats(F),
-        "baseline": _hl_stats(F["hlpct"]),
+        "next": {"grid": cell_stats(F, "hl1"), "baseline": _hl_stats(F["hl1"])},
+        "same": {"grid": cell_stats(F, "hl0"), "baseline": _hl_stats(F["hl0"])},
+        "default": "next",
         "gammaLabels": ["Unclamped", "Mild short", "Mild long", "Pinned"],
         "corrLabels": ["Dispersed", "Mildly disp.", "Mildly sync.", "Synchronized"],
-        "metric": "SPX daily high-low range %, contemporaneous (same session)",
+        "metric": "SPX daily high-low range %",
     }
 
     r = F["r21"].dropna()
@@ -459,7 +462,7 @@ def build_payloads(F, cor1m, dspx, meta_extra):
             "quad": cur["quad"], "quadLabel": QUAD_LABEL.get(cur["quad"], "—"),
             "gq": int(cur["gq"]) if pd.notna(cur["gq"]) else None,
             "cq": int(cur["cq"]) if pd.notna(cur["cq"]) else None,
-            "hlpct": round(float(cur["hlpct"]), 2) if pd.notna(cur["hlpct"]) else None,
+            "hlpct": round(float(cur["hl0"]), 2) if pd.notna(cur["hl0"]) else None,
         },
         "cmp": {"cor_r": c_lvl, "cor_dr": c_chg, "cor_n": c_n,
                 "dsp_r": d_lvl, "dsp_dr": d_chg, "dsp_n": d_n},
@@ -597,6 +600,20 @@ def main():
     F = G.join(RC[["cor", "disp"]], how="left").rename(columns={"price": "spx"})
     F["gexp"] = rolling_pct(F["gex"])
     F["corp"] = full_pct(F["cor"])
+
+    # intraday high-low range, computed on the FULL series before trimming so the
+    # next-session shift lands on a real neighbouring session (same discipline as
+    # the forward outcomes below). Prefer the gamma feed's own high/low, fall
+    # back to Yahoo ^GSPC per day.
+    if not spx_ohlc.empty:
+        fb = spx_ohlc.reindex(F.index)
+        F["high"] = F["high"].fillna(fb["high"])
+        F["low"] = F["low"].fillna(fb["low"])
+    F["hl0"] = 100.0 * (F["high"] - F["low"]) / F["spx"].shift(1)  # same-day range
+    # the regime is fixed at the close, so the tradeable range is the NEXT
+    # session's -- session t's cell scored by session t+1's high-low travel
+    F["hl1"] = F["hl0"].shift(-1)
+
     # outcomes computed on the full series BEFORE trimming, so late rows still
     # see their (already realized) futures where possible
     F["r21"] = forward_return(F["spx"])
@@ -607,19 +624,11 @@ def main():
     if F.empty:
         raise SystemExit("No days where both dials are defined -- nothing to build.")
     F["quad"] = [quad_code(g, c) for g, c in zip(F["gexp"], F["corp"])]
-
-    # ---- intraday high-low range % per regime cell (4x4 quartile grid) ------
-    # prefer the gamma feed's own high/low, fall back to Yahoo ^GSPC per day
-    if not spx_ohlc.empty:
-        fb = spx_ohlc.reindex(F.index)
-        F["high"] = F["high"].fillna(fb["high"])
-        F["low"] = F["low"].fillna(fb["low"])
-    prev_close = F["spx"].shift(1).fillna(F["spx"])   # first row: same-day close
-    F["hlpct"] = 100.0 * (F["high"] - F["low"]) / prev_close
     F["gq"] = quartile_bin(F["gexp"])                 # 0 unclamped .. 3 pinned
     F["cq"] = quartile_bin(F["corp"])                 # 0 dispersed .. 3 synced
-    print(f"Intraday range: {int(F['hlpct'].notna().sum())} of {len(F)} days "
-          f"have SPX high/low", file=sys.stderr)
+    print(f"Intraday range: {int(F['hl0'].notna().sum())} same-day / "
+          f"{int(F['hl1'].notna().sum())} next-day of {len(F)} days have SPX high/low",
+          file=sys.stderr)
 
     ser, quad, cells, meta = build_payloads(
         F, cor1m, dspx,

@@ -503,15 +503,21 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
         <h2>Intraday range by regime cell</h2>
         <p class="h-sub">Finer than the four quadrants: each dial is split into <b>quartiles</b>, giving a
           4×4 grid — so a barely-pinned day isn't smooshed together with a deeply-pinned one. Each cell is
-          SPX's <b>daily high-low range</b> (% of the prior close) on the sessions that sat in it —
-          <b>contemporaneous</b>, the swing you actually live through in that regime, not a forecast. The big
-          number is the <b>mean</b>; under it, median · MAD · p90 · n. Cooler cells run tighter, hotter cells
+          SPX's <b>daily high-low range</b> (% of the prior close). The regime is fixed at the
+          <b>close</b>, so the tradeable read is <b>Next day</b> — tomorrow's range given today's cell;
+          <b>Same day</b> is the contemporaneous swing (the environment you're in). They come out nearly
+          identical — regimes are persistent — with the extreme corners easing a hair one day out. Big
+          number is the <b>mean</b>; under it, median · MAD · p90 · n. Cooler cells run tighter, hotter
           wilder.</p>
       </div>
     </div>
     <div class="controls">
+      <div class="seg" id="mxBasis" role="group" aria-label="range basis">
+        <button data-basis="next" aria-pressed="true">Next day · tradeable</button>
+        <button data-basis="same" aria-pressed="false">Same day</button>
+      </div>
       <div class="legend"><span>wilder</span><span class="scale"></span><span>calmer</span></div>
-      <div class="hm-note" style="margin:0"><b>All-day baseline:</b>&nbsp;<span id="mxBase">—</span></div>
+      <div class="hm-note" style="margin:0"><b>Baseline:</b>&nbsp;<span id="mxBase">—</span></div>
     </div>
     <div class="tscroll">
       <table class="mx">
@@ -1101,9 +1107,13 @@ document.getElementById("hmBody").addEventListener("click", e=>{
 });
 
 /* ===== 05: 4x4 intraday-range matrix ===== */
-function renderCells(){
-  if(typeof CELLS==="undefined" || !CELLS || !CELLS.grid) return;
-  const grid = CELLS.grid, base = CELLS.baseline || {};
+let MXBASIS = (typeof CELLS!=="undefined" && CELLS && CELLS.default) ? CELLS.default : "next";
+function renderCells(basis){
+  if(typeof CELLS==="undefined" || !CELLS) return;
+  if(basis) MXBASIS = basis;
+  const view = CELLS[MXBASIS] || CELLS[CELLS.default] || {};
+  if(!view.grid) return;
+  const grid = view.grid, base = view.baseline || {};
   const gLab = CELLS.gammaLabels || ["Q1","Q2","Q3","Q4"];
   const cLab = CELLS.corrLabels  || ["Q1","Q2","Q3","Q4"];
   const at = (gq,cq) => grid.find(x=>x.gq===gq && x.cq===cq) || {n:0};
@@ -1147,9 +1157,15 @@ function renderCells(){
   }
   const b = document.getElementById("mxBase");
   if(b) b.textContent = base.n
-    ? `mean ${base.mean.toFixed(2)}% · med ${base.med.toFixed(2)} · MAD ${base.mad.toFixed(2)} · p90 ${base.p90.toFixed(2)} · n ${base.n.toLocaleString()}`
+    ? `${MXBASIS==="next"?"next-day":"same-day"} · mean ${base.mean.toFixed(2)}% · med ${base.med.toFixed(2)} · MAD ${base.mad.toFixed(2)} · p90 ${base.p90.toFixed(2)} · n ${base.n.toLocaleString()}`
     : "no intraday range data";
 }
+document.getElementById("mxBasis").addEventListener("click", e=>{
+  const btn = e.target.closest("button[data-basis]"); if(!btn) return;
+  document.querySelectorAll("#mxBasis button").forEach(x=>
+    x.setAttribute("aria-pressed", String(x===btn)));
+  renderCells(btn.dataset.basis);
+});
 
 /* ===== 05 + 06 + 07: bound figures ===== */
 function applyMeta(){

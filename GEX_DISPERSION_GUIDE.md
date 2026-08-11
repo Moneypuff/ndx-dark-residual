@@ -54,10 +54,16 @@ day?*
 
 Three things to keep straight:
 
-* **It's contemporaneous, not forward.** Each session contributes its own
-  same-day range to whichever cell it sat in. This is the swing you *live
-  through* in that regime (regimes are persistent, so it's close to what comes
-  next), not a no-look-ahead forecast like the §2 forward-return columns.
+* **Two bases, and the default is the tradeable one.** The regime is fixed at
+  the *close* (both dials are computed from the day's data), so you can't trade
+  the same session. The matrix defaults to **Next day** — session *t*'s cell
+  scored by session *t+1*'s high-low range, the swing you can actually act on
+  given today's reading — with a toggle to **Same day**, the contemporaneous
+  range (the environment you're sitting in). They come out **nearly identical**
+  because regimes are persistent: the grind corner is 0.65% same-day / 0.69%
+  next-day, the storm corner 2.22% / 2.18% — the extremes just ease a hair one
+  day out (mean reversion), and the structure is unchanged. The map is not an
+  artifact of same-day conditioning.
 * **Each cell reports mean · median · MAD · p90 · n.** **MAD** is the mean
   absolute deviation *about the mean* — `mean(|x − mean(x)|)` — i.e. how much the
   daily range itself wobbles day to day inside the cell, a spread-of-the-spread.

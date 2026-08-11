@@ -364,6 +364,27 @@ def test_cell_stats_ignores_rows_missing_bin_or_range():
     assert by[(0, 0)]["n"] == 1                          # only the fully-defined row
 
 
+def test_cell_stats_reads_named_column():
+    # the same range values under an arbitrary column name (e.g. next-day hl1)
+    df = pd.DataFrame({
+        "gq":  [0.0, 0.0, 3.0],
+        "cq":  [0.0, 0.0, 3.0],
+        "hl1": [1.0, 3.0, 9.0],
+    })
+    by = {(c["gq"], c["cq"]): c for c in B.cell_stats(df, "hl1")}
+    assert by[(0, 0)]["n"] == 2 and by[(0, 0)]["mean"] == pytest.approx(2.0)
+    assert by[(3, 3)]["n"] == 1 and by[(3, 3)]["mean"] == pytest.approx(9.0)
+
+
+def test_next_day_range_is_the_following_sessions_range():
+    # the build's tradeable basis: session t's cell scored by session t+1's range.
+    # hl1 = hl0.shift(-1) puts tomorrow's travel on today's row; last row -> NaN.
+    hl0 = pd.Series([1.0, 2.0, 3.0, 4.0])
+    hl1 = hl0.shift(-1)
+    assert list(hl1.iloc[:3]) == [2.0, 3.0, 4.0]
+    assert pd.isna(hl1.iloc[-1])
+
+
 # ---------------------------------------------------------------------------
 # series_corr
 # ---------------------------------------------------------------------------
