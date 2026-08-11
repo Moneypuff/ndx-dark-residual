@@ -45,13 +45,20 @@ import io
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, time as dtime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 
 import ndx_dark_residual as N
+
+# A same-day text cache is trusted only once the session's end-of-day data has
+# actually published. Market closes 16:00 ET; 16:30 gives the Cboe/SqueezeMetrics
+# EOD files a settle buffer. Computed in America/New_York so it is DST-correct.
+ET = ZoneInfo("America/New_York")
+POST_CLOSE_ET = dtime(16, 30)
 
 SQUEEZE_CSV_URL = "https://squeezemetrics.com/monitor/static/DIX.csv"
 GEXPLUS_URL_TMPL = "https://squeezemetrics.com/monitor/api/yachtclub/gexplus?key={key}"
@@ -77,22 +84,46 @@ QUAD_LABEL = {
 
 
 # ----------------------------------------------------------------------------
-# Fetch layer: day-stamped text cache with stale fallback
+# Fetch layer: post-close-stamped text cache with stale fallback
 # ----------------------------------------------------------------------------
+def _now_et():
+    """Current time in America/New_York. Indirection so tests can pin 'now'."""
+    return datetime.now(ET)
+
+
+def _stamp_is_fresh(stamp_text, now_et, cutoff=POST_CLOSE_ET):
+    """True iff a cache whose stamp is `stamp_text` should be trusted as holding
+    today's published data: it must parse as a timestamp on the same ET calendar
+    day as `now_et` AND at/after the ET post-close cutoff. A bare-date or
+    otherwise unparseable stamp (the legacy format) is treated as pre-cutoff ->
+    NOT fresh, so the next run re-fetches. Pure -- unit tested."""
+    try:
+        ts = datetime.fromisoformat(stamp_text.strip())
+    except (ValueError, AttributeError):
+        return False
+    ts = ts.replace(tzinfo=ET) if ts.tzinfo is None else ts.astimezone(ET)
+    day_cutoff = datetime.combine(now_et.date(), cutoff, tzinfo=ET)
+    return ts.date() == now_et.date() and ts >= day_cutoff
+
+
 def fetch_text_cached(url, cache_path, refresh=False, label="doc", session=None,
                       retries=3, pause=1.0):
-    """Body of `url` as text, cached at `cache_path` with a same-day stamp.
-    A fresh cache short-circuits the fetch; a failed fetch falls back to any
-    stale cache rather than killing the build. Returns None only when there is
-    neither a live body nor a cached one."""
+    """Body of `url` as text, cached at `cache_path` with a post-close stamp.
+    A same-day cache short-circuits the fetch ONLY when it was written at or
+    after the ET post-close cutoff (16:30 America/New_York) -- so an intraday /
+    pre-close fetch on the same calendar day does NOT suppress a later re-fetch
+    once the session's EOD row has actually published. A failed fetch falls back
+    to any stale cache rather than killing the build. Returns None only when
+    there is neither a live body nor a cached one."""
     import time as _time
     cache = Path(cache_path) if cache_path else None
     stamp = cache.with_suffix(cache.suffix + ".stamp") if cache else None
-    today = pd.Timestamp.today().strftime("%Y-%m-%d")
-    if cache and not refresh and cache.exists() and stamp is not None and stamp.exists():
-        if stamp.read_text().strip() == today:
-            print(f"{label}: reusing today's cache", file=sys.stderr)
-            return cache.read_text(encoding="utf-8")
+    now_et = _now_et()
+    if (cache and not refresh and cache.exists()
+            and stamp is not None and stamp.exists()
+            and _stamp_is_fresh(stamp.read_text(), now_et)):
+        print(f"{label}: reusing today's cache", file=sys.stderr)
+        return cache.read_text(encoding="utf-8")
     if N.requests is None:
         return cache.read_text(encoding="utf-8") if cache and cache.exists() else None
     get = (session or N.requests).get
@@ -104,7 +135,7 @@ def fetch_text_cached(url, cache_path, refresh=False, label="doc", session=None,
                 if cache:
                     cache.parent.mkdir(parents=True, exist_ok=True)
                     cache.write_text(r.text, encoding="utf-8")
-                    stamp.write_text(today)
+                    stamp.write_text(now_et.isoformat())
                 return r.text
             last = f"HTTP {r.status_code}"
         except Exception as e:  # noqa: BLE001

@@ -8,11 +8,16 @@ silently corrupt the published page rather than crash, so each is pinned here
 against either a direct from-definition recomputation or a hand-built
 document.
 """
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import numpy as np
 import pandas as pd
 import pytest
 
 import build_gex_dispersion as B
+
+ET = ZoneInfo("America/New_York")
 
 
 # ---------------------------------------------------------------------------
@@ -289,3 +294,74 @@ def test_series_corr_insufficient_overlap():
     a = pd.Series(range(10), index=idx, dtype=float)
     r, n = B.series_corr(a, a)
     assert r is None and n == 10
+
+
+# ---------------------------------------------------------------------------
+# cache freshness -- the intraday/pre-close poison that froze the nightly
+# barometer a session behind. A same-day cache is trusted only once the
+# session's EOD data has actually published (>= 16:30 ET).
+# ---------------------------------------------------------------------------
+def test_stamp_fresh_after_close_same_day():
+    now = datetime(2026, 8, 10, 19, 0, tzinfo=ET)          # 7pm ET nightly run
+    written = datetime(2026, 8, 10, 17, 0, tzinfo=ET)      # 5pm ET, after close
+    assert B._stamp_is_fresh(written.isoformat(), now)
+
+
+def test_stamp_stale_when_written_preclose_same_day():
+    now = datetime(2026, 8, 10, 19, 0, tzinfo=ET)
+    written = datetime(2026, 8, 10, 12, 30, tzinfo=ET)     # midday dev/manual run
+    assert not B._stamp_is_fresh(written.isoformat(), now)
+
+
+def test_stamp_stale_for_legacy_bare_date():
+    now = datetime(2026, 8, 10, 19, 0, tzinfo=ET)
+    assert not B._stamp_is_fresh("2026-08-10", now)        # old bare-date stamp
+    assert not B._stamp_is_fresh("not-a-timestamp", now)
+
+
+def test_stamp_stale_for_prior_day():
+    now = datetime(2026, 8, 10, 19, 0, tzinfo=ET)
+    written = datetime(2026, 8, 7, 17, 0, tzinfo=ET)       # last Friday, after close
+    assert not B._stamp_is_fresh(written.isoformat(), now)
+
+
+class _Resp:
+    status_code = 200
+    text = "date,price,dix,gex\n2026-08-10,1,2,3\n"
+
+
+def _fake_session(calls):
+    class _S:
+        def get(self, *a, **k):
+            calls.append(1)
+            return _Resp()
+    return _S()
+
+
+def test_fetch_refetches_when_stamp_is_preclose(tmp_path, monkeypatch):
+    monkeypatch.setattr(B, "_now_et", lambda: datetime(2026, 8, 10, 19, 0, tzinfo=ET))
+    monkeypatch.setattr(B.N, "requests", object())         # enable the fetch path
+    cache = tmp_path / "doc.csv"
+    stamp = tmp_path / "doc.csv.stamp"
+    cache.write_text("STALE")
+    stamp.write_text(datetime(2026, 8, 10, 12, 0, tzinfo=ET).isoformat())
+    calls = []
+    out = B.fetch_text_cached("http://x", cache, session=_fake_session(calls))
+    assert out == _Resp.text and calls == [1]              # it re-fetched
+    assert "T" in stamp.read_text()                        # new stamp is a timestamp
+
+
+def test_fetch_reuses_when_stamp_is_after_close(tmp_path, monkeypatch):
+    monkeypatch.setattr(B, "_now_et", lambda: datetime(2026, 8, 10, 19, 0, tzinfo=ET))
+    monkeypatch.setattr(B.N, "requests", object())
+    cache = tmp_path / "doc.csv"
+    stamp = tmp_path / "doc.csv.stamp"
+    cache.write_text("CACHED")
+    stamp.write_text(datetime(2026, 8, 10, 17, 0, tzinfo=ET).isoformat())
+
+    class _Boom:
+        def get(self, *a, **k):
+            raise AssertionError("must not fetch a fresh after-close cache")
+
+    out = B.fetch_text_cached("http://x", cache, session=_Boom())
+    assert out == "CACHED"
