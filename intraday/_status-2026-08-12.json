@@ -1,11 +1,11 @@
 {
  "date": "2026-08-12",
- "captured_utc": "2026-08-12T17:53:53+00:00",
+ "captured_utc": "2026-08-12T18:53:45+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
    "expiries": 11,
-   "rows": 2932
+   "rows": 2919
   },
   "QQQ": {
    "ok": true,
@@ -35,12 +35,12 @@
   "KRE": {
    "ok": true,
    "expiries": 9,
-   "rows": 517
+   "rows": 513
   },
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 1025
+   "rows": 1030
   },
   "EEM": {
    "ok": true,
@@ -50,7 +50,7 @@
   "VTV": {
    "ok": true,
    "expiries": 4,
-   "rows": 147
+   "rows": 148
   },
   "VUG": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 9,
-   "rows": 996
+   "rows": 998
   },
   "XLF": {
    "ok": true,
@@ -95,7 +95,7 @@
   "XLB": {
    "ok": true,
    "expiries": 7,
-   "rows": 436
+   "rows": 438
   },
   "XLU": {
    "ok": true,
@@ -130,12 +130,12 @@
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1078
+   "rows": 1065
   },
   "GOOGL": {
    "ok": true,
    "expiries": 11,
-   "rows": 1153
+   "rows": 1156
   },
   "NVDA": {
    "ok": true,
@@ -150,22 +150,22 @@
   "MSFT": {
    "ok": true,
    "expiries": 10,
-   "rows": 1283
+   "rows": 1290
   },
   "META": {
    "ok": true,
    "expiries": 11,
-   "rows": 1530
+   "rows": 1540
   },
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1240
+   "rows": 1233
   },
   "MU": {
    "ok": true,
    "expiries": 11,
-   "rows": 1801
+   "rows": 1781
   },
   "CRWV": {
    "ok": true,
@@ -185,7 +185,7 @@
   "RKLB": {
    "ok": true,
    "expiries": 8,
-   "rows": 469
+   "rows": 471
   },
   "ONDS": {
    "ok": true,
@@ -195,7 +195,7 @@
   "SPCX": {
    "ok": true,
    "expiries": 10,
-   "rows": 681
+   "rows": 689
   },
   "DRAM": {
    "ok": true,
@@ -205,17 +205,17 @@
   "USO": {
    "ok": true,
    "expiries": 9,
-   "rows": 1406
+   "rows": 1416
   },
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1843
+   "rows": 1852
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1125
+   "rows": 1134
   },
   "IBIT": {
    "ok": true,
