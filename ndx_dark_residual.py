@@ -339,6 +339,61 @@ def compute_forward_return(close_panel, horizon):
     return (close_panel.shift(-horizon) / close_panel - 1) * 100
 
 
+def compute_divergence_signal(dix, close, fwd, lookback=21):
+    """DIX-vs-price divergence over the trailing `lookback` sessions.
+
+    A *bullish* divergence (+1) is the index dark-flow gauge RISING while price
+    FALLS -- dark accumulation into weakness, which historically precedes
+    above-average forward returns; a *bearish* divergence (-1) is the mirror
+    (DIX down while price up); 0 is aligned (both up / both down); NaN until both
+    changes are defined. See SPX_DIX_DECILE_VS_BREAKOUT_FINDINGS.md (option B).
+
+    Returns (state, stats): `state` is a float Series (+1/-1/0/NaN) on `dix`'s
+    index; `stats` summarises the forward return `fwd` (percent, same index)
+    conditional on the state over all dates where `fwd` is defined, plus today's
+    live state and how many consecutive sessions it has held. No look-ahead in
+    the state; the conditional stats use only realised (non-NaN) forward returns.
+    """
+    dchg = dix.diff(lookback)
+    pchg = close.pct_change(lookback)
+    state = pd.Series(np.where((dchg > 0) & (pchg < 0), 1.0,
+                               np.where((dchg < 0) & (pchg > 0), -1.0, 0.0)),
+                      index=dix.index)
+    state[dchg.isna() | pchg.isna()] = np.nan
+
+    def cond(sel):
+        r = fwd[sel.fillna(False) & fwd.notna()].dropna()
+        if r.empty:
+            return {"n": 0, "mean": None, "hit": None}
+        return {"n": int(len(r)), "mean": round(float(r.mean()), 2),
+                "hit": round(float((r > 0).mean() * 100))}
+
+    base = fwd.dropna()
+    live = state.dropna()
+    cur = None
+    if not live.empty:
+        cs = int(live.iloc[-1])
+        streak = 1
+        for v in live.iloc[:-1].values[::-1]:
+            if int(v) == cs:
+                streak += 1
+            else:
+                break
+        cur = {
+            "state": cs, "streak": int(streak),
+            "dixchg": None if pd.isna(dchg.iloc[-1]) else round(float(dchg.iloc[-1]) * 100, 2),
+            "pxchg": None if pd.isna(pchg.iloc[-1]) else round(float(pchg.iloc[-1]) * 100, 2),
+        }
+    stats = {
+        "lookback": int(lookback),
+        "base": round(float(base.mean()), 2) if not base.empty else None,
+        "bull": cond(state > 0),
+        "bear": cond(state < 0),
+        "cur": cur,
+    }
+    return state, stats
+
+
 # --------------------------------------------------------------------------
 # SPX-wide Dark Index (DIX) via SqueezeMetrics' "yacht club" GEX+ endpoint
 # --------------------------------------------------------------------------
@@ -363,10 +418,15 @@ def build_index_payload(df, col, out_key, start=None):
     r21 = compute_forward_return(df[["CLOSE"]], 21)["CLOSE"]  # 1 month
     r42 = compute_forward_return(df[["CLOSE"]], 42)["CLOSE"]  # 2 months
     r63 = compute_forward_return(df[["CLOSE"]], 63)["CLOSE"]  # 3 months
+    # DIX-vs-price divergence (option B). Computed on the FULL series so the
+    # conditional stats see all history; the per-day state array is sliced to
+    # the plotted window with everything else below.
+    div_state, div_stats = compute_divergence_signal(df[col], df["CLOSE"], r21)
 
     if start is not None:
         keep = df.index >= start
         df, r21, r42, r63 = df[keep], r21[keep], r42[keep], r63[keep]
+        div_state = div_state[keep]
         if df.empty:
             return None
 
@@ -380,6 +440,8 @@ def build_index_payload(df, col, out_key, start=None):
         "r21": rnd(r21.reindex(df.index)),
         "r42": rnd(r42.reindex(df.index)),
         "r63": rnd(r63.reindex(df.index)),
+        "div": [None if pd.isna(x) else int(x) for x in div_state.reindex(df.index).values],
+        "div_stats": div_stats,
         "range": [dates[0], dates[-1]] if dates else None,
     }
 
@@ -1537,6 +1599,18 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
                  if len(dark.index) else None,
     }
 
+    # NDX-level DIX-vs-price divergence (option B), same construction as the
+    # SPX/IWM index tabs but using the reconstructed NDX-100 dollar-DIX vs QQQ
+    # (the index's price). Surfaced as the dark-flow-divergence badge on the
+    # NDX "DIX vs Return" tab.
+    rel["div"], rel["div_stats"] = None, None
+    if ndx_dix is not None and bench in close_panel.columns:
+        _ndx = ndx_dix.reindex(dark.index)
+        _qqq = close_panel[bench].reindex(dark.index)
+        _qqq_fwd = compute_forward_return(close_panel[[bench]], 21)[bench].reindex(dark.index)
+        _div_state, rel["div_stats"] = compute_divergence_signal(_ndx, _qqq, _qqq_fwd)
+        rel["div"] = [None if pd.isna(x) else int(x) for x in _div_state.reindex(dark.index).values]
+
     sectors_payload = (build_sector_payload(sector_data["members"], sector_data["short"],
                                             sector_data["total"], sector_data["close"],
                                             sector_data["d"], keep,
@@ -1905,6 +1979,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 <div class="rel-wrap" id="spxWrap" style="display:none">
   <div class="sub" id="spxSub" style="margin:0 22px 4px">S&amp;P 500 reconstructed dollar-DIX (IVV constituents, FINRA) vs SPX forward return</div>
+  <div class="sub" id="spxDiv" style="margin:0 22px 8px" title="DIX-vs-price divergence over the trailing 21 sessions: dark flow (DIX) RISING while price FALLS = bullish divergence (dark accumulation into weakness), historically an above-average forward-return setup. See SPX_DIX_DECILE_VS_BREAKOUT_FINDINGS.md (option B)."></div>
   <div class="vanilla-grid" id="spxGrid">
     <div class="rel-card">
       <h2>DIX vs 1-month SPX forward return <span style="color:var(--mut);font-weight:400">(21 trading days)</span></h2>
@@ -1940,6 +2015,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 <div class="rel-wrap" id="ndxWrap" style="display:none">
   <div class="sub" id="ndxSub" style="margin:0 22px 4px"></div>
+  <div class="sub" id="ndxDiv" style="margin:0 22px 8px" title="DIX-vs-price divergence over the trailing 21 sessions: the NDX-100 dollar-DIX RISING while QQQ FALLS = bullish divergence (dark accumulation into weakness), historically an above-average forward-return setup. See SPX_DIX_DECILE_VS_BREAKOUT_FINDINGS.md (option B)."></div>
   <div class="vanilla-grid">
     <div class="rel-card">
       <h2>NDX avg dark ratio vs 1-month QQQ forward return <span style="color:var(--mut);font-weight:400">(21 trading days)</span></h2>
@@ -1963,6 +2039,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 <div class="rel-wrap" id="iwmWrap" style="display:none">
   <div class="sub" id="iwmSub" style="margin:0 22px 4px"></div>
+  <div class="sub" id="iwmDiv" style="margin:0 22px 8px" title="DIX-vs-price divergence over the trailing 21 sessions: dark flow (DIX) RISING while price FALLS = bullish divergence (dark accumulation into weakness), historically an above-average forward-return setup. See SPX_DIX_DECILE_VS_BREAKOUT_FINDINGS.md (option B)."></div>
   <div class="vanilla-grid" id="iwmGrid">
     <div class="rel-card">
       <h2>IWM D vs 1-month IWM forward return <span style="color:var(--mut);font-weight:400">(21 trading days)</span></h2>
@@ -3340,6 +3417,34 @@ function spxPairs(h){
 }
 
 const SPX_HORIZONS = ['21', '42', '63'];  // 1mo / 2mo / 3mo (21 / 42 / 63 trading days)
+// DIX-vs-price divergence badge (option B). Reads server-computed div_stats
+// off an index payload (P.spx / P.iwm) and renders a one-line status + the
+// historical forward-return edge for the current state.
+function renderDivBadge(elId, idx, priceLabel){
+  const el = document.getElementById(elId); if(!el) return;
+  const s = idx && idx.div_stats;
+  if(!s || !s.cur){ el.innerHTML = ''; return; }
+  const c = s.cur, L = s.lookback;
+  const sgn = v => (v==null ? '--' : (v>=0?'+':'') + v.toFixed(v===Math.round(v)?0:1));
+  const bull = c.state>0, bear = c.state<0;
+  const label = bull ? 'BULLISH divergence' : bear ? 'BEARISH divergence' : 'aligned (no divergence)';
+  const dot = bull ? '#3fb950' : bear ? '#f85149' : 'var(--mut)';
+  const cond = bull ? s.bull : bear ? s.bear : null;
+  const arr = v => (v==null ? '' : (v>=0 ? '&#9650;' : '&#9660;'));
+  let move = '';
+  if(c.dixchg!=null && c.pxchg!=null){
+    move = ` &middot; <span style="color:var(--mut)">DIX ${arr(c.dixchg)} ${sgn(c.dixchg)}pp / `
+         + `${priceLabel} ${arr(c.pxchg)} ${sgn(c.pxchg)}% over ${L}d`
+         + (c.streak>1 ? `, day ${c.streak}` : '')
+         + `</span>`;
+  }
+  let hist = '';
+  if(cond && cond.n){
+    hist = ` &middot; <span style="color:var(--mut)">historically <b style="color:var(--fg)">${sgn(cond.mean)}%</b> `
+         + `fwd ${L}d, ${cond.hit}% hit (n=${cond.n.toLocaleString()}) vs ${sgn(s.base)}% base</span>`;
+  }
+  el.innerHTML = `<b style="color:${dot}">&#9679; dark-flow divergence: ${label}</b>${move}${hist}`;
+}
 function renderSpx(){
   if(!P.spx){
     document.getElementById('spxSub').textContent =
@@ -3375,6 +3480,7 @@ function renderSpx(){
       `<span>Pearson r = <b>${r==null?'--':r.toFixed(3)}</b>${ciTxt}</span>` +
       `<span>Spearman &rho; = <b>${rho==null?'--':rho.toFixed(3)}</b></span>`;
   }
+  renderDivBadge('spxDiv', P.spx, 'SPX');
   renderDixCompare();
 }
 
@@ -3526,6 +3632,7 @@ function renderNdx(){
       `<span>Pearson r = <b>${r==null?'--':r.toFixed(3)}</b>${ciTxt}</span>` +
       `<span>Spearman &rho; = <b>${rho==null?'--':rho.toFixed(3)}</b></span>`;
   }
+  renderDivBadge('ndxDiv', P.rel, P.bench);   // price label = QQQ (the index proxy)
 }
 document.getElementById('ndxModeSeg').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
@@ -3589,6 +3696,7 @@ function renderIwm(){
       `<span>Pearson r = <b>${r==null?'--':r.toFixed(3)}</b>${ciTxt}</span>` +
       `<span>Spearman &rho; = <b>${rho==null?'--':rho.toFixed(3)}</b></span>`;
   }
+  renderDivBadge('iwmDiv', P.iwm, 'IWM');
 }
 document.getElementById('iwmShared').addEventListener('change', e=>{
   iwmShared = e.target.checked;
