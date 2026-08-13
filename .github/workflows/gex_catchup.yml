@@ -1,0 +1,173 @@
+name: GEX+ Catch-Up Refresh (gex_dispersion & regime_log)
+
+# gex_dispersion.html and regime_log.html both key off SqueezeMetrics' paid GEX+ feed (Cboe's
+# COR1M/DSPX matter too). That feed's publish time is unreliable -- SqueezeMetrics' own upstream
+# data providers have been observed publishing anywhere from ~9:45pm ET to well past 10pm, and
+# occasionally later still. refresh.yml's regular nightly build (~9pm ET) captures whatever has
+# published by then, which some nights is still the prior session.
+#
+# This workflow starts checking at 10pm ET and, if GEX+ hasn't published a new session yet,
+# retries every hour through 6am ET the next morning. The first retry that sees new data rebuilds
+# ONLY gex_dispersion.html + regime_log.html (every other page is carried over exactly as it is
+# currently live) and redeploys the site. If nothing new shows up by the 6am check, it gives up
+# for the night -- refresh.yml's own regular run still covers the rest of the site, and this cycle
+# starts again the next evening at 10pm.
+
+on:
+  workflow_dispatch: {}
+  # Every hour, 10pm-6am America/New_York. GitHub cron is fixed-UTC and can't follow US
+  # daylight-saving, so this fires on a superset of UTC hours covering both the EDT and EST
+  # offsets for the 10pm-6am ET window; the gate below narrows it to the exact ET hour and
+  # confirms the session being chased is actually a trading weekday.
+  schedule:
+    - cron: "0 2-11 * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Share refresh.yml's deploy group so a catch-up run and the regular nightly build can never
+# race to deploy Pages at the same time.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # Gate: proceed only during the 10pm-6am ET chase window, and only when the trading session
+  # being chased (today's close for the 10-11pm ET leg, yesterday's close for the midnight-6am
+  # leg) actually falls on a weekday.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Decide whether to run (10pm-6am ET, chasing the last trading day's GEX+ close)
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Non-schedule trigger (${{ github.event_name }}) -> proceed."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          hour=$((10#$(TZ=America/New_York date +%H)))
+          if [ "$hour" -ge 22 ]; then
+            dow=$(TZ=America/New_York date +%u)              # chasing today's close
+          elif [ "$hour" -le 6 ]; then
+            dow=$(TZ=America/New_York date -d yesterday +%u) # chasing yesterday's close
+          else
+            echo "Outside the 10pm-6am ET window (ET hour=$hour) -> skip."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$dow" -ge 1 ] && [ "$dow" -le 5 ]; then
+            echo "In window, chasing a weekday close (ET hour=$hour, session dow=$dow) -> proceed."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "In window but the session being chased isn't a trading weekday (dow=$dow) -> skip."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Rebuild just the two GEX+-dependent pages and decide whether anything actually changed.
+  refresh:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      advanced: ${{ steps.check.outputs.advanced }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Gate on the unit tests, same as refresh.yml -- a logic regression must not reach the
+      # published dashboard even on an unattended 3am retry.
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: .ndx_dark_cache
+          key: ndx-dark-cache-v3-${{ github.run_id }}
+          restore-keys: |
+            ndx-dark-cache-v3-
+            ndx-dark-cache-
+
+      # Everything except the two GEX+ pages is carried over from the currently-live site
+      # untouched -- no need to re-run the full FINRA/Yahoo/EDGAR pipeline every hourly retry.
+      # curl -f aborts the job (bash runs with -e) if the live site is unreachable or a page is
+      # missing, rather than deploying an incomplete docs/ folder.
+      - name: Fetch the currently-live pages this run does not rebuild
+        run: |
+          mkdir -p docs
+          touch docs/.nojekyll
+          for f in index.html comovement.html vol_tracker.html earnings.html; do
+            curl -fsSL "https://moneypuff.github.io/ndx-dark-residual/$f" -o "docs/$f"
+          done
+          curl -fsSL "https://moneypuff.github.io/ndx-dark-residual/gex_dispersion.html" \
+            -o /tmp/old_gex_dispersion.html
+
+      # --refresh-text forces a live poll of just the GEX+/COR1M/DSPX text feeds (bypassing the
+      # post-close cache-freshness check, since we are deliberately polling hourly) without
+      # forcing the Yahoo constituent-price panel, which is already current and would be wasteful
+      # to re-fetch in full every hour.
+      - name: Rebuild GEX dispersion barometer (force a live GEX+/Cboe poll)
+        env:
+          GEXPLUS_KEY: ${{ secrets.GEXPLUS_KEY }}
+        run: >
+          python build_gex_dispersion.py
+          --docs-out docs/gex_dispersion.html
+          --cache-dir .ndx_dark_cache
+          --refresh-text
+
+      - name: Rebuild regime log
+        env:
+          GEXPLUS_KEY: ${{ secrets.GEXPLUS_KEY }}
+        run: >
+          python build_regime_log.py
+          --barometer docs/gex_dispersion.html
+          --docs-out docs/regime_log.html
+          --cache-dir .ndx_dark_cache
+          --refresh-text
+
+      - name: Check whether GEX+ actually published a new session
+        id: check
+        run: |
+          old_date=$(grep -oE '"today":\{"date":"[0-9-]+"' /tmp/old_gex_dispersion.html \
+            | grep -oE '[0-9-]+$' || echo "none")
+          new_date=$(grep -oE '"today":\{"date":"[0-9-]+"' docs/gex_dispersion.html \
+            | grep -oE '[0-9-]+$' || echo "none")
+          echo "live was: $old_date -- just built: $new_date"
+          if [ "$new_date" != "none" ] && [ "$new_date" != "$old_date" ]; then
+            echo "New GEX+ session published ($old_date -> $new_date) -- will deploy."
+            echo "advanced=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No new GEX+ data yet -- will retry next hour (through the 6am ET check)."
+            echo "advanced=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Pages artifact
+        if: steps.check.outputs.advanced == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: refresh
+    if: needs.refresh.outputs.advanced == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
