@@ -172,6 +172,14 @@ jobs:
           --docs-out docs/vol_tracker.html
           --cache-dir .ndx_dark_cache
 
+      # 3D vol surface viewer -> docs/vol_surface.html. Same snapshot data as the
+      # vol tracker; renders a stub until the first capture exists.
+      - name: Build vol surface viewer
+        run: >
+          python build_vol_surface.py
+          --snap-dir optsnap
+          --docs-out docs/vol_surface.html
+
       # Earnings-DPI study -> docs/earnings.html (linked from the dashboard's "Earnings DIX" tab).
       - name: Refresh earnings dates from SEC EDGAR
         run: python fetch_earnings_edgar.py --out earnings_dates_edgar.csv
