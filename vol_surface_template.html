@@ -77,6 +77,12 @@ td.l{text-align:left}
   border-radius:8px; padding:6px 10px; font:inherit; font-family:var(--mono)}
 .controls input[type="range"]{width:260px}
 .controls .daylabel{font-size:12.5px; color:var(--ink-dim); min-width:9ch}
+.seg{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden}
+.seg button{background:var(--surface-2); color:var(--ink-dim); border:0; padding:6px 12px;
+  font:inherit; font-size:12.5px; cursor:pointer; border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent-soft); color:var(--accent); font-weight:600}
+.seg button:disabled{opacity:.45; cursor:default}
 canvas{width:100%; height:520px; display:block; cursor:grab; touch-action:none;
   border-radius:10px}
 canvas.grabbing{cursor:grabbing}
@@ -108,6 +114,15 @@ canvas.grabbing{cursor:grabbing}
       <span class="mono daylabel" id="dayLabel"></span>
       <label class="inline"><input type="checkbox" id="spin"> spin</label>
     </div>
+    <div class="controls" style="margin-top:10px">
+      <div class="seg" id="modelSeg">
+        <button data-model="obs" class="on">Observed</button>
+        <button data-model="strike">Sticky strike</button>
+        <button data-model="delta">Sticky delta</button>
+        <button data-model="hybrid">Hybrid</button>
+      </div>
+      <label class="inline" id="residWrap"><input type="checkbox" id="resid" disabled> residual (obs &minus; model)</label>
+    </div>
   </div>
 
   <div class="card" id="canvasCard">
@@ -115,7 +130,8 @@ canvas.grabbing{cursor:grabbing}
     <p class="hint">drag to rotate &middot; scrub the date slider to replay &middot;
     color = IV level &middot; gold line = ATM term structure &middot; sparse
     chains render as wireframe smile lines where a thin neighbor expiry
-    breaks the filled mesh</p>
+    breaks the filled mesh &middot; models predict day t from day t&minus;1's
+    smile + today's spot &middot; sticky delta = moneyness proxy</p>
     <canvas id="surf"></canvas>
   </div>
 
@@ -186,7 +202,14 @@ function initViewer() {
     return [m[0], m[m.length - 1]];
   }
 
-  function computeGeom(surf) {
+  function residualGrid(obsGrid, predGrid) {
+    return obsGrid.map((row, i) => row.map((v, j) => {
+      const p = predGrid[i][j];
+      return (v == null || p == null) ? null : v - p;
+    }));
+  }
+
+  function computeGeom(surf, grid, diverging) {
     const [mMin, mMax] = m_grid_range();
     const xs = SURF.m_grid.map(m => (m - mMin) / (mMax - mMin) * 2 - 1);
 
@@ -196,18 +219,30 @@ function initViewer() {
     const ys = dtes.length <= 1 ? dtes.map(() => 0) :
       dteSqrt.map(d => dMax > dMin ? 2 * (d - dMin) / (dMax - dMin) - 1 : 0);
 
-    let ivMin = Infinity, ivMax = -Infinity;
-    for (const row of surf.iv) for (const v of row) {
-      if (v != null) { if (v < ivMin) ivMin = v; if (v > ivMax) ivMax = v; }
+    let zGrid, ivMin = null, ivMax = null, rmax = null;
+    if (diverging) {
+      rmax = 0;
+      for (const row of grid) for (const v of row) {
+        if (v != null && Math.abs(v) > rmax) rmax = Math.abs(v);
+      }
+      if (rmax <= 0) rmax = 0.005;   // a perfect model still renders a flat plane
+      zGrid = grid.map(row => row.map(v =>
+        v == null ? null : Math.max(0, Math.min(1, 0.5 + v / (2 * rmax)))));
+    } else {
+      ivMin = Infinity; ivMax = -Infinity;
+      for (const row of grid) for (const v of row) {
+        if (v != null) { if (v < ivMin) ivMin = v; if (v > ivMax) ivMax = v; }
+      }
+      const flat = !isFinite(ivMin) || !isFinite(ivMax) || ivMax <= ivMin;
+      const range = flat ? 1 : (ivMax - ivMin);
+      const padMin = flat ? 0 : ivMin - 0.05 * range;
+      const padMax = flat ? 1 : ivMax + 0.05 * range;
+      zGrid = grid.map(row => row.map(v =>
+        v == null ? null : flat ? 0.5 : (v - padMin) / (padMax - padMin)));
     }
-    const flat = !isFinite(ivMin) || !isFinite(ivMax) || ivMax <= ivMin;
-    const range = flat ? 1 : (ivMax - ivMin);
-    const padMin = flat ? 0 : ivMin - 0.05 * range;
-    const padMax = flat ? 1 : ivMax + 0.05 * range;
-    const zGrid = surf.iv.map(row => row.map(v =>
-      v == null ? null : flat ? 0.5 : (v - padMin) / (padMax - padMin)));
 
-    return { xs, ys, zGrid, ivMin, ivMax, dtes, expiries: surf.expiries, atm: surf.atm };
+    return { xs, ys, zGrid, ivMin, ivMax, rmax, diverging,
+             dtes, expiries: surf.expiries, atm: surf.atm };
   }
 
   function project(x, y, z, W, H) {
@@ -237,6 +272,14 @@ function initViewer() {
     return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   }
 
+  function divColor(t, a) {            // t in [0,1]; 0.5 = model matched exactly
+    t = Math.max(0, Math.min(1, t));
+    const lo = [70, 140, 200], mid = [156, 160, 165], hi = [212, 99, 95];
+    const mix = (u, v, k) => u.map((x, i) => Math.round(x + (v[i] - x) * k));
+    const c = t < 0.5 ? mix(lo, mid, t * 2) : mix(mid, hi, (t - 0.5) * 2);
+    return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  }
+
   function draw() {
     if (!geom) return;
     const dpr = window.devicePixelRatio || 1;
@@ -251,8 +294,9 @@ function initViewer() {
     const accent = style.getPropertyValue("--accent").trim() || "#e3b341";
     const inkDim = style.getPropertyValue("--ink-dim").trim() || "#96a4b3";
 
-    const { xs, ys, zGrid, ivMin, ivMax, dtes, expiries, atm } = geom;
+    const { xs, ys, zGrid, ivMin, ivMax, rmax, diverging, dtes, expiries, atm } = geom;
     const E = zGrid.length, M = xs.length;
+    const colorFn = diverging ? divColor : lerpColor;
 
     // Primitives: quads where all 4 corners exist, plus "orphan" row-edge
     // segments -- adjacent non-null cells in one expiry row whose edge is
@@ -297,7 +341,7 @@ function initViewer() {
         ctx2d.moveTo(pts[0][0], pts[0][1]);
         for (let k = 1; k < pts.length; k++) ctx2d.lineTo(pts[k][0], pts[k][1]);
         ctx2d.closePath();
-        ctx2d.fillStyle = lerpColor(q.ivMean, 0.85);
+        ctx2d.fillStyle = colorFn(q.ivMean, 0.85);
         ctx2d.fill();
         ctx2d.strokeStyle = lineColor;
         ctx2d.lineWidth = 1;
@@ -308,36 +352,40 @@ function initViewer() {
         ctx2d.beginPath();
         ctx2d.moveTo(a[0], a[1]);
         ctx2d.lineTo(b[0], b[1]);
-        ctx2d.strokeStyle = lerpColor(q.ivMean, 0.9);
+        ctx2d.strokeStyle = colorFn(q.ivMean, 0.9);
         ctx2d.lineWidth = 1.5;
         ctx2d.stroke();
       }
     }
 
-    // ATM term-structure line.
-    const atmPts = [];
-    for (let i = 0; i < E; i++) {
-      const a = atm[i];
-      if (a == null) continue;
-      const range = ivMax > ivMin ? ivMax - ivMin : 1;
-      const padMin = ivMax > ivMin ? ivMin - 0.05 * range : 0;
-      const padMax = ivMax > ivMin ? ivMax + 0.05 * range : 1;
-      const z = ivMax > ivMin ? (a - padMin) / (padMax - padMin) : 0.5;
-      const xAtm = (1.0 - m_grid_range()[0]) / (m_grid_range()[1] - m_grid_range()[0]) * 2 - 1;
-      atmPts.push(project(xAtm, ys[i], z, W, H));
-    }
-    if (atmPts.length >= 2) {
-      ctx2d.beginPath();
-      ctx2d.moveTo(atmPts[0][0], atmPts[0][1]);
-      for (let k = 1; k < atmPts.length; k++) ctx2d.lineTo(atmPts[k][0], atmPts[k][1]);
-      ctx2d.strokeStyle = accent;
-      ctx2d.lineWidth = 2;
-      ctx2d.stroke();
-    } else if (atmPts.length === 1) {
-      ctx2d.beginPath();
-      ctx2d.arc(atmPts[0][0], atmPts[0][1], 3, 0, Math.PI * 2);
-      ctx2d.fillStyle = accent;
-      ctx2d.fill();
+    // ATM term-structure line -- the observed ATM, drawn as a reference
+    // in the observed and model-surface views; meaningless on a
+    // difference surface, so skipped in residual mode.
+    if (!diverging) {
+      const atmPts = [];
+      for (let i = 0; i < E; i++) {
+        const a = atm[i];
+        if (a == null) continue;
+        const range = ivMax > ivMin ? ivMax - ivMin : 1;
+        const padMin = ivMax > ivMin ? ivMin - 0.05 * range : 0;
+        const padMax = ivMax > ivMin ? ivMax + 0.05 * range : 1;
+        const z = ivMax > ivMin ? (a - padMin) / (padMax - padMin) : 0.5;
+        const xAtm = (1.0 - m_grid_range()[0]) / (m_grid_range()[1] - m_grid_range()[0]) * 2 - 1;
+        atmPts.push(project(xAtm, ys[i], z, W, H));
+      }
+      if (atmPts.length >= 2) {
+        ctx2d.beginPath();
+        ctx2d.moveTo(atmPts[0][0], atmPts[0][1]);
+        for (let k = 1; k < atmPts.length; k++) ctx2d.lineTo(atmPts[k][0], atmPts[k][1]);
+        ctx2d.strokeStyle = accent;
+        ctx2d.lineWidth = 2;
+        ctx2d.stroke();
+      } else if (atmPts.length === 1) {
+        ctx2d.beginPath();
+        ctx2d.arc(atmPts[0][0], atmPts[0][1], 3, 0, Math.PI * 2);
+        ctx2d.fillStyle = accent;
+        ctx2d.fill();
+      }
     }
 
     // Axis labels.
@@ -359,7 +407,12 @@ function initViewer() {
       const [px1, py1] = project(1, 1, 0, W, H);
       ctx2d.fillText(expiries[expiries.length - 1], px1 + 6, py1);
     }
-    if (isFinite(ivMin) && isFinite(ivMax)) {
+    if (diverging) {
+      const [pxLo, pyLo] = project(-1, -1, 0, W, H);
+      ctx2d.fillText("-" + (rmax * 100).toFixed(1) + " Δvol pts", pxLo - 55, pyLo);
+      const [pxHi, pyHi] = project(-1, -1, 1, W, H);
+      ctx2d.fillText("+" + (rmax * 100).toFixed(1) + " Δvol pts", pxHi - 55, pyHi);
+    } else if (isFinite(ivMin) && isFinite(ivMax)) {
       const [pxLo, pyLo] = project(-1, -1, 0, W, H);
       ctx2d.fillText((ivMin * 100).toFixed(1) + "%", pxLo - 40, pyLo);
       const [pxHi, pyHi] = project(-1, -1, 1, W, H);
@@ -369,7 +422,9 @@ function initViewer() {
     // Corner legend.
     ctx2d.fillStyle = inkDim;
     const expLabel = expiries.length === 1 ? "expiry" : "expiries";
-    ctx2d.fillText(`${symSel.value} · ${dates[+daySlider.value]} · ${expiries.length} ${expLabel}`, 8, 16);
+    const modeName = model === "obs" ? "" :
+      ` · ${model === "strike" ? "sticky strike" : model === "delta" ? "sticky delta" : "hybrid"}${diverging ? " (residual)" : ""}`;
+    ctx2d.fillText(`${symSel.value} · ${dates[+daySlider.value]} · ${expiries.length} ${expLabel}${modeName}`, 8, 16);
   }
 
   function table(el, cols, rows) {
@@ -378,19 +433,65 @@ function initViewer() {
       rows.map(r => "<tr>" + cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("") + "</tr>").join("");
   }
 
-  function renderTerms(surf) {
+  function renderTerms(surf, predGrid) {
     const M = SURF.m_grid.length;
-    const rows = surf.expiries.map((exp, i) => ({
-      expiry: exp, dte: surf.dtes[i], atm: surf.atm[i],
-      coverage: surf.iv[i].filter(v => v != null).length / M * 100,
-    }));
-    table("terms", [
+    const rows = surf.expiries.map((exp, i) => {
+      const obsRow = surf.iv[i];
+      let miss = null;
+      if (predGrid) {
+        const predRow = predGrid[i];
+        let sum = 0, n = 0;
+        for (let j = 0; j < M; j++) {
+          const o = obsRow[j], p = predRow[j];
+          if (o != null && p != null) { sum += Math.abs(o - p); n++; }
+        }
+        miss = n ? sum / n * 100 : null;
+      }
+      return {
+        expiry: exp, dte: surf.dtes[i], atm: surf.atm[i],
+        coverage: obsRow.filter(v => v != null).length / M * 100,
+        miss,
+      };
+    });
+    const cols = [
       ["expiry", r => esc(r.expiry), "l"],
       ["dte", r => num(r.dte, 0)],
       ["atm iv", r => num(r.atm == null ? null : r.atm * 100, 1)],
       ["coverage %", r => num(r.coverage, 0)],
-    ], rows);
+    ];
+    if (predGrid) cols.push(["miss (vol pts)", r => num(r.miss, 2)]);
+    table("terms", cols, rows);
   }
+
+  // Model toggle: obs = the captured smile; strike/delta/hybrid = the
+  // one-day-ahead prediction from the payload's "models" key (absent on
+  // the first carried date or after a capture gap -- disable and fall
+  // back to obs rather than guess). Residual = observed - prediction,
+  // meaningless in obs mode so it's force-disabled there.
+  const modelButtons = Array.from(document.querySelectorAll("#modelSeg button"));
+  const residCheckbox = document.getElementById("resid");
+  let model = "obs", residual = false;
+
+  function updateModelButtonsUI() {
+    modelButtons.forEach(b => b.classList.toggle("on", b.dataset.model === model));
+    residCheckbox.disabled = model === "obs";
+    if (model === "obs") { residCheckbox.checked = false; residual = false; }
+  }
+  function setModelButtonsEnabled(enabled) {
+    modelButtons.forEach(b => { if (b.dataset.model !== "obs") b.disabled = !enabled; });
+  }
+  modelButtons.forEach(b => b.addEventListener("click", () => {
+    if (b.disabled || b.dataset.model === model) return;
+    model = b.dataset.model;
+    residual = residCheckbox.checked && model !== "obs";
+    updateModelButtonsUI();
+    refresh();
+  }));
+  residCheckbox.addEventListener("change", () => {
+    residual = residCheckbox.checked && model !== "obs";
+    refresh();
+  });
+  updateModelButtonsUI();
 
   function refresh() {
     const sym = symSel.value;
@@ -403,11 +504,26 @@ function initViewer() {
       const c = canvas.getContext("2d");
       c.clearRect(0, 0, canvas.width, canvas.height);
       document.getElementById("terms").innerHTML = "";
+      setModelButtonsEnabled(false);
       return;
     }
-    hideNote();
-    geom = computeGeom(surf);
-    renderTerms(surf);
+
+    const hasModels = !!surf.models;
+    setModelButtonsEnabled(hasModels);
+    if (!hasModels && model !== "obs") {
+      model = "obs";
+      updateModelButtonsUI();
+    }
+    if (hasModels) hideNote();
+    else showNote("model views need the prior snapshot day");
+
+    const predGrid = model === "obs" ? null : surf.models[model];
+    const diverging = residual && !!predGrid;
+    const grid = model === "obs" ? surf.iv :
+      (diverging ? residualGrid(surf.iv, predGrid) : predGrid);
+
+    geom = computeGeom(surf, grid, diverging);
+    renderTerms(surf, predGrid);
     draw();
   }
 
