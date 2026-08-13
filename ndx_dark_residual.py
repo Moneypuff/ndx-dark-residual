@@ -5145,6 +5145,11 @@ YAHOO_CHART = ("https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
 _YF_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
           "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 YAHOO_CACHE = "yahoo_prices.pkl"
+# A symbol whose cached history starts later than (requested start + this many days) is treated
+# as truncated and backfilled in full rather than only ever fetched forward -- see
+# load_yahoo_panels. 400 days mirrors the shallow-panel tolerance build_gex_dispersion.py already
+# used for its own basket-wide re-pull guard.
+YAHOO_BACKFILL_TOL_DAYS = 400
 ISHARES_DOC_TMPL = ("https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/"
                     "api/v1/get-fund-document?appType=PRODUCT_PAGE&appSubType=ISHARES"
                     "&targetSite=us-ishares&locale=en_US&portfolioId={pid}"
@@ -5245,13 +5250,20 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
     """{'close','adjclose','volume'} wide panels (dates x symbols) over [start, end].
 
     Incrementally cached: a symbol synced today is skipped; one behind is re-fetched only
-    from its last cached date; new symbols fetch the full window. No-data symbols are
-    remembered for the day so they aren't retried on same-day re-runs.
+    from its last cached date; new symbols fetch the full window; a symbol whose cached
+    history starts well after `start` (truncated by some earlier narrower-window write) is
+    backfilled in full rather than only ever fetched forward. No-data symbols are remembered
+    for the day so they aren't retried on same-day re-runs.
+
+    `refresh=True` forces every symbol THIS call requests to be fetched from `start`
+    regardless of its cached state -- but the existing cache is still loaded first (not
+    skipped) so that other symbols/universes sharing the same pickle are preserved rather
+    than dropped when the panel is written back at the end.
     """
     symbols = list(dict.fromkeys(s.strip().upper() for s in symbols))
     cache = (Path(cache_dir) / YAHOO_CACHE) if cache_dir else None
     cached = {}
-    if cache is not None and cache.exists() and not refresh:
+    if cache is not None and cache.exists():
         try:
             cached = pd.read_pickle(cache)
         except Exception:  # noqa: BLE001
@@ -5285,13 +5297,24 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
         return (not s.empty) and s.index.max() >= target_session
 
     def _fetch_start(sym):
+        # Checked before _is_current: refresh must force a full re-fetch of every symbol THIS
+        # call requests even if the (now-always-loaded) cache already looks current for it.
+        if refresh:
+            return pd.Timestamp(start)
         if _is_current(sym):
             return None
         c = base["close"]
-        if refresh or sym not in c.columns:
+        if sym not in c.columns:
             return pd.Timestamp(start)
         s = c[sym].dropna()
-        return pd.Timestamp(start) if s.empty else s.index.max()
+        if s.empty:
+            return pd.Timestamp(start)
+        if s.index.min() > pd.Timestamp(start) + pd.Timedelta(days=YAHOO_BACKFILL_TOL_DAYS):
+            # Truncated by an earlier narrower-window write (e.g. a pre-fix --refresh call, or
+            # any caller that only ever requested a shallower start) -- backfill in full instead
+            # of only ever fetching forward, which would leave it permanently shallow.
+            return pd.Timestamp(start)
+        return s.index.max()
 
     def _window(panels):
         win = [d for d in panels["close"].index if pd.Timestamp(start) <= d <= end_n]

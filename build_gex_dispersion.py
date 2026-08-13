@@ -328,6 +328,22 @@ def quad_stats(df):
     return rows
 
 
+def deep_coverage(frame, start, tol_days=None):
+    """Count of columns (symbols) in `frame` whose earliest valid value falls within
+    `tol_days` of `start` -- i.e. weren't left shallow by an earlier narrower-window
+    write. A whole-panel index.min() check can look fine even when individual symbols
+    are shallow (e.g. a handful of mega-caps truncated while the rest of the basket is
+    deep, as happened when a --refresh run once clobbered the shared Yahoo cache), so
+    this counts per-symbol coverage rather than the panel's single earliest date."""
+    if tol_days is None:
+        tol_days = N.YAHOO_BACKFILL_TOL_DAYS
+    if frame.empty:
+        return 0
+    cutoff = pd.Timestamp(start) + pd.Timedelta(days=tol_days)
+    first_valid = frame.apply(lambda c: c.first_valid_index())
+    return int((first_valid.notna() & (first_valid <= cutoff)).sum())
+
+
 def series_corr(a, b, diff=0):
     """(pearson r, overlap n) of two Series aligned on their common dates;
     with diff>0, of their `diff`-day changes (comovement, not shared level)."""
@@ -508,14 +524,16 @@ def main():
                                  cache_dir=args.cache_dir or None,
                                  refresh=args.refresh, label="GEXDISP")
     adj = panels["adjclose"].dropna(how="all")
-    # The shared Yahoo cache only backfills a symbol forward from its cached
-    # range, so a cache built for a shallower window (e.g. classic GEX's 2011
-    # start) silently truncates the GEX+ era. If the panel starts well after
-    # the gamma series does, re-pull the basket in full once.
-    if not args.refresh and (adj.empty or
-                             adj.index.min() > pd.Timestamp(start) + pd.Timedelta(days=400)):
-        print("Yahoo panel shallower than the gamma history; re-fetching the basket in full...",
-              file=sys.stderr)
+    # load_yahoo_panels self-heals per-symbol truncation on its own (it backfills any
+    # symbol whose cached history starts materially after `start`), but a fetch that only
+    # partially succeeds this run (rate limiting, a transient Yahoo error) can still leave
+    # too few basket names with deep-enough history for realized_cor_disp's MIN_NAMES floor
+    # to be met on the earliest days -- even though the panel's single earliest date looks
+    # fine. Re-pull the whole basket in full, once, if per-symbol coverage is short.
+    covered = deep_coverage(adj, start)
+    if not args.refresh and covered < MIN_NAMES:
+        print(f"Only {covered}/{len(w)} basket names reach back to {start} "
+              "(MIN_NAMES not met) -- re-fetching the basket in full...", file=sys.stderr)
         panels = N.load_yahoo_panels(list(w.index), start, end,
                                      cache_dir=args.cache_dir or None,
                                      refresh=True, label="GEXDISP")
