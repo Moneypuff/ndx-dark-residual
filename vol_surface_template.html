@@ -113,7 +113,9 @@ canvas.grabbing{cursor:grabbing}
   <div class="card" id="canvasCard">
     <h2>Surface</h2>
     <p class="hint">drag to rotate &middot; scrub the date slider to replay &middot;
-    color = IV level &middot; gold line = ATM term structure</p>
+    color = IV level &middot; gold line = ATM term structure &middot; sparse
+    chains render as wireframe smile lines where a thin neighbor expiry
+    breaks the filled mesh</p>
     <canvas id="surf"></canvas>
   </div>
 
@@ -252,35 +254,64 @@ function initViewer() {
     const { xs, ys, zGrid, ivMin, ivMax, dtes, expiries, atm } = geom;
     const E = zGrid.length, M = xs.length;
 
-    // Build quads (painter's algorithm: back-to-front, no z-buffer).
-    const quads = [];
+    // Primitives: quads where all 4 corners exist, plus "orphan" row-edge
+    // segments -- adjacent non-null cells in one expiry row whose edge is
+    // part of no drawable quad (sparse neighbor row, or a single captured
+    // expiry). Without them a row's real data is invisible wherever its
+    // neighbor rows have holes, and a one-expiry surface draws nothing.
+    const quadOk = (i, j) => i >= 0 && i < E - 1 && j >= 0 && j < M - 1 &&
+      zGrid[i][j] != null && zGrid[i][j + 1] != null &&
+      zGrid[i + 1][j] != null && zGrid[i + 1][j + 1] != null;
+    const prims = [];
     for (let i = 0; i < E - 1; i++) {
       for (let j = 0; j < M - 1; j++) {
+        if (!quadOk(i, j)) continue;
         const z00 = zGrid[i][j], z01 = zGrid[i][j + 1];
         const z11 = zGrid[i + 1][j + 1], z10 = zGrid[i + 1][j];
-        if (z00 == null || z01 == null || z11 == null || z10 == null) continue;
         const corners = [
           [xs[j], ys[i], z00], [xs[j + 1], ys[i], z01],
           [xs[j + 1], ys[i + 1], z11], [xs[j], ys[i + 1], z10],
         ];
         const depth = corners.reduce((a, c) => a + rotYOnly(c[0], c[1]), 0) / 4;
         const ivMean = (z00 + z01 + z11 + z10) / 4;
-        quads.push({ depth, corners, ivMean });
+        prims.push({ kind: "quad", depth, corners, ivMean });
       }
     }
-    quads.sort((a, b) => b.depth - a.depth);
+    for (let i = 0; i < E; i++) {
+      for (let j = 0; j < M - 1; j++) {
+        if (zGrid[i][j] == null || zGrid[i][j + 1] == null) continue;
+        if (quadOk(i - 1, j) || quadOk(i, j)) continue;   // edge already inside a quad
+        const p1 = [xs[j], ys[i], zGrid[i][j]];
+        const p2 = [xs[j + 1], ys[i], zGrid[i][j + 1]];
+        prims.push({ kind: "seg",
+                     depth: (rotYOnly(p1[0], p1[1]) + rotYOnly(p2[0], p2[1])) / 2,
+                     p1, p2, ivMean: (p1[2] + p2[2]) / 2 });
+      }
+    }
+    prims.sort((a, b) => b.depth - a.depth);
 
-    for (const q of quads) {
-      const pts = q.corners.map(c => project(c[0], c[1], c[2], W, H));
-      ctx2d.beginPath();
-      ctx2d.moveTo(pts[0][0], pts[0][1]);
-      for (let k = 1; k < pts.length; k++) ctx2d.lineTo(pts[k][0], pts[k][1]);
-      ctx2d.closePath();
-      ctx2d.fillStyle = lerpColor(q.ivMean, 0.85);
-      ctx2d.fill();
-      ctx2d.strokeStyle = lineColor;
-      ctx2d.lineWidth = 1;
-      ctx2d.stroke();
+    for (const q of prims) {
+      if (q.kind === "quad") {
+        const pts = q.corners.map(c => project(c[0], c[1], c[2], W, H));
+        ctx2d.beginPath();
+        ctx2d.moveTo(pts[0][0], pts[0][1]);
+        for (let k = 1; k < pts.length; k++) ctx2d.lineTo(pts[k][0], pts[k][1]);
+        ctx2d.closePath();
+        ctx2d.fillStyle = lerpColor(q.ivMean, 0.85);
+        ctx2d.fill();
+        ctx2d.strokeStyle = lineColor;
+        ctx2d.lineWidth = 1;
+        ctx2d.stroke();
+      } else {
+        const a = project(q.p1[0], q.p1[1], q.p1[2], W, H);
+        const b = project(q.p2[0], q.p2[1], q.p2[2], W, H);
+        ctx2d.beginPath();
+        ctx2d.moveTo(a[0], a[1]);
+        ctx2d.lineTo(b[0], b[1]);
+        ctx2d.strokeStyle = lerpColor(q.ivMean, 0.9);
+        ctx2d.lineWidth = 1.5;
+        ctx2d.stroke();
+      }
     }
 
     // ATM term-structure line.
@@ -310,9 +341,13 @@ function initViewer() {
     }
 
     // Axis labels.
-    ctx2d.font = "11px " + (getComputedStyle(canvas).fontFamily || "monospace");
+    const mono = getComputedStyle(document.querySelector(".page"))
+      .getPropertyValue("--mono").trim() || "monospace";
+    ctx2d.font = "11px " + mono;
     ctx2d.fillStyle = inkDim;
-    const mLabels = [[0.60, "60%"], [1.00, "100%"], [1.40, "140%"]];
+    const [mLo, mHi] = m_grid_range();
+    const mLabels = [[mLo, Math.round(mLo * 100) + "%"], [1.00, "100%"],
+                     [mHi, Math.round(mHi * 100) + "%"]];
     for (const [m, label] of mLabels) {
       const x = (m - m_grid_range()[0]) / (m_grid_range()[1] - m_grid_range()[0]) * 2 - 1;
       const [px, py] = project(x, -1, 0, W, H);
@@ -333,7 +368,8 @@ function initViewer() {
 
     // Corner legend.
     ctx2d.fillStyle = inkDim;
-    ctx2d.fillText(`${symSel.value} · ${dates[+daySlider.value]} · ${expiries.length} expiries`, 8, 16);
+    const expLabel = expiries.length === 1 ? "expiry" : "expiries";
+    ctx2d.fillText(`${symSel.value} · ${dates[+daySlider.value]} · ${expiries.length} ${expLabel}`, 8, 16);
   }
 
   function table(el, cols, rows) {
