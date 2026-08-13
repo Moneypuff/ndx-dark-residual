@@ -1,6 +1,6 @@
 {
  "date": "2026-08-13",
- "captured_utc": "2026-08-13T17:53:31+00:00",
+ "captured_utc": "2026-08-13T18:53:22+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -10,7 +10,7 @@
   "QQQ": {
    "ok": true,
    "expiries": 11,
-   "rows": 2700
+   "rows": 2698
   },
   "IWM": {
    "ok": true,
@@ -20,12 +20,12 @@
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1782
+   "rows": 1771
   },
   "IGV": {
    "ok": true,
    "expiries": 10,
-   "rows": 807
+   "rows": 802
   },
   "XBI": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 1024
+   "rows": 1022
   },
   "EEM": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 9,
-   "rows": 992
+   "rows": 993
   },
   "XLF": {
    "ok": true,
@@ -75,7 +75,7 @@
   "XLY": {
    "ok": true,
    "expiries": 8,
-   "rows": 614
+   "rows": 616
   },
   "XLP": {
    "ok": true,
@@ -110,7 +110,7 @@
   "XLC": {
    "ok": true,
    "expiries": 7,
-   "rows": 375
+   "rows": 376
   },
   "KWEB": {
    "ok": true,
@@ -130,7 +130,7 @@
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1084
+   "rows": 1087
   },
   "GOOGL": {
    "ok": true,
@@ -145,7 +145,7 @@
   "AMZN": {
    "ok": true,
    "expiries": 11,
-   "rows": 848
+   "rows": 850
   },
   "MSFT": {
    "ok": true,
@@ -155,27 +155,27 @@
   "META": {
    "ok": true,
    "expiries": 11,
-   "rows": 1509
+   "rows": 1510
   },
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1203
+   "rows": 1212
   },
   "MU": {
    "ok": true,
    "expiries": 11,
-   "rows": 1825
+   "rows": 1807
   },
   "CRWV": {
    "ok": true,
    "expiries": 10,
-   "rows": 633
+   "rows": 636
   },
   "IONQ": {
    "ok": true,
    "expiries": 9,
-   "rows": 448
+   "rows": 450
   },
   "OWL": {
    "ok": true,
@@ -195,17 +195,17 @@
   "SPCX": {
    "ok": true,
    "expiries": 10,
-   "rows": 681
+   "rows": 678
   },
   "DRAM": {
    "ok": true,
    "expiries": 11,
-   "rows": 939
+   "rows": 925
   },
   "USO": {
    "ok": true,
    "expiries": 9,
-   "rows": 1390
+   "rows": 1384
   },
   "GLD": {
    "ok": true,
@@ -215,12 +215,12 @@
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1128
+   "rows": 1115
   },
   "IBIT": {
    "ok": true,
    "expiries": 10,
-   "rows": 677
+   "rows": 680
   }
  }
 }
