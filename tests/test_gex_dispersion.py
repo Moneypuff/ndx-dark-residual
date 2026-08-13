@@ -127,6 +127,32 @@ def test_top_weights_skips_missing_and_handles_empty():
 
 
 # ---------------------------------------------------------------------------
+# deep_coverage -- catches partial-basket truncation a whole-panel
+# index.min() check would miss (e.g. a handful of mega-caps clobbered while
+# the rest of the basket is deep, per the load_yahoo_panels cache bug).
+# ---------------------------------------------------------------------------
+def test_deep_coverage_counts_only_symbols_reaching_start():
+    idx = pd.bdate_range("2010-01-04", "2020-01-31")
+    deep = pd.Series(1.0, index=idx)
+    shallow = pd.Series(1.0, index=idx[idx >= "2018-06-01"])
+    frame = pd.DataFrame({"DEEP1": deep, "DEEP2": deep, "SHALLOW": shallow})
+    assert B.deep_coverage(frame, "2010-01-04") == 2
+
+
+def test_deep_coverage_empty_frame_is_zero():
+    assert B.deep_coverage(pd.DataFrame(), "2010-01-04") == 0
+
+
+def test_deep_coverage_respects_tolerance():
+    idx = pd.bdate_range("2010-01-04", "2011-01-04")
+    frame = pd.DataFrame({"A": pd.Series(1.0, index=idx)})
+    # cached start is within the tolerance window of the requested start -> still "deep"
+    assert B.deep_coverage(frame, "2010-01-01", tol_days=10) == 1
+    # cached start is well beyond the tolerance window -> not "deep"
+    assert B.deep_coverage(frame, "2009-01-01", tol_days=10) == 0
+
+
+# ---------------------------------------------------------------------------
 # realized_cor_disp -- pinned against the from-definition covariance identity
 # ---------------------------------------------------------------------------
 def _panel(n_days=80, n_names=4, seed=3, rho=0.5):

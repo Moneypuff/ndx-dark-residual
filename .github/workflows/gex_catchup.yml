@@ -141,17 +141,32 @@ jobs:
       - name: Check whether GEX+ actually published a new session
         id: check
         run: |
-          old_date=$(grep -oE '"today":\{"date":"[0-9-]+"' /tmp/old_gex_dispersion.html \
-            | grep -oE '[0-9-]+$' || echo "none")
-          new_date=$(grep -oE '"today":\{"date":"[0-9-]+"' docs/gex_dispersion.html \
-            | grep -oE '[0-9-]+$' || echo "none")
-          echo "live was: $old_date -- just built: $new_date"
-          if [ "$new_date" != "none" ] && [ "$new_date" != "$old_date" ]; then
-            echo "New GEX+ session published ($old_date -> $new_date) -- will deploy."
-            echo "advanced=true" >> "$GITHUB_OUTPUT"
-          else
+          # -P/\K: extract just the value, not the whole "today":{"date":"..." match (a plain
+          # -E two-stage grep piping on a trailing-quote anchor silently matches nothing here).
+          # head -1: each token occurs exactly once today, but a stray duplicate match must not
+          # turn a single value into a multiline one and break the integer/string comparisons below.
+          old_date=$(grep -oP '"today":\{"date":"\K[0-9-]+' /tmp/old_gex_dispersion.html | head -1 || echo "none")
+          new_date=$(grep -oP '"today":\{"date":"\K[0-9-]+' docs/gex_dispersion.html | head -1 || echo "none")
+          old_days=$(grep -oP '"n_days":\K[0-9]+' /tmp/old_gex_dispersion.html | head -1 || echo "0")
+          new_days=$(grep -oP '"n_days":\K[0-9]+' docs/gex_dispersion.html | head -1 || echo "0")
+          old_date=${old_date:-none}
+          new_date=${new_date:-none}
+          old_days=${old_days:-0}
+          new_days=${new_days:-0}
+          echo "live was: $old_date ($old_days days) -- just built: $new_date ($new_days days)"
+          if [ "$new_date" = "none" ] || [ "$new_date" = "$old_date" ]; then
             echo "No new GEX+ data yet -- will retry next hour (through the 6am ET check)."
             echo "advanced=false" >> "$GITHUB_OUTPUT"
+          elif [ "$new_days" -lt "$old_days" ]; then
+            # Safety net: never publish a page with a shallower history than what's already
+            # live, even if the session date did advance (e.g. a cold/partial Yahoo-panel cache
+            # on this run) -- skip and let a later retry (with a better-warmed cache) try again.
+            echo "New date ($old_date -> $new_date) but history shrank ($old_days -> $new_days" \
+                 "days) -- refusing to publish a degraded page; will retry next hour."
+            echo "advanced=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New GEX+ session published ($old_date -> $new_date) -- will deploy."
+            echo "advanced=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload Pages artifact
