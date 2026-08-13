@@ -64,6 +64,14 @@ gives entry marks and the OI map, IV deltas start with snapshot 2, the
 lagged aggressor read with snapshot 3, and the pressure index is worth
 reading after ~5.
 
+`build_vol_surface.py` renders the same capture as a rotatable 3D
+implied-vol surface (`docs/vol_surface.html`, linked from this page's
+strip): each captured expiry's live despiked smile resampled onto a
+shared 60%–140% moneyness grid and stacked by time to expiry, with a
+date scrubber over the last 10 snapshot days. No extrapolation — a grid
+cell outside a smile's own strike range ships as a hole, not a
+flat-carried edge.
+
 ## Signal linkage (phase 3 — CODE LIVE)
 
 Same script: for each live regime-log signal (≤63 sessions), the playbook
