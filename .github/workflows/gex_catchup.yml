@@ -143,10 +143,16 @@ jobs:
         run: |
           # -P/\K: extract just the value, not the whole "today":{"date":"..." match (a plain
           # -E two-stage grep piping on a trailing-quote anchor silently matches nothing here).
-          old_date=$(grep -oP '"today":\{"date":"\K[0-9-]+' /tmp/old_gex_dispersion.html || echo "none")
-          new_date=$(grep -oP '"today":\{"date":"\K[0-9-]+' docs/gex_dispersion.html || echo "none")
-          old_days=$(grep -oP '"n_days":\K[0-9]+' /tmp/old_gex_dispersion.html || echo "0")
-          new_days=$(grep -oP '"n_days":\K[0-9]+' docs/gex_dispersion.html || echo "0")
+          # head -1: each token occurs exactly once today, but a stray duplicate match must not
+          # turn a single value into a multiline one and break the integer/string comparisons below.
+          old_date=$(grep -oP '"today":\{"date":"\K[0-9-]+' /tmp/old_gex_dispersion.html | head -1 || echo "none")
+          new_date=$(grep -oP '"today":\{"date":"\K[0-9-]+' docs/gex_dispersion.html | head -1 || echo "none")
+          old_days=$(grep -oP '"n_days":\K[0-9]+' /tmp/old_gex_dispersion.html | head -1 || echo "0")
+          new_days=$(grep -oP '"n_days":\K[0-9]+' docs/gex_dispersion.html | head -1 || echo "0")
+          old_date=${old_date:-none}
+          new_date=${new_date:-none}
+          old_days=${old_days:-0}
+          new_days=${new_days:-0}
           echo "live was: $old_date ($old_days days) -- just built: $new_date ($new_days days)"
           if [ "$new_date" = "none" ] || [ "$new_date" = "$old_date" ]; then
             echo "No new GEX+ data yet -- will retry next hour (through the 6am ET check)."
