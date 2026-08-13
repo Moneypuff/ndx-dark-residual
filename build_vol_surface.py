@@ -22,10 +22,30 @@ Grid decisions:
   * the payload carries the last 10 snapshot days -- the scrubber's
     replay window. Rebuild with --days for more history.
 
+Model views (per symbol/date, when the prior snapshot day has a surface
+for that symbol): a one-day-ahead prediction of today's grid from
+yesterday's, under each of three smile-dynamics assumptions --
+
+  * sticky strike: IV(K) is unchanged -- today's cell samples yesterday's
+    smile at the shifted moneyness m*(S_t/S_{t-1}).
+  * sticky delta: IV(moneyness) is unchanged -- yesterday's row verbatim.
+    (Implemented as sticky-*moneyness*, the standard practical proxy for
+    sticky delta; a true delta bucketing needs a full BS delta inversion
+    and adds nothing at daily granularity here.)
+  * hybrid: blends the two by distance from ATM in sigma-move units
+    (W_LO/W_HI below) -- near ATM the smile is closer to sticky-delta,
+    in the wings closer to sticky-strike, per the empirical finding this
+    view exists to check.
+
+Predictions never see today's actual smile -- only yesterday's grid plus
+today's spot -- so the residual (observed - predicted) is an honest,
+falsifiable miss, not something tuned to look good.
+
     python build_vol_surface.py --snap-dir optsnap --docs-out docs/vol_surface.html
 """
 import argparse
 import json
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -38,6 +58,13 @@ from build_vol_tracker import atm_iv, load_snapshots
 M_GRID = np.arange(0.60, 1.4001, 0.025)   # 33 moneyness points, 60%..140%
 MAX_EXPIRIES = 14      # per symbol/date, nearest-first by DTE
 SURF_DAYS = 10         # snapshot days carried in the payload (scrubber window)
+
+# Hybrid model blend, in sigma-move units of distance from ATM (sigma =
+# atm_iv * sqrt(T)): pure sticky-delta inside W_LO, pure sticky-strike
+# beyond W_HI, smoothstepped between. Calibration knobs for a later
+# phase -- not fit from data here.
+W_LO = 0.5
+W_HI = 1.5
 
 
 # ----------------------------------------------------------------------------
@@ -94,6 +121,105 @@ def symbol_surface(day_df, symbol, asof):
     }
 
 
+def hybrid_weight(m, atm_iv_prev, dte_prev):
+    """Hybrid-model blend weight at grid moneyness `m`: 0 = pure sticky
+    delta, 1 = pure sticky strike. Distance from ATM in sigma-move units
+    (sigma = atm_iv_prev * sqrt(dte_prev/365.25)), smoothstepped between
+    W_LO and W_HI. A non-positive or non-finite sigma (no usable prior
+    ATM) can't place a distance -- treated as fully in the wing (1.0)
+    rather than guessing."""
+    if not np.isfinite(atm_iv_prev) or atm_iv_prev <= 0 or dte_prev <= 0:
+        return 1.0
+    sigma = atm_iv_prev * math.sqrt(dte_prev / 365.25)
+    if sigma <= 0:
+        return 1.0
+    d = abs(m - 1.0) / sigma
+    if d <= W_LO:
+        return 0.0
+    if d >= W_HI:
+        return 1.0
+    u = (d - W_LO) / (W_HI - W_LO)
+    return 3 * u * u - 2 * u ** 3
+
+
+def predict_row_strike(prev_row, ratio):
+    """Sticky-strike prediction of one grid row from yesterday's
+    (`prev_row`, payload form: list of float/None): today's cell at
+    moneyness m reads yesterday's smile at m*ratio (ratio =
+    S_t/S_{t-1}), linearly interpolated over yesterday's own contiguous
+    non-null block -- null outside that block's span, same no-
+    extrapolation rule as surface_grid. None (all-null row) when fewer
+    than 2 cells are usable."""
+    block = [(float(M_GRID[i]), v) for i, v in enumerate(prev_row) if v is not None]
+    if len(block) < 2:
+        return [None] * len(M_GRID)
+    ks = np.array([b[0] for b in block])
+    vs = np.array([b[1] for b in block])
+    targets = M_GRID * ratio
+    iv = np.interp(targets, ks, vs)
+    iv[(targets < ks[0]) | (targets > ks[-1])] = np.nan
+    return [None if not np.isfinite(v) else round(float(v), 4) for v in iv]
+
+
+def _nearest_atm_cell(row):
+    """Fallback ATM level when a row's own atm_iv is null: the row's
+    grid cell nearest moneyness 1.0, searching outward. None if the
+    whole row is null."""
+    center = int(np.argmin(np.abs(M_GRID - 1.0)))
+    if row[center] is not None:
+        return row[center]
+    for d in range(1, len(row)):
+        for idx in (center - d, center + d):
+            if 0 <= idx < len(row) and row[idx] is not None:
+                return row[idx]
+    return None
+
+
+def model_grids(prev_surf, cur_surf):
+    """(symbol, date t)'s "models" payload: sticky-strike / sticky-delta
+    / hybrid one-day-ahead predictions of `cur_surf`'s grid, built ONLY
+    from `prev_surf` (day t-1's surface) and the two spots -- today's
+    actual smile never leaks into its own prediction. Rows align to
+    cur_surf's expiries; an expiry absent from prev_surf predicts null
+    throughout. None when every predicted cell is null (nothing to
+    show)."""
+    n = len(M_GRID)
+    prev_index = {exp: i for i, exp in enumerate(prev_surf["expiries"])}
+    ratio = cur_surf["spot"] / prev_surf["spot"]
+    strike_rows, delta_rows, hybrid_rows = [], [], []
+    any_data = False
+    for exp in cur_surf["expiries"]:
+        k = prev_index.get(exp)
+        if k is None:
+            strike_rows.append([None] * n)
+            delta_rows.append([None] * n)
+            hybrid_rows.append([None] * n)
+            continue
+        prev_row = prev_surf["iv"][k]
+        strike_row = predict_row_strike(prev_row, ratio)
+        delta_row = list(prev_row)
+        atm_prev = prev_surf["atm"][k]
+        if atm_prev is None:
+            atm_prev = _nearest_atm_cell(prev_row)
+        dte_prev = prev_surf["dtes"][k]
+        hybrid_row = []
+        for j, m in enumerate(M_GRID):
+            sv, dv = strike_row[j], delta_row[j]
+            if sv is None or dv is None or atm_prev is None:
+                hybrid_row.append(None)
+                continue
+            w = hybrid_weight(float(m), atm_prev, dte_prev)
+            hybrid_row.append(round(w * sv + (1 - w) * dv, 4))
+        strike_rows.append(strike_row)
+        delta_rows.append(delta_row)
+        hybrid_rows.append(hybrid_row)
+        if any(v is not None for v in strike_row + delta_row + hybrid_row):
+            any_data = True
+    if not any_data:
+        return None
+    return {"strike": strike_rows, "delta": delta_rows, "hybrid": hybrid_rows}
+
+
 def build_payload(df, days=SURF_DAYS):
     """Full snapshot frame -> the template payload: the shared
     moneyness grid, the carried date window (last `days` snapshot
@@ -104,12 +230,22 @@ def build_payload(df, days=SURF_DAYS):
     dates = sorted(df["date"].unique())[-days:]
     surfaces = {}
     symbols = set()
+    # The first carried date never gets models, even if older snapshots
+    # exist on disk outside this window -- the payload window is the
+    # whole universe the page can show, so predicting across its edge
+    # from data the page never displays would be unverifiable there.
+    prev_by_symbol = {}
     for d in dates:
         day_df = df[df["date"] == d]
         for sym in sorted(day_df["symbol"].unique()):
             surf = symbol_surface(day_df, sym, d)
             if surf is None:
                 continue
+            if sym in prev_by_symbol:
+                models = model_grids(prev_by_symbol[sym], surf)
+                if models is not None:
+                    surf["models"] = models
+            prev_by_symbol[sym] = surf
             surfaces.setdefault(sym, {})[d] = surf
             symbols.add(sym)
     return {
