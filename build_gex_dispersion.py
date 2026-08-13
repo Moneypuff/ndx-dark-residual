@@ -427,12 +427,20 @@ def main():
                     help=f"basket size for the realized gauges (default {TOP_N}, "
                          "matching Cboe's implied-correlation universe)")
     ap.add_argument("--refresh", action="store_true",
-                    help="force re-download of the GEX / Cboe / holdings docs")
+                    help="force re-download of the GEX / Cboe / holdings docs "
+                         "AND the Yahoo constituent-price panel")
+    ap.add_argument("--refresh-text", action="store_true",
+                    help="force re-download of just the GEX+ / classic GEX / COR1M / "
+                         "DSPX text feeds (bypassing the post-close cache-freshness "
+                         "check), without forcing the Yahoo price panel -- for hourly "
+                         "poll-until-published retries where the panel is already "
+                         "current and re-fetching it every hour would be wasteful")
     ap.add_argument("--gexplus-key", default=None,
                     help="SqueezeMetrics yacht-club key for the GEX+ feed "
                          "(default: the GEXPLUS_KEY env var; without a key the "
                          "build falls back to the public classic-GEX CSV)")
     args = ap.parse_args()
+    text_refresh = args.refresh or args.refresh_text
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     if cache_dir:
@@ -446,7 +454,7 @@ def main():
     if key:
         body = fetch_text_cached(GEXPLUS_URL_TMPL.format(key=key),
                                  cpath("gexdisp_gexplus.csv"),
-                                 refresh=args.refresh, label="SqueezeMetrics GEX+",
+                                 refresh=text_refresh, label="SqueezeMetrics GEX+",
                                  session=session)
         G = parse_gexplus_csv(body or "")
         if G.empty:
@@ -456,7 +464,7 @@ def main():
         gex_src = "gexplus"
     else:
         body = fetch_text_cached(SQUEEZE_CSV_URL, cpath("gexdisp_squeeze.csv"),
-                                 refresh=args.refresh, label="SqueezeMetrics GEX",
+                                 refresh=text_refresh, label="SqueezeMetrics GEX",
                                  session=session)
         G = parse_squeeze_csv(body or "")
     if G.empty:
@@ -468,10 +476,10 @@ def main():
     # ---- Cboe reference gauges ---------------------------------------------
     cor1m = parse_cboe_csv(fetch_text_cached(
         CBOE_HISTORY_TMPL.format(sym="COR1M"), cpath("gexdisp_cor1m.csv"),
-        refresh=args.refresh, label="Cboe COR1M", session=session) or "")
+        refresh=text_refresh, label="Cboe COR1M", session=session) or "")
     dspx = parse_cboe_csv(fetch_text_cached(
         CBOE_HISTORY_TMPL.format(sym="DSPX"), cpath("gexdisp_dspx.csv"),
-        refresh=args.refresh, label="Cboe DSPX", session=session) or "")
+        refresh=text_refresh, label="Cboe DSPX", session=session) or "")
     print(f"COR1M: {len(cor1m)} days   DSPX: {len(dspx)} days", file=sys.stderr)
 
     # ---- top-50 basket: holdings + weights (with stale-cache fallback) ------

@@ -280,8 +280,15 @@ def main():
     ap.add_argument("--template", default="regime_log_template.html")
     ap.add_argument("--docs-out", default="docs/regime_log.html")
     ap.add_argument("--cache-dir", default=N.DEFAULT_CACHE_DIR)
-    ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--refresh", action="store_true",
+                    help="force re-download of the gamma/Cboe docs AND the Yahoo "
+                         "price panel")
+    ap.add_argument("--refresh-text", action="store_true",
+                    help="force re-download of just the gamma/Cboe text feeds "
+                         "(bypassing the post-close cache-freshness check), without "
+                         "forcing the Yahoo price panel -- see build_gex_dispersion.py")
     args = ap.parse_args()
+    text_refresh = args.refresh or args.refresh_text
 
     cache_dir = Path(args.cache_dir) if args.cache_dir else None
     if cache_dir:
@@ -295,11 +302,11 @@ def main():
     if key:
         G = B.parse_gexplus_csv(B.fetch_text_cached(
             B.GEXPLUS_URL_TMPL.format(key=key), cpath("gexdisp_gexplus.csv"),
-            refresh=args.refresh, label="SqueezeMetrics GEX+", session=session) or "")
+            refresh=text_refresh, label="SqueezeMetrics GEX+", session=session) or "")
     if G.empty:
         G = B.parse_squeeze_csv(B.fetch_text_cached(
             B.SQUEEZE_CSV_URL, cpath("gexdisp_squeeze.csv"),
-            refresh=args.refresh, label="SqueezeMetrics GEX", session=session) or "")
+            refresh=text_refresh, label="SqueezeMetrics GEX", session=session) or "")
     if G.empty:
         raise SystemExit("No gamma series available.")
     gexp = B.rolling_pct(G["gex"])
@@ -307,7 +314,7 @@ def main():
 
     cor1m = B.parse_cboe_csv(B.fetch_text_cached(
         B.CBOE_HISTORY_TMPL.format(sym="COR1M"), cpath("gexdisp_cor1m.csv"),
-        refresh=args.refresh, label="Cboe COR1M", session=session) or "")
+        refresh=text_refresh, label="Cboe COR1M", session=session) or "")
     shocks = shock_dates(cor1m)
 
     SERB, METB = load_barometer(args.barometer)
