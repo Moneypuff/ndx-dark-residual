@@ -1,0 +1,415 @@
+<style>
+:root{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8;
+  --neg:#d4635f; --neg-ink:#f0938f;
+  --shadow:0 1px 0 rgba(255,255,255,.03), 0 18px 40px -24px rgba(0,0,0,.8);
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+    --line:#d3dbe3; --line-soft:#e3e9ef;
+    --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+    --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+    --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+    --shadow:0 1px 0 rgba(255,255,255,.6), 0 16px 34px -26px rgba(20,40,60,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0b0f14; --grad:#0e141b; --surface:#141b24; --surface-2:#1a232e;
+  --line:#243040; --line-soft:#1b2330;
+  --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
+  --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
+  --pos:#46b39a; --pos-ink:#7fe0c8; --neg:#d4635f; --neg-ink:#f0938f;
+}
+:root[data-theme="light"]{
+  --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
+  --line:#d3dbe3; --line-soft:#e3e9ef;
+  --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
+  --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
+  --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+.page{
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"Cascadia Mono",Menlo,"Roboto Mono","DejaVu Sans Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-family:var(--sans); color:var(--ink);
+  background:
+    radial-gradient(120% 60% at 85% -10%, var(--accent-soft), transparent 60%),
+    linear-gradient(var(--grad), var(--ground) 340px);
+  background-attachment:fixed; line-height:1.6;
+  -webkit-font-smoothing:antialiased; min-height:100vh;
+}
+.wrap{max-width:1060px; margin:0 auto; padding:0 24px}
+.mono{font-family:var(--mono)}
+.strip{display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:14px 0 10px; color:var(--ink-dim); font-size:13px}
+.strip a{color:var(--ink-dim)}
+h1{font-size:26px; margin:18px 0 4px}
+.sub{color:var(--ink-dim); font-size:14px; margin:0 0 22px; max-width:72ch}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:14px;
+  box-shadow:var(--shadow); padding:18px 20px; margin:0 0 22px}
+.card h2{font-size:15px; margin:0 0 4px; letter-spacing:.01em}
+.card .hint{color:var(--ink-faint); font-size:12.5px; margin:0 0 12px}
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:12.5px; font-family:var(--mono)}
+th,td{padding:5px 10px 5px 0; text-align:right; white-space:nowrap;
+  border-bottom:1px solid var(--line-soft)}
+th{color:var(--ink-faint); font-weight:600; font-size:11px; text-transform:uppercase;
+  letter-spacing:.06em}
+th:first-child,td:first-child{text-align:left}
+td.l{text-align:left}
+.pos{color:var(--pos-ink)} .neg{color:var(--neg-ink)}
+.note{background:var(--surface-2); border:1px solid var(--line-soft); border-radius:10px;
+  padding:10px 14px; color:var(--ink-dim); font-size:13px; margin:0 0 22px}
+.foot{color:var(--ink-faint); font-size:12px; padding:8px 0 40px}
+
+.controls{display:flex; flex-wrap:wrap; align-items:center; gap:18px}
+.controls .field{display:flex; flex-direction:column; gap:4px}
+.controls label.inline{display:flex; align-items:center; gap:6px; font-size:13px;
+  color:var(--ink-dim); margin-left:auto}
+.controls select{background:var(--surface-2); color:var(--ink); border:1px solid var(--line);
+  border-radius:8px; padding:6px 10px; font:inherit; font-family:var(--mono)}
+.controls input[type="range"]{width:260px}
+.controls .daylabel{font-size:12.5px; color:var(--ink-dim); min-width:9ch}
+canvas{width:100%; height:520px; display:block; cursor:grab; touch-action:none;
+  border-radius:10px}
+canvas.grabbing{cursor:grabbing}
+</style>
+
+<div class="page"><div class="wrap">
+  <div class="strip">
+    <span><a href="vol_tracker.html" title="the trade log this surface backs">&larr; Vol tracker</a></span>
+    <span class="mono" id="built"></span>
+  </div>
+  <h1>Vol surface</h1>
+  <p class="sub">Every captured expiry's live, despiked smile resampled onto a fixed
+  60%&ndash;140% moneyness grid and stacked by time to expiry &mdash; no extrapolation, so
+  a grid cell outside a smile's own strike range is left as an honest hole rather than a
+  flat-carried edge. Drag to rotate, scrub the date to replay the capture history.</p>
+
+  <div class="note" id="note" style="display:none"></div>
+
+  <div class="card" id="controlsCard">
+    <div class="controls">
+      <div class="field">
+        <label class="mono" style="font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.06em">symbol</label>
+        <select id="sym" class="mono"></select>
+      </div>
+      <div class="field">
+        <label class="mono" style="font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.06em">date</label>
+        <input type="range" id="day" min="0" max="0" value="0">
+      </div>
+      <span class="mono daylabel" id="dayLabel"></span>
+      <label class="inline"><input type="checkbox" id="spin"> spin</label>
+    </div>
+  </div>
+
+  <div class="card" id="canvasCard">
+    <h2>Surface</h2>
+    <p class="hint">drag to rotate &middot; scrub the date slider to replay &middot;
+    color = IV level &middot; gold line = ATM term structure</p>
+    <canvas id="surf"></canvas>
+  </div>
+
+  <div class="card" id="termsCard">
+    <h2>Captured expiries</h2>
+    <p class="hint">per-expiry readout for the selected symbol/date &middot; coverage =
+    share of the moneyness grid the live smile actually reached</p>
+    <div class="tblwrap"><table id="terms"></table></div>
+  </div>
+
+  <div class="foot">Chains: Yahoo daily capture (optsnap-data branch) &middot; grid is a
+  valuation surface, not executable prices &middot; see VOL_TRACKER.md.</div>
+</div></div>
+
+<script>
+const CTX = /*__CTX__*/;
+const SURF = /*__SURF__*/;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = (v, d=2, sign=false) => (v == null || !isFinite(v)) ? "&mdash;" :
+  `<span class="${sign ? (v > 0 ? "pos" : v < 0 ? "neg" : "") : ""}">${(sign && v > 0 ? "+" : "") + Number(v).toFixed(d)}</span>`;
+
+document.getElementById("built").textContent =
+  (CTX.days ? `${CTX.days} snapshot day(s) · ${CTX.first} → ${CTX.last} · ` : "") +
+  `built ${CTX.built}`;
+
+function showNote(msg) {
+  const n = document.getElementById("note");
+  n.style.display = "block"; n.textContent = msg;
+}
+function hideNote() {
+  document.getElementById("note").style.display = "none";
+}
+
+const symbols = Object.keys(SURF.surfaces ?? {}).sort();
+
+if (!CTX.days || symbols.length === 0) {
+  if (CTX.note) showNote(CTX.note);
+  else showNote("No surfaces in this build.");
+  document.getElementById("controlsCard").style.display = "none";
+  document.getElementById("canvasCard").style.display = "none";
+  document.getElementById("termsCard").style.display = "none";
+} else {
+  initViewer();
+}
+
+function initViewer() {
+  const symSel = document.getElementById("sym");
+  const daySlider = document.getElementById("day");
+  const dayLabel = document.getElementById("dayLabel");
+  const spinBox = document.getElementById("spin");
+  const canvas = document.getElementById("surf");
+  const ctx2d = canvas.getContext("2d");
+
+  symSel.innerHTML = symbols.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+  symSel.value = symbols[0];
+
+  const dates = SURF.dates ?? [];
+  daySlider.max = String(Math.max(dates.length - 1, 0));
+  daySlider.value = String(dates.length - 1);
+
+  let yaw = -0.65, pitch = 0.42;
+  let geom = null;   // precomputed geometry for the current symbol/date
+
+  function m_grid_range() {
+    const m = SURF.m_grid;
+    return [m[0], m[m.length - 1]];
+  }
+
+  function computeGeom(surf) {
+    const [mMin, mMax] = m_grid_range();
+    const xs = SURF.m_grid.map(m => (m - mMin) / (mMax - mMin) * 2 - 1);
+
+    const dtes = surf.dtes;
+    const dteSqrt = dtes.map(d => Math.sqrt(Math.max(d, 0)));
+    const dMin = Math.min(...dteSqrt), dMax = Math.max(...dteSqrt);
+    const ys = dtes.length <= 1 ? dtes.map(() => 0) :
+      dteSqrt.map(d => dMax > dMin ? 2 * (d - dMin) / (dMax - dMin) - 1 : 0);
+
+    let ivMin = Infinity, ivMax = -Infinity;
+    for (const row of surf.iv) for (const v of row) {
+      if (v != null) { if (v < ivMin) ivMin = v; if (v > ivMax) ivMax = v; }
+    }
+    const flat = !isFinite(ivMin) || !isFinite(ivMax) || ivMax <= ivMin;
+    const range = flat ? 1 : (ivMax - ivMin);
+    const padMin = flat ? 0 : ivMin - 0.05 * range;
+    const padMax = flat ? 1 : ivMax + 0.05 * range;
+    const zGrid = surf.iv.map(row => row.map(v =>
+      v == null ? null : flat ? 0.5 : (v - padMin) / (padMax - padMin)));
+
+    return { xs, ys, zGrid, ivMin, ivMax, dtes, expiries: surf.expiries, atm: surf.atm };
+  }
+
+  function project(x, y, z, W, H) {
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const rx = x * cy - y * sy;
+    const ry = x * sy + y * cy;
+    const vy = ry * cp + (z - 0.5) * 1.1 * sp;
+    // 0.26 is the largest scale that keeps every corner of the unit cube
+    // (x,y in [-1,1], z in [0,1]) inside the canvas for ANY yaw and any
+    // pitch within the drag clamp [0.05, 1.35] -- verified numerically
+    // (the tight case is a near-horizontal pitch, worst-case yaw). A
+    // bigger scale looks better but clips the surface/labels off-canvas
+    // at some rotations the user can reach by dragging.
+    const s = Math.min(W, H) * 0.26;
+    return [W / 2 + rx * s, H * 0.50 - vy * s - (z - 0.5) * s * 0.55 * cp];
+  }
+
+  function rotYOnly(x, y) {
+    return x * Math.sin(yaw) + y * Math.cos(yaw);
+  }
+
+  function lerpColor(t, a) {
+    t = Math.max(0, Math.min(1, t));
+    const lo = [70, 140, 200], hi = [212, 99, 95];
+    const c = lo.map((v, i) => Math.round(v + (hi[i] - v) * t));
+    return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  }
+
+  function draw() {
+    if (!geom) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx2d.clearRect(0, 0, W, H);
+
+    const style = getComputedStyle(document.documentElement);
+    const lineColor = style.getPropertyValue("--line").trim() || "#243040";
+    const accent = style.getPropertyValue("--accent").trim() || "#e3b341";
+    const inkDim = style.getPropertyValue("--ink-dim").trim() || "#96a4b3";
+
+    const { xs, ys, zGrid, ivMin, ivMax, dtes, expiries, atm } = geom;
+    const E = zGrid.length, M = xs.length;
+
+    // Build quads (painter's algorithm: back-to-front, no z-buffer).
+    const quads = [];
+    for (let i = 0; i < E - 1; i++) {
+      for (let j = 0; j < M - 1; j++) {
+        const z00 = zGrid[i][j], z01 = zGrid[i][j + 1];
+        const z11 = zGrid[i + 1][j + 1], z10 = zGrid[i + 1][j];
+        if (z00 == null || z01 == null || z11 == null || z10 == null) continue;
+        const corners = [
+          [xs[j], ys[i], z00], [xs[j + 1], ys[i], z01],
+          [xs[j + 1], ys[i + 1], z11], [xs[j], ys[i + 1], z10],
+        ];
+        const depth = corners.reduce((a, c) => a + rotYOnly(c[0], c[1]), 0) / 4;
+        const ivMean = (z00 + z01 + z11 + z10) / 4;
+        quads.push({ depth, corners, ivMean });
+      }
+    }
+    quads.sort((a, b) => b.depth - a.depth);
+
+    for (const q of quads) {
+      const pts = q.corners.map(c => project(c[0], c[1], c[2], W, H));
+      ctx2d.beginPath();
+      ctx2d.moveTo(pts[0][0], pts[0][1]);
+      for (let k = 1; k < pts.length; k++) ctx2d.lineTo(pts[k][0], pts[k][1]);
+      ctx2d.closePath();
+      ctx2d.fillStyle = lerpColor(q.ivMean, 0.85);
+      ctx2d.fill();
+      ctx2d.strokeStyle = lineColor;
+      ctx2d.lineWidth = 1;
+      ctx2d.stroke();
+    }
+
+    // ATM term-structure line.
+    const atmPts = [];
+    for (let i = 0; i < E; i++) {
+      const a = atm[i];
+      if (a == null) continue;
+      const range = ivMax > ivMin ? ivMax - ivMin : 1;
+      const padMin = ivMax > ivMin ? ivMin - 0.05 * range : 0;
+      const padMax = ivMax > ivMin ? ivMax + 0.05 * range : 1;
+      const z = ivMax > ivMin ? (a - padMin) / (padMax - padMin) : 0.5;
+      const xAtm = (1.0 - m_grid_range()[0]) / (m_grid_range()[1] - m_grid_range()[0]) * 2 - 1;
+      atmPts.push(project(xAtm, ys[i], z, W, H));
+    }
+    if (atmPts.length >= 2) {
+      ctx2d.beginPath();
+      ctx2d.moveTo(atmPts[0][0], atmPts[0][1]);
+      for (let k = 1; k < atmPts.length; k++) ctx2d.lineTo(atmPts[k][0], atmPts[k][1]);
+      ctx2d.strokeStyle = accent;
+      ctx2d.lineWidth = 2;
+      ctx2d.stroke();
+    } else if (atmPts.length === 1) {
+      ctx2d.beginPath();
+      ctx2d.arc(atmPts[0][0], atmPts[0][1], 3, 0, Math.PI * 2);
+      ctx2d.fillStyle = accent;
+      ctx2d.fill();
+    }
+
+    // Axis labels.
+    ctx2d.font = "11px " + (getComputedStyle(canvas).fontFamily || "monospace");
+    ctx2d.fillStyle = inkDim;
+    const mLabels = [[0.60, "60%"], [1.00, "100%"], [1.40, "140%"]];
+    for (const [m, label] of mLabels) {
+      const x = (m - m_grid_range()[0]) / (m_grid_range()[1] - m_grid_range()[0]) * 2 - 1;
+      const [px, py] = project(x, -1, 0, W, H);
+      ctx2d.fillText(label, px - 12, py + 14);
+    }
+    if (expiries.length) {
+      const [px0, py0] = project(1, -1, 0, W, H);
+      ctx2d.fillText(expiries[0], px0 + 6, py0);
+      const [px1, py1] = project(1, 1, 0, W, H);
+      ctx2d.fillText(expiries[expiries.length - 1], px1 + 6, py1);
+    }
+    if (isFinite(ivMin) && isFinite(ivMax)) {
+      const [pxLo, pyLo] = project(-1, -1, 0, W, H);
+      ctx2d.fillText((ivMin * 100).toFixed(1) + "%", pxLo - 40, pyLo);
+      const [pxHi, pyHi] = project(-1, -1, 1, W, H);
+      ctx2d.fillText((ivMax * 100).toFixed(1) + "%", pxHi - 40, pyHi);
+    }
+
+    // Corner legend.
+    ctx2d.fillStyle = inkDim;
+    ctx2d.fillText(`${symSel.value} · ${dates[+daySlider.value]} · ${expiries.length} expiries`, 8, 16);
+  }
+
+  function table(el, cols, rows) {
+    document.getElementById(el).innerHTML =
+      "<tr>" + cols.map(c => `<th>${c[0]}</th>`).join("") + "</tr>" +
+      rows.map(r => "<tr>" + cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("") + "</tr>").join("");
+  }
+
+  function renderTerms(surf) {
+    const M = SURF.m_grid.length;
+    const rows = surf.expiries.map((exp, i) => ({
+      expiry: exp, dte: surf.dtes[i], atm: surf.atm[i],
+      coverage: surf.iv[i].filter(v => v != null).length / M * 100,
+    }));
+    table("terms", [
+      ["expiry", r => esc(r.expiry), "l"],
+      ["dte", r => num(r.dte, 0)],
+      ["atm iv", r => num(r.atm == null ? null : r.atm * 100, 1)],
+      ["coverage %", r => num(r.coverage, 0)],
+    ], rows);
+  }
+
+  function refresh() {
+    const sym = symSel.value;
+    const date = dates[+daySlider.value];
+    dayLabel.textContent = date ?? "—";
+    const surf = (SURF.surfaces[sym] || {})[date];
+    if (!surf) {
+      showNote(`no capture for ${sym} on ${date}`);
+      geom = null;
+      const c = canvas.getContext("2d");
+      c.clearRect(0, 0, canvas.width, canvas.height);
+      document.getElementById("terms").innerHTML = "";
+      return;
+    }
+    hideNote();
+    geom = computeGeom(surf);
+    renderTerms(surf);
+    draw();
+  }
+
+  symSel.addEventListener("change", refresh);
+  daySlider.addEventListener("input", refresh);
+
+  let dragging = false, lastX = 0, lastY = 0;
+  canvas.addEventListener("pointerdown", e => {
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+    canvas.classList.add("grabbing");
+  });
+  canvas.addEventListener("pointermove", e => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    yaw += dx * 0.008;
+    pitch = Math.max(0.05, Math.min(1.35, pitch + dy * 0.008));
+    draw();
+  });
+  const endDrag = e => {
+    dragging = false;
+    canvas.classList.remove("grabbing");
+  };
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+
+  function spinLoop() {
+    if (spinBox.checked) {
+      yaw += 0.004;
+      draw();
+    }
+    requestAnimationFrame(spinLoop);
+  }
+  requestAnimationFrame(spinLoop);
+
+  window.addEventListener("resize", () => draw());
+
+  refresh();
+}
+</script>
