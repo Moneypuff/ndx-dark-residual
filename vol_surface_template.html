@@ -111,6 +111,10 @@ canvas.grabbing{cursor:grabbing}
         <label class="mono" style="font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.06em">date</label>
         <input type="range" id="day" min="0" max="0" value="0">
       </div>
+      <div class="field">
+        <label class="mono" style="font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.06em">compare date</label>
+        <select id="cmpDate" class="mono"></select>
+      </div>
       <span class="mono daylabel" id="dayLabel"></span>
       <label class="inline"><input type="checkbox" id="spin"> spin</label>
     </div>
@@ -123,6 +127,15 @@ canvas.grabbing{cursor:grabbing}
       </div>
       <label class="inline" id="residWrap"><input type="checkbox" id="resid" disabled> residual (obs &minus; model)</label>
     </div>
+    <div class="controls" id="cmpModelWrap" style="margin-top:10px; display:none">
+      <span class="mono" style="font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.06em; align-self:center">compare lens</span>
+      <div class="seg" id="modelSegCmp">
+        <button data-model="obs" class="on">Observed</button>
+        <button data-model="strike">Sticky strike</button>
+        <button data-model="delta">Sticky delta</button>
+        <button data-model="hybrid">Hybrid</button>
+      </div>
+    </div>
   </div>
 
   <div class="card" id="canvasCard">
@@ -131,7 +144,9 @@ canvas.grabbing{cursor:grabbing}
     color = IV level &middot; gold line = ATM term structure &middot; sparse
     chains render as wireframe smile lines where a thin neighbor expiry
     breaks the filled mesh &middot; models predict day t from day t&minus;1's
-    smile + today's spot &middot; sticky delta = moneyness proxy</p>
+    smile + today's spot &middot; sticky delta = moneyness proxy &middot;
+    pick a compare date to diff two dates' surfaces, each side with its
+    own model lens &middot; a compare date replaces the same-date residual view</p>
     <canvas id="surf"></canvas>
   </div>
 
@@ -194,6 +209,11 @@ function initViewer() {
   daySlider.max = String(Math.max(dates.length - 1, 0));
   daySlider.value = String(dates.length - 1);
 
+  const cmpDateSel = document.getElementById("cmpDate");
+  cmpDateSel.innerHTML = `<option value="">off</option>` +
+    dates.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join("");
+  cmpDateSel.value = "";
+
   let yaw = -0.65, pitch = 0.42;
   let geom = null;   // precomputed geometry for the current symbol/date
 
@@ -207,6 +227,27 @@ function initViewer() {
       const p = predGrid[i][j];
       return (v == null || p == null) ? null : v - p;
     }));
+  }
+
+  function gridFor(s, key) {
+    return key === "obs" ? s.iv : s.models[key];
+  }
+
+  function alignRows(baseSurf, otherSurf, otherGrid) {
+    // Reindex otherGrid's rows (aligned to otherSurf.expiries) onto
+    // baseSurf.expiries by exact expiry string match. An expiry baseSurf
+    // has that otherSurf doesn't -> an all-null row (M nulls), the same
+    // "honest hole" rule as everywhere else in this renderer. An expiry
+    // otherSurf has that baseSurf doesn't is silently dropped -- there is
+    // no row slot for it on baseSurf's axis (which drives the y-axis /
+    // expiry labels in compare mode). This asymmetry is intentional: the
+    // primary date always owns the geometry.
+    const M = SURF.m_grid.length;
+    const otherIndex = new Map(otherSurf.expiries.map((e, i) => [e, i]));
+    return baseSurf.expiries.map(exp => {
+      const k = otherIndex.get(exp);
+      return k == null ? new Array(M).fill(null) : otherGrid[k];
+    });
   }
 
   function computeGeom(surf, grid, diverging) {
@@ -422,8 +463,12 @@ function initViewer() {
     // Corner legend.
     ctx2d.fillStyle = inkDim;
     const expLabel = expiries.length === 1 ? "expiry" : "expiries";
-    const modeName = model === "obs" ? "" :
-      ` · ${model === "strike" ? "sticky strike" : model === "delta" ? "sticky delta" : "hybrid"}${diverging ? " (residual)" : ""}`;
+    const sideLabel = m => m === "obs" ? "observed" :
+      m === "strike" ? "sticky strike" : m === "delta" ? "sticky delta" : "hybrid";
+    const modeName = compareActive
+      ? ` · ${sideLabel(model)} − ${sideLabel(cmpModel)} vs ${cmpDateSel.value}`
+      : (model === "obs" ? "" :
+         ` · ${sideLabel(model)}${diverging ? " (residual)" : ""}`);
     ctx2d.fillText(`${symSel.value} · ${dates[+daySlider.value]} · ${expiries.length} ${expLabel}${modeName}`, 8, 16);
   }
 
@@ -433,7 +478,7 @@ function initViewer() {
       rows.map(r => "<tr>" + cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("") + "</tr>").join("");
   }
 
-  function renderTerms(surf, predGrid) {
+  function renderTerms(surf, predGrid, missLabel = "miss (vol pts)") {
     const M = SURF.m_grid.length;
     const rows = surf.expiries.map((exp, i) => {
       const obsRow = surf.iv[i];
@@ -459,7 +504,7 @@ function initViewer() {
       ["atm iv", r => num(r.atm == null ? null : r.atm * 100, 1)],
       ["coverage %", r => num(r.coverage, 0)],
     ];
-    if (predGrid) cols.push(["miss (vol pts)", r => num(r.miss, 2)]);
+    if (predGrid) cols.push([missLabel, r => num(r.miss, 2)]);
     table("terms", cols, rows);
   }
 
@@ -467,7 +512,9 @@ function initViewer() {
   // one-day-ahead prediction from the payload's "models" key (absent on
   // the first carried date or after a capture gap -- disable and fall
   // back to obs rather than guess). Residual = observed - prediction,
-  // meaningless in obs mode so it's force-disabled there.
+  // meaningless in obs mode so it's force-disabled there. A compare
+  // date (below) replaces the residual view with a cross-date diff and
+  // is dropped in favor of it.
   const modelButtons = Array.from(document.querySelectorAll("#modelSeg button"));
   const residCheckbox = document.getElementById("resid");
   let model = "obs", residual = false;
@@ -480,18 +527,72 @@ function initViewer() {
   function setModelButtonsEnabled(enabled) {
     modelButtons.forEach(b => { if (b.dataset.model !== "obs") b.disabled = !enabled; });
   }
+
+  // Compare lens: an independent second model selector for the compare
+  // date, so "date A observed vs date B's hybrid prediction" is
+  // expressible, not just matching lenses. Mirrors the primary lens
+  // until the user manually picks a compare lens of their own, then
+  // stays decoupled for the rest of the page's life.
+  const cmpModelButtons = Array.from(document.querySelectorAll("#modelSegCmp button"));
+  let cmpModel = "obs", cmpModelManual = false, compareActive = false;
+
+  function updateCmpModelButtonsUI() {
+    cmpModelButtons.forEach(b => b.classList.toggle("on", b.dataset.model === cmpModel));
+  }
+  function setCmpModelButtonsEnabled(enabled) {
+    cmpModelButtons.forEach(b => { if (b.dataset.model !== "obs") b.disabled = !enabled; });
+  }
+  function disableCmpModel() {
+    // Compare is simply off (or the primary surface itself is missing)
+    // -- disable the (hidden) buttons but leave cmpModel's value alone,
+    // so a mirrored-but-not-yet-shown selection survives until the user
+    // actually turns compare on. refresh() runs after every click,
+    // including the one that sets the mirror, so resetting the VALUE
+    // here (not just disabling) would erase mirroring before it's ever
+    // seen.
+    setCmpModelButtonsEnabled(false);
+  }
+  function resetCmpModel() {
+    // Used specifically when the compare DATE is set but that date's
+    // surface is entirely missing for this symbol -- a genuine data
+    // problem, not "compare is off." Fully reset rather than just
+    // disable, so a stale "hybrid" selection doesn't sit highlighted-
+    // but-grayed behind disabled buttons.
+    if (cmpModel !== "obs") { cmpModel = "obs"; updateCmpModelButtonsUI(); }
+    setCmpModelButtonsEnabled(false);
+  }
+  function toggleCmpVisibility() {
+    const on = !!cmpDateSel.value;
+    document.getElementById("cmpModelWrap").style.display = on ? "" : "none";
+    document.getElementById("residWrap").style.display = on ? "none" : "";
+  }
+
   modelButtons.forEach(b => b.addEventListener("click", () => {
     if (b.disabled || b.dataset.model === model) return;
     model = b.dataset.model;
     residual = residCheckbox.checked && model !== "obs";
     updateModelButtonsUI();
+    if (!cmpModelManual) { cmpModel = model; updateCmpModelButtonsUI(); }
     refresh();
   }));
   residCheckbox.addEventListener("change", () => {
     residual = residCheckbox.checked && model !== "obs";
     refresh();
   });
+  cmpModelButtons.forEach(b => b.addEventListener("click", () => {
+    if (b.disabled || b.dataset.model === cmpModel) return;
+    cmpModel = b.dataset.model;
+    cmpModelManual = true;
+    updateCmpModelButtonsUI();
+    refresh();
+  }));
+  cmpDateSel.addEventListener("change", () => {
+    toggleCmpVisibility();
+    refresh();
+  });
   updateModelButtonsUI();
+  updateCmpModelButtonsUI();
+  toggleCmpVisibility();
 
   function refresh() {
     const sym = symSel.value;
@@ -505,6 +606,7 @@ function initViewer() {
       c.clearRect(0, 0, canvas.width, canvas.height);
       document.getElementById("terms").innerHTML = "";
       setModelButtonsEnabled(false);
+      disableCmpModel();
       return;
     }
 
@@ -514,16 +616,53 @@ function initViewer() {
       model = "obs";
       updateModelButtonsUI();
     }
-    if (hasModels) hideNote();
-    else showNote("model views need the prior snapshot day");
 
-    const predGrid = model === "obs" ? null : surf.models[model];
-    const diverging = residual && !!predGrid;
-    const grid = model === "obs" ? surf.iv :
-      (diverging ? residualGrid(surf.iv, predGrid) : predGrid);
+    const notes = [];
+    if (!hasModels) notes.push("model views need the prior snapshot day");
+
+    const cmpDate = cmpDateSel.value;
+    compareActive = false;
+    let surfB = null;
+
+    if (cmpDate) {
+      surfB = (SURF.surfaces[sym] || {})[cmpDate];
+      if (!surfB) {
+        notes.push(`no capture for ${sym} on ${cmpDate} (compare)`);
+        resetCmpModel();
+      } else {
+        compareActive = true;
+        const cmpHasModels = !!surfB.models;
+        setCmpModelButtonsEnabled(cmpHasModels);
+        if (!cmpHasModels && cmpModel !== "obs") {
+          cmpModel = "obs";
+          updateCmpModelButtonsUI();
+        }
+        if (!cmpHasModels) notes.push("compare model views need the prior snapshot day");
+      }
+    } else {
+      disableCmpModel();
+    }
+
+    if (notes.length) showNote(notes.join(" · ")); else hideNote();
+
+    let grid, diverging, predGridForTerms, missLabel = "miss (vol pts)";
+    if (compareActive) {
+      const gridA = gridFor(surf, model);
+      const gridB = alignRows(surf, surfB, gridFor(surfB, cmpModel));
+      grid = residualGrid(gridA, gridB);
+      diverging = true;
+      predGridForTerms = gridB;
+      missLabel = `Δ vs ${cmpDate} (vol pts)`;
+    } else {
+      const predGrid = model === "obs" ? null : surf.models[model];
+      diverging = residual && !!predGrid;
+      grid = model === "obs" ? surf.iv :
+        (diverging ? residualGrid(surf.iv, predGrid) : predGrid);
+      predGridForTerms = predGrid;
+    }
 
     geom = computeGeom(surf, grid, diverging);
-    renderTerms(surf, predGrid);
+    renderTerms(surf, predGridForTerms, missLabel);
     draw();
   }
 
