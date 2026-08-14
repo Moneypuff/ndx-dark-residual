@@ -18,15 +18,20 @@ on:
         description: "Force re-download of cached FINRA/Yahoo data (slower, fully fresh)"
         type: boolean
         default: false
-  # Auto-refresh at 9:00pm America/New_York every trading day (Mon-Fri). GitHub cron is
+  # Auto-refresh at 10:00pm America/New_York every trading day (Mon-Fri). GitHub cron is
   # fixed-UTC and cannot follow US daylight-saving, so BOTH candidate times fire and the `gate`
-  # job lets exactly one through -- whichever actually lands on 21:00 ET today. FINRA publishes
+  # job lets exactly one through -- whichever actually lands on 22:00 ET today. FINRA publishes
   # the session's consolidated short-volume file after ~5pm ET; Cboe's COR1M/DSPX and
-  # SqueezeMetrics' GEX+/DIX EOD files have been observed publishing as late as ~9:30-9:45pm ET
-  # some evenings, so 9pm (vs the previous 7pm) gives those a real buffer too.
+  # SqueezeMetrics' GEX+/DIX EOD files have been observed publishing anywhere from ~9:30pm ET to
+  # well past 10pm some evenings -- an earlier 7pm, then 9pm slot both still landed a session
+  # behind on nights the feed ran late, so this pushes the buffer to 10pm. (gex_catchup.yml picks
+  # up whatever this still misses, retrying hourly 11pm-6am ET -- an hour after this slot, so the
+  # two workflows never contend for the `pages` concurrency group at the same moment.) Minute
+  # offset to :07 (not :00) since scheduled workflows anchored exactly on the hour are a documented
+  # GitHub Actions congestion point and can queue for a while longer than an off-the-hour slot.
   schedule:
-    - cron: "0 1 * * 2-6"    # 01:00 UTC = 9:00pm ET during EDT (UTC-4), Mon-Fri ET (next UTC day)
-    - cron: "0 2 * * 2-6"    # 02:00 UTC = 9:00pm ET during EST (UTC-5), Mon-Fri ET (next UTC day)
+    - cron: "7 2 * * 2-6"    # 02:07 UTC = 10:00pm ET during EDT (UTC-4), Mon-Fri ET (next UTC day)
+    - cron: "7 3 * * 2-6"    # 03:07 UTC = 10:00pm ET during EST (UTC-5), Mon-Fri ET (next UTC day)
 
 # No `contents: write` -- the site is deployed as an artifact, so the workflow never pushes to
 # the repo. `pages: write` + `id-token: write` are what actions/deploy-pages needs.
@@ -41,14 +46,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Gate: proceed only when it is really 9:00pm ET on a weekday (so the "wrong" cron for the
+  # Gate: proceed only when it is really 10:00pm ET on a weekday (so the "wrong" cron for the
   # current DST offset is skipped), or on any manual/other trigger.
   gate:
     runs-on: ubuntu-latest
     outputs:
       proceed: ${{ steps.check.outputs.proceed }}
     steps:
-      - name: Decide whether to run (9:00pm ET on trading days)
+      - name: Decide whether to run (10:00pm ET on trading days)
         id: check
         run: |
           if [ "${{ github.event_name }}" != "schedule" ]; then
@@ -58,11 +63,11 @@ jobs:
           fi
           hour=$(TZ=America/New_York date +%H)
           dow=$(TZ=America/New_York date +%u)   # 1=Mon .. 7=Sun (ET local)
-          if [ "$hour" = "21" ] && [ "$dow" -ge 1 ] && [ "$dow" -le 5 ]; then
-            echo "21:00 ET on a weekday (dow=$dow) -> proceed."
+          if [ "$hour" = "22" ] && [ "$dow" -ge 1 ] && [ "$dow" -le 5 ]; then
+            echo "22:00 ET on a weekday (dow=$dow) -> proceed."
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Not 21:00 ET weekday (ET hour=$hour dow=$dow) -> skip."
+            echo "Not 22:00 ET weekday (ET hour=$hour dow=$dow) -> skip."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
           fi
 

@@ -3,24 +3,28 @@ name: GEX+ Catch-Up Refresh (gex_dispersion & regime_log)
 # gex_dispersion.html and regime_log.html both key off SqueezeMetrics' paid GEX+ feed (Cboe's
 # COR1M/DSPX matter too). That feed's publish time is unreliable -- SqueezeMetrics' own upstream
 # data providers have been observed publishing anywhere from ~9:45pm ET to well past 10pm, and
-# occasionally later still. refresh.yml's regular nightly build (~9pm ET) captures whatever has
+# occasionally later still. refresh.yml's regular nightly build (10pm ET) captures whatever has
 # published by then, which some nights is still the prior session.
 #
-# This workflow starts checking at 10pm ET and, if GEX+ hasn't published a new session yet,
-# retries every hour through 6am ET the next morning. The first retry that sees new data rebuilds
-# ONLY gex_dispersion.html + regime_log.html (every other page is carried over exactly as it is
-# currently live) and redeploys the site. If nothing new shows up by the 6am check, it gives up
-# for the night -- refresh.yml's own regular run still covers the rest of the site, and this cycle
-# starts again the next evening at 10pm.
+# This workflow starts checking at 11pm ET -- one hour after refresh.yml's own 10pm slot, so the
+# two never contend for the shared `pages` concurrency group at the same moment, and this always
+# runs strictly after that night's main build has had a chance to complete -- and, if GEX+ hasn't
+# published a new session yet, retries every hour through 6am ET the next morning. The first retry
+# that sees new data rebuilds ONLY gex_dispersion.html + regime_log.html (every other page is
+# carried over exactly as it is currently live) and redeploys the site. If nothing new shows up by
+# the 6am check, it gives up for the night -- refresh.yml's own regular run still covers the rest
+# of the site, and this cycle starts again the next evening at 11pm.
 
 on:
   workflow_dispatch: {}
-  # Every hour, 10pm-6am America/New_York. GitHub cron is fixed-UTC and can't follow US
+  # Every hour, 11pm-6am America/New_York. GitHub cron is fixed-UTC and can't follow US
   # daylight-saving, so this fires on a superset of UTC hours covering both the EDT and EST
-  # offsets for the 10pm-6am ET window; the gate below narrows it to the exact ET hour and
-  # confirms the session being chased is actually a trading weekday.
+  # offsets for the 11pm-6am ET window; the gate below narrows it to the exact ET hour and
+  # confirms the session being chased is actually a trading weekday. Minute offset to :07 (not
+  # :00), matching refresh.yml, to avoid the top-of-hour scheduler congestion GitHub Actions cron
+  # jobs are prone to.
   schedule:
-    - cron: "0 2-11 * * *"
+    - cron: "7 3-11 * * *"
 
 permissions:
   contents: read
@@ -34,15 +38,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Gate: proceed only during the 10pm-6am ET chase window, and only when the trading session
-  # being chased (today's close for the 10-11pm ET leg, yesterday's close for the midnight-6am
+  # Gate: proceed only during the 11pm-6am ET chase window, and only when the trading session
+  # being chased (today's close for the 11pm ET leg, yesterday's close for the midnight-6am
   # leg) actually falls on a weekday.
   gate:
     runs-on: ubuntu-latest
     outputs:
       proceed: ${{ steps.check.outputs.proceed }}
     steps:
-      - name: Decide whether to run (10pm-6am ET, chasing the last trading day's GEX+ close)
+      - name: Decide whether to run (11pm-6am ET, chasing the last trading day's GEX+ close)
         id: check
         run: |
           if [ "${{ github.event_name }}" != "schedule" ]; then
@@ -51,12 +55,12 @@ jobs:
             exit 0
           fi
           hour=$((10#$(TZ=America/New_York date +%H)))
-          if [ "$hour" -ge 22 ]; then
+          if [ "$hour" -ge 23 ]; then
             dow=$(TZ=America/New_York date +%u)              # chasing today's close
           elif [ "$hour" -le 6 ]; then
             dow=$(TZ=America/New_York date -d yesterday +%u) # chasing yesterday's close
           else
-            echo "Outside the 10pm-6am ET window (ET hour=$hour) -> skip."
+            echo "Outside the 11pm-6am ET window (ET hour=$hour) -> skip."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
