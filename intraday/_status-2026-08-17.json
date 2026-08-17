@@ -1,6 +1,6 @@
 {
  "date": "2026-08-17",
- "captured_utc": "2026-08-17T17:53:56+00:00",
+ "captured_utc": "2026-08-17T18:54:11+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 1051
+   "rows": 1054
   },
   "EEM": {
    "ok": true,
@@ -50,7 +50,7 @@
   "VTV": {
    "ok": true,
    "expiries": 4,
-   "rows": 151
+   "rows": 152
   },
   "VUG": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 9,
-   "rows": 996
+   "rows": 997
   },
   "XLF": {
    "ok": true,
@@ -70,12 +70,12 @@
   "XLV": {
    "ok": true,
    "expiries": 8,
-   "rows": 615
+   "rows": 619
   },
   "XLY": {
    "ok": true,
    "expiries": 8,
-   "rows": 607
+   "rows": 603
   },
   "XLP": {
    "ok": true,
@@ -130,12 +130,12 @@
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1092
+   "rows": 1097
   },
   "GOOGL": {
    "ok": true,
    "expiries": 11,
-   "rows": 1106
+   "rows": 1119
   },
   "NVDA": {
    "ok": true,
@@ -150,12 +150,12 @@
   "MSFT": {
    "ok": true,
    "expiries": 10,
-   "rows": 1242
+   "rows": 1241
   },
   "META": {
    "ok": true,
    "expiries": 11,
-   "rows": 1434
+   "rows": 1425
   },
   "AMD": {
    "ok": true,
@@ -170,7 +170,7 @@
   "CRWV": {
    "ok": true,
    "expiries": 10,
-   "rows": 684
+   "rows": 688
   },
   "IONQ": {
    "ok": true,
@@ -195,17 +195,17 @@
   "SPCX": {
    "ok": true,
    "expiries": 10,
-   "rows": 710
+   "rows": 713
   },
   "DRAM": {
    "ok": true,
    "expiries": 11,
-   "rows": 962
+   "rows": 953
   },
   "USO": {
    "ok": true,
    "expiries": 8,
-   "rows": 1290
+   "rows": 1291
   },
   "GLD": {
    "ok": true,
@@ -215,7 +215,7 @@
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1170
+   "rows": 1167
   },
   "IBIT": {
    "ok": true,
@@ -230,17 +230,17 @@
   "EWY": {
    "ok": true,
    "expiries": 9,
-   "rows": 892
+   "rows": 896
   },
   "NBIS": {
    "ok": true,
    "expiries": 10,
-   "rows": 738
+   "rows": 732
   },
   "AAOI": {
    "ok": true,
    "expiries": 8,
-   "rows": 577
+   "rows": 581
   }
  }
 }
