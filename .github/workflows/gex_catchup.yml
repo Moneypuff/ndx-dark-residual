@@ -113,7 +113,7 @@ jobs:
         run: |
           mkdir -p docs
           touch docs/.nojekyll
-          for f in index.html comovement.html vol_tracker.html earnings.html; do
+          for f in index.html comovement.html vol_tracker.html vol_surface.html earnings.html; do
             curl -fsSL "https://moneypuff.github.io/ndx-dark-residual/$f" -o "docs/$f"
           done
           curl -fsSL "https://moneypuff.github.io/ndx-dark-residual/gex_dispersion.html" \
