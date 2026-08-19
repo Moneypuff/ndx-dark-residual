@@ -215,6 +215,85 @@ def test_tilt_spread_sign_and_guard():
     assert out2["spread"].isna().all()
 
 
+def test_tilt_spread_raw_print_variant():
+    # ma_window=1 must rank on the single-row print, not a trailing MA. Group
+    # A spikes on the last row only (raw tilt ~0.49, 5-row-MA tilt ~0.09);
+    # group B has run mildly hot for 5 rows (~0.14 either way). Under the raw
+    # variant the top quantile is A; under the MA variant it is B -- so the
+    # two constructions must pick different Q5 forward returns.
+    n_days, n_names = 60, 60
+    idx = _bdays(n_days)
+    names = [f"N{i:02d}" for i in range(n_names)]
+    d = pd.DataFrame(0.4, index=idx, columns=names)
+    d.iloc[-1, :12] = 0.9              # group A: one-day spike
+    d.iloc[-5:, 12:24] = 0.55          # group B: persistently warm
+    fwd = pd.DataFrame(1.0, index=idx, columns=names)
+    fwd.iloc[:, :12] = -5.0            # A underperforms
+    fwd.iloc[:, 12:24] = 7.0           # B outperforms
+    raw = S.tilt_spread(d, fwd, names, min_names=50, min_obs=10, ma_window=1)
+    ma = S.tilt_spread(d, fwd, names, min_names=50, min_obs=10, ma_window=5)
+    assert raw["q5"].iloc[-1] == pytest.approx(-5.0)
+    assert ma["q5"].iloc[-1] == pytest.approx(7.0)
+
+
+# ---------------------------------------------------------------------------
+# assemble_frame (the shared per-index frame builder)
+# ---------------------------------------------------------------------------
+def test_assemble_frame_columns_and_zones():
+    rng = np.random.default_rng(10)
+    n = 320
+    idx = _bdays(n)
+    base = rng.normal(0, 1, n)
+    px = pd.DataFrame(
+        {f"N{i:02d}": 100.0 * np.cumprod(1 + (0.6 * base + rng.normal(0, 1, n)) / 100)
+         for i in range(35)}, index=idx)
+    proxy = pd.Series(100.0 * np.cumprod(1 + base / 100), index=idx)
+    dix = pd.Series(0.45 + 0.05 * np.sin(np.arange(n) / 10), index=idx)
+    r1m = pd.Series((proxy.shift(-21) / proxy - 1) * 100, index=idx)
+    M = S.assemble_frame(px, proxy, dix, r1m)
+    for col in ("avg_corr", "disp21", "breadth", "dix5", "r1m", "rv", "tr21",
+                "cz_full", "dz_full", "cz_exp", "dz_exp", "zDIX", "zCORR",
+                "zRV", "tape", "tilt_spread"):
+        assert col in M.columns
+    # frame starts only once the gauges exist, and zones cover every row
+    assert M["avg_corr"].notna().all() and M["dix5"].notna().all()
+    assert set(M["cz_full"]) <= set(S.ZONES)
+    assert set(M["dz_full"]) <= set(S.DZONES)
+    # expanding zones are NA until EXP_MIN observations have accrued
+    assert (M["cz_exp"].iloc[: S.EXP_MIN - 1] == "NA").all()
+    # no per-name dark panel was attached -> tilt columns exist but are empty
+    assert M["tilt_spread"].isna().all()
+    # full-sample corr zones split ~30/40/30
+    frac_low = (M["cz_full"] == "LowCorr").mean()
+    assert 0.2 < frac_low < 0.4
+
+
+# ---------------------------------------------------------------------------
+# spx_weekly_tilt (payload plumbing guards)
+# ---------------------------------------------------------------------------
+def test_spx_weekly_tilt_missing_and_mismatched_payloads():
+    assert S.spx_weekly_tilt({}) is None
+    P = {"spx_grid": {"dates": ["2024-01-05", "2024-01-12"]},
+         "spx_rel": {"d": {"AAA": [0.4, 0.4, 0.4]},       # length mismatch
+                     "r21": {"AAA": [1.0, 2.0, 3.0]}}}
+    assert S.spx_weekly_tilt(P) is None
+
+
+def test_spx_weekly_tilt_aligned_payload():
+    n, n_names = 40, 60
+    dates = [d.strftime("%Y-%m-%d") for d in _bdays(n)]
+    names = [f"N{i:02d}" for i in range(n_names)]
+    d = {t: [0.4] * n for t in names}
+    r21 = {t: [5.0] * n for t in names}
+    for t in names[:12]:              # elevated tilt names underperform
+        d[t] = [0.4] * (n - 1) + [0.9]
+        r21[t] = [5.0] * (n - 1) + [-5.0]
+    P = {"spx_grid": {"dates": dates}, "spx_rel": {"d": d, "r21": r21}}
+    out = S.spx_weekly_tilt(P)
+    assert out is not None
+    assert out["spread"].iloc[-1] < 0
+
+
 # ---------------------------------------------------------------------------
 # tape_label
 # ---------------------------------------------------------------------------

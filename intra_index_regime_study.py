@@ -3,11 +3,12 @@
 Intra-index comovement regimes x DIX -> 1-month forward return study.
 =====================================================================
 
-Question (per request): the NDX-100 behaves differently depending on the
-regime INSIDE the index. At times all ~100 stocks rally together and
-correlation is high; in lower-correlation periods only a certain group
-rallies while the rest sells off. Divide the data into such regimes within
-the index and dig into how the DIX reads inside each one:
+Question (per request): an index behaves differently depending on the regime
+INSIDE it. At times all constituents rally together and correlation is high;
+in lower-correlation periods only a certain group rallies while the rest
+sells off. Divide the data into such regimes within each index -- NDX-100,
+S&P 500 and Russell 2000 / IWM -- and dig into how each index's DIX reads
+inside each one:
 
     1. Does the index's own dark-flow gauge (DIX5) predict differently in
        high- vs low-comovement regimes?
@@ -17,14 +18,13 @@ the index and dig into how the DIX reads inside each one:
 Regime construction (per day t, trailing windows only -- no look-ahead in
 the signal)
 -----------------------------------------------------------------------
-From the per-name split-adjusted closes packed in the dashboard payload
-(`P.rel.close`, the NDX-100 grid names) we build daily % returns and three
-comovement gauges over a trailing 21-session window:
+From per-name daily prices we build daily % returns and three comovement
+gauges over a trailing 21-session window:
 
     AVG_CORR  -- equal-weight average pairwise correlation of daily returns
-                 across all names with a full window (the "do the 100 stocks
+                 across all names with a full window (the "do the stocks
                  move together" gauge; the same quantity Cboe's implied-
-                 correlation indices proxy, here realized and NDX-internal).
+                 correlation indices proxy, here realized and index-internal).
     DISP21    -- 21-session mean of the daily cross-sectional std of returns
                  (how far apart the names land on a given day).
     BREADTH   -- fraction of names with a positive trailing 21-session
@@ -34,57 +34,70 @@ AVG_CORR is the primary regime axis, split Low/Mid/High on a 30/40/30 basis
 (matching the comovement study's Low/Mid/High convention). Two bases are
 reported: full-sample cutoffs (mild look-ahead) and EXPANDING cutoffs (each
 day ranked only against its own past, min 250 obs -- what a live trader
-could have known). The DIX side is the payload's dollar-DIX smoothed to a
+could have known). The DIX side is each index's dollar-DIX smoothed to a
 5-day MA (DIX5), zoned Low/Mid/High the same two ways.
 
-Outcomes
---------
-Index outcome: QQQ 1-month (21-session) forward return from the payload
-(`P.rel.r21[P.bench]`, %). Cross-sectional outcome: per-name 1-month forward
-returns (`P.rel.r21`, adjusted closes -- no look-ahead in either).
+Per-index inputs
+----------------
+    NDX  -- everything from the dashboard payload: per-name split-adjusted
+            closes (`P.rel.close`, the NDX-100 grid names), raw dark ratios
+            (`P.rel.d`), the NDX dollar-DIX and QQQ forward returns. The
+            packed closes are validated per name against the payload's own
+            adjusted r21 (names below --min-valid-corr are dropped;
+            dividends leave the rest ~0.995+).
+    SPX  -- the payload carries only index-level series for the S&P 500
+            reconstruction, so the comovement gauges come from a fetched
+            basket: the top --basket-size IVV names by weight, daily
+            adjusted closes via Yahoo (same incremental cache as the other
+            builds). DIX/outcome: `P.spx.dix` and `P.spx.r21` (SPY).
+    IWM  -- same construction over the top --basket-size iShares IWM names;
+            DIX/outcome from `P.iwm.d` / `P.iwm.r21`. NOTE: 100 of ~2000
+            names is a behavioral proxy for the small-cap tape, not a
+            replication of the index's weight (coverage is printed).
 
 Per-name dark-flow tilt (for the "which group rallies" test): each name's
-5-day MA of its raw daily dark ratio minus its own expanding mean (min 60
-obs) -- the dashboard's "name-specific vs own average" signal. Each day the
-names are split at the 20th/80th tilt percentiles and the equal-weight
-Q5-minus-Q1 forward-return spread is recorded.
+5-day-MA raw dark ratio minus its own expanding mean (min 60 obs) -- the
+dashboard's "name-specific vs own average" signal. Each day the names are
+split at the 20th/80th tilt percentiles and the equal-weight Q5-minus-Q1
+forward-return spread is recorded. Daily panels exist only for NDX; for the
+S&P 500 the payload's `spx_rel` block (501 names, weekly-sampled to the
+`spx_grid` dates) supports a WEEKLY variant with the raw single-day print
+in place of the 5d MA (min 12 weekly obs); IWM has no per-name panel.
 
-Beyond the regime tables the study reports:
-  * an INTERACTION regression -- QQQ r1m on zDIX, zCORR, zDIX*zCORR with
+Beyond the regime tables the study reports, per index:
+  * an INTERACTION regression -- r1m on zDIX, zCORR, zDIX*zCORR with
     Newey-West (HAC, 21-lag) errors, with and without a realized-vol
-    control (AVG_CORR and index vol are ~0.8 correlated; the control asks
-    which one carries the signal);
-  * a TAPE taxonomy -- trailing 21d QQQ return sign x breadth tercile
+    control (AVG_CORR and index vol are highly correlated; the control
+    asks which one carries the signal);
+  * a TAPE taxonomy -- trailing 21d index return sign x breadth tercile
     ("broad rally", "narrow rally", "broad selloff", ...) with each tape's
-    forward return and DIX split, quantifying the requested "all rally vs
-    only a certain group rallies" distinction directly;
+    forward return and DIX split;
   * a REGIME-ENTRY event study (first day the comovement regime forms,
     21-session cool-down) on the expanding (live-knowable) basis;
   * BLOCK-BOOTSTRAP 95% CIs (21-day moving blocks) on regime means;
   * an OUT-OF-SAMPLE split (cutoffs and loadings fitted < 2024, evaluated
     on 2024+);
-  * an optional cross-check of AVG_CORR against the GEX/dispersion
+and across indices:
+  * the pairwise correlation of the three AVG_CORR gauges, the share of
+    days the three comovement regimes agree, and each index's forward
+    return by how many of the three sit in LowCorr;
+  * an optional cross-check of NDX AVG_CORR against the GEX/dispersion
     barometer's realized top-50 SPX correlation and Cboe's COR1M implied
     correlation (pass --barometer docs/gex_dispersion.html).
 
-Scope: NDX only. The payload packs full-history per-name closes only for
-the NDX-100 grid; the S&P 500 / IWM reconstructions carry index-level
-series (plus per-name forward returns without closes), so their intra-index
-gauges would need a constituent price fetch (see build_gex_dispersion.py's
-top-50 basket for the pattern).
-
 Data source
 -----------
-Everything is read from the JSON payload embedded in the built dashboard
-(`docs/index.html`), plain `const P = {...}` or compressed `const PZ =
-"<base64 deflate>"`. The packed close panel is split-adjusted (Yahoo chart
-closes) but not dividend-adjusted; each name's compounded 21-session close
-return is validated against the payload's own adjusted r21 and names below
---min-valid-corr are dropped (dividends leave the rest ~0.995+).
+The payload is read from the built dashboard (`docs/index.html`), plain
+`const P = {...}` or compressed `const PZ = "<base64 deflate>"`. SPX/IWM
+constituent lists come from iShares' fund documents (cached to JSON so an
+offline re-run keeps working) and their prices from Yahoo via
+`load_yahoo_panels` (incrementally cached). `--indices ndx` runs fully
+offline against the payload alone.
 
 Usage
 -----
-    python intra_index_regime_study.py                        # text report
+    python intra_index_regime_study.py                        # all three
+    python intra_index_regime_study.py --indices ndx          # offline
     python intra_index_regime_study.py --csv intra_index_regimes.csv
     python intra_index_regime_study.py --barometer docs/gex_dispersion.html
 """
@@ -95,6 +108,7 @@ import math
 import re
 import sys
 import zlib
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -103,12 +117,16 @@ WINDOW = 21            # trailing window for the comovement gauges (= 1 month)
 MIN_NAMES = 30         # min names with a full window before a gauge is defined
 TILT_MIN_NAMES = 50    # min names before the daily tilt quantile split is scored
 TILT_MIN_OBS = 60      # min history before a name's expanding tilt mean is used
+TILT_MIN_OBS_WEEKLY = 12   # same guard in weekly rows (the spx_rel cadence)
 BOOT_B = 2000          # bootstrap replications
 BOOT_L = 21            # moving-block length (= the forward-return horizon)
 EXP_MIN = 250          # min history before an expanding-window zone is defined
 OOS_SPLIT = "2024-01-01"
+BASKET_N = 100         # default basket size for the fetched SPX/IWM universes
+FETCH_START = "2019-10-01"   # SPX/IWM DIX starts 2020-01; buffer for the 21d warm-up
 ZONES = ("LowCorr", "MidCorr", "HighCorr")
 DZONES = ("DIXLow", "DIXMid", "DIXHigh")
+IDX_PROXY = {"NDX": "QQQ", "SPX": "SPY", "IWM": "IWM"}
 
 
 def load_payload(html_path):
@@ -217,6 +235,11 @@ def panel_from(rel, key, dates):
          for t, s in rel[key].items()}, index=dates)
 
 
+def series_from(values, dates):
+    return pd.Series([np.nan if v is None else float(v) for v in values],
+                     index=dates, dtype="float64")
+
+
 def daily_returns(close):
     """Per-name daily % returns. A return needs BOTH endpoints present, so a
     gap in the close series never manufactures a multi-day 'daily' move."""
@@ -286,12 +309,13 @@ def breadth_positive(close, window=WINDOW, min_names=MIN_NAMES):
 
 
 def tilt_spread(dpan, r21, names, q=(0.20, 0.80), min_names=TILT_MIN_NAMES,
-                min_obs=TILT_MIN_OBS):
-    """Daily equal-weight Q5-minus-Q1 forward-return spread on the per-name
-    dark-flow TILT (5d MA of the raw dark ratio minus the name's own
-    expanding mean, min `min_obs`). Returns a DataFrame with q5/q1/spread
-    (%, 21-session forward)."""
-    d5 = dpan[names].rolling(5, min_periods=3).mean()
+                min_obs=TILT_MIN_OBS, ma_window=5):
+    """Per-row equal-weight Q5-minus-Q1 forward-return spread on the per-name
+    dark-flow TILT (`ma_window`-row MA of the raw dark ratio minus the name's
+    own expanding mean, min `min_obs` rows). Rows are usually days;
+    ma_window=1 gives the raw-print variant for weekly-sampled panels.
+    Returns a DataFrame with q5/q1/spread (%, 21-session forward)."""
+    d5 = dpan[names].rolling(ma_window, min_periods=max(1, ma_window - 2)).mean()
     tilt = d5 - dpan[names].expanding(min_periods=min_obs).mean()
     T = tilt.to_numpy(dtype=float)
     F = r21[names].to_numpy(dtype=float)
@@ -334,35 +358,21 @@ def tape_label(tr_index, breadth, blo, bhi):
 # ----------------------------------------------------------------------------
 # Frame construction
 # ----------------------------------------------------------------------------
-def build_frame(P, min_valid_corr=0.98):
-    """Per-day frame of the comovement gauges, DIX5, tape label, dark-flow
-    tilt spread and the QQQ forward return. Returns (frame, meta-dict)."""
-    rel = P["rel"]
-    bench = P["bench"]
-    dates = pd.to_datetime(rel["dates"])
-    close = panel_from(rel, "close", dates)
-    dpan = panel_from(rel, "d", dates)
-    r21 = panel_from(rel, "r21", dates)
-    dix = pd.Series([np.nan if v is None else float(v) for v in rel["ndx_dix"]],
-                    index=dates, dtype="float64")
-
-    all_names = [c for c in close.columns if c != bench]
-    ok, dropped = validate_names(close[all_names], r21, min_corr=min_valid_corr)
-    names = ok
-
-    ret = daily_returns(close[names])
-    M = pd.DataFrame(index=dates)
+def assemble_frame(px, proxy_close, dix, r1m):
+    """Per-day frame of the comovement gauges (from the per-name price panel
+    `px`), DIX5, tape label and the index's forward return. `proxy_close` is
+    the index proxy's own price series (QQQ/SPY/IWM) for the vol control and
+    the trailing-return leg of the tape."""
+    ret = daily_returns(px)
+    M = pd.DataFrame(index=px.index)
     M["avg_corr"] = avg_pairwise_corr(ret)
     M["disp21"] = cross_sectional_dispersion(ret)
-    M["breadth"] = breadth_positive(close[names])
-    M["dix5"] = dix.rolling(5, min_periods=3).mean()
-    M["qqq_r1m"] = r21[bench]
-    qqq_ret = daily_returns(close[[bench]])[bench]
-    M["qqq_rv"] = qqq_ret.rolling(WINDOW).std(ddof=0) * np.sqrt(252)
-    M["qqq_tr21"] = (close[bench] / close[bench].shift(WINDOW) - 1.0) * 100.0
-
-    sp = tilt_spread(dpan, r21, [n for n in names if n in dpan.columns])
-    M[["tilt_q5", "tilt_q1", "tilt_spread"]] = sp[["q5", "q1", "spread"]]
+    M["breadth"] = breadth_positive(px)
+    M["dix5"] = dix.reindex(px.index).rolling(5, min_periods=3).mean()
+    M["r1m"] = r1m.reindex(px.index)
+    pret = daily_returns(proxy_close.to_frame("p"))["p"]
+    M["rv"] = pret.rolling(WINDOW).std(ddof=0) * np.sqrt(252)
+    M["tr21"] = (proxy_close / proxy_close.shift(WINDOW) - 1.0) * 100.0
 
     M = M[M["avg_corr"].notna() & M["dix5"].notna()].copy()
 
@@ -372,17 +382,113 @@ def build_frame(P, min_valid_corr=0.98):
         M[prefix + "z_exp"] = zones_30_40_30(M[col], "expanding", labels)
 
     # z-scores for the regressions (full-sample; the OOS section refits its own)
-    for col, z in (("dix5", "zDIX"), ("avg_corr", "zCORR"), ("qqq_rv", "zRV")):
+    for col, z in (("dix5", "zDIX"), ("avg_corr", "zCORR"), ("rv", "zRV")):
         M[z] = (M[col] - M[col].mean()) / M[col].std(ddof=0)
 
     # tape taxonomy (breadth terciles are full-sample cutoffs; descriptive)
     blo, bhi = M["breadth"].quantile([1 / 3, 2 / 3])
-    M["tape"] = [tape_label(t, b, blo, bhi)
-                 for t, b in zip(M["qqq_tr21"], M["breadth"])]
+    M["tape"] = [tape_label(t, b, blo, bhi) for t, b in zip(M["tr21"], M["breadth"])]
+    if "tilt_spread" not in M.columns:
+        M[["tilt_q5", "tilt_q1", "tilt_spread"]] = np.nan
+    return M
 
-    meta = {"names": names, "dropped": dropped, "bench": bench,
-            "breadth_cuts": (float(blo), float(bhi))}
+
+def build_ndx_frame(P, min_valid_corr=0.98):
+    """NDX frame straight from the payload (plus the daily tilt spread).
+    Returns (frame, meta-dict)."""
+    rel = P["rel"]
+    bench = P["bench"]
+    dates = pd.to_datetime(rel["dates"])
+    close = panel_from(rel, "close", dates)
+    dpan = panel_from(rel, "d", dates)
+    r21 = panel_from(rel, "r21", dates)
+    dix = series_from(rel["ndx_dix"], dates)
+
+    all_names = [c for c in close.columns if c != bench]
+    names, dropped = validate_names(close[all_names], r21, min_corr=min_valid_corr)
+    M = assemble_frame(close[names], close[bench], dix, r21[bench])
+    sp = tilt_spread(dpan, r21, [n for n in names if n in dpan.columns])
+    M[["tilt_q5", "tilt_q1", "tilt_spread"]] = sp[["q5", "q1", "spread"]].reindex(M.index)
+    meta = {"names": len(names), "dropped": dropped, "proxy": bench,
+            "note": f"{len(names)} payload grid names"}
     return M, meta
+
+
+def load_basket_prices(index_key, basket_n, cache_dir, refresh=False):
+    """(per-name adjclose panel, proxy adjclose series, note) for SPX/IWM:
+    top `basket_n` iShares holdings by weight (holdings cached to JSON so an
+    offline re-run keeps working), prices via the shared Yahoo cache."""
+    import ndx_dark_residual as N
+    pid, fund = ((N.IVV_PORTFOLIO_ID, "IVV S&P 500") if index_key == "SPX"
+                 else (N.IWM_PORTFOLIO_ID, "IWM Russell 2000"))
+    proxy = IDX_PROXY[index_key]
+    wcache = (Path(cache_dir) / f"intra_regime_{index_key.lower()}_weights.json"
+              if cache_dir else None)
+    tickers, weights = [], {}
+    try:
+        tickers, weights = N.fetch_ishares_holdings(pid, label=fund, return_weights=True)
+    except Exception as e:                                   # noqa: BLE001
+        print(f"  ! {fund} holdings fetch failed ({e})", file=sys.stderr)
+    if tickers and weights:
+        if wcache:
+            wcache.parent.mkdir(parents=True, exist_ok=True)
+            wcache.write_text(json.dumps({"tickers": tickers, "weights": weights}))
+    elif wcache and wcache.exists():
+        print(f"  ! using cached {fund} holdings", file=sys.stderr)
+        d = json.loads(wcache.read_text())
+        tickers, weights = d["tickers"], d["weights"]
+    if not tickers or not weights:
+        raise RuntimeError(f"no {fund} holdings/weights available (fetch failed, no cache)")
+
+    w = pd.Series({t: weights[t] for t in tickers if weights.get(t)},
+                  dtype="float64").sort_values(ascending=False).head(basket_n)
+    coverage = float(w.sum())
+    basket = [N.to_yahoo_symbol(t) for t in w.index]
+    end = pd.Timestamp.today().normalize() + pd.Timedelta(days=1)
+    panels = N.load_yahoo_panels(sorted(set(basket + [proxy])), FETCH_START, end,
+                                 cache_dir=cache_dir or None, refresh=refresh,
+                                 label=f"REGIME-{index_key}")
+    adj = panels["adjclose"].dropna(how="all")
+    have = [s for s in basket if s in adj.columns and adj[s].notna().sum() > WINDOW]
+    note = (f"top {len(have)} {fund} names by weight "
+            f"({coverage:.1f}% of the index pre-normalization)")
+    return adj[have], adj[proxy], note
+
+
+def build_basket_frame(P, index_key, basket_n, cache_dir, refresh=False):
+    """SPX/IWM frame: fetched-basket gauges + payload DIX/forward return.
+    Returns (frame, meta-dict). Raises RuntimeError when the basket cannot
+    be built (offline with a cold cache)."""
+    node = P["spx"] if index_key == "SPX" else P["iwm"]
+    dates = pd.to_datetime(node["dates"])
+    dix = series_from(node["dix" if index_key == "SPX" else "d"], dates)
+    r1m = series_from(node["r21"], dates)
+    px, proxy_close, note = load_basket_prices(index_key, basket_n, cache_dir, refresh)
+    # restrict the price panel to the DIX's own span (assemble_frame trims the
+    # rest); reindex DIX/outcome onto the price calendar
+    px = px[px.index >= dates.min() - pd.Timedelta(days=60)]
+    M = assemble_frame(px, proxy_close, dix, r1m)
+    return M, {"names": px.shape[1], "dropped": {}, "proxy": IDX_PROXY[index_key],
+               "note": note}
+
+
+def spx_weekly_tilt(P):
+    """Weekly-cadence tilt spread for the S&P 500 from the payload's
+    `spx_rel` block (per-name raw dark ratio + adjusted r21, sampled to the
+    `spx_grid` dates). Returns a spread DataFrame on those dates, or None
+    when the payload lacks the block."""
+    sr = P.get("spx_rel")
+    sg = P.get("spx_grid")
+    if not sr or not sg or not sg.get("dates"):
+        return None
+    dates = pd.to_datetime(sg["dates"])
+    if any(len(v) != len(dates) for v in sr.get("d", {}).values()):
+        return None
+    dpan = panel_from(sr, "d", dates)
+    r21 = panel_from(sr, "r21", dates)
+    names = [c for c in dpan.columns if c in r21.columns]
+    return tilt_spread(dpan, r21, names, min_names=TILT_MIN_NAMES,
+                       min_obs=TILT_MIN_OBS_WEEKLY, ma_window=1)
 
 
 # ----------------------------------------------------------------------------
@@ -400,7 +506,7 @@ def fmt_stats(r, with_ci=True, seed=0):
     return s
 
 
-def describe_regimes(M, zcol, with_ci=True):
+def describe_regimes(M, zcol, proxy, with_ci=True):
     lines = [f"=== COMOVEMENT REGIMES ({zcol}; 30/40/30 split of AVG_CORR) ==="]
     seed = 0
     for z in ZONES:
@@ -411,8 +517,8 @@ def describe_regimes(M, zcol, with_ci=True):
         lines.append(
             f"  {z:9s} n={len(sub):4d}  avg_corr {sub['avg_corr'].mean():.2f}  "
             f"disp {sub['disp21'].mean():.2f}%  breadth {sub['breadth'].mean():.2f}  "
-            f"QQQvol {sub['qqq_rv'].mean():4.1f}  ->  QQQ 1m "
-            + fmt_stats(sub["qqq_r1m"], with_ci, seed=seed))
+            f"{proxy}vol {sub['rv'].mean():4.1f}  ->  {proxy} 1m "
+            + fmt_stats(sub["r1m"], with_ci, seed=seed))
     return "\n".join(lines)
 
 
@@ -450,27 +556,28 @@ def dix_by_corr_table(M, czone_col, dzone_col, with_ci=True):
             if not len(sub):
                 continue
             seed += 1
-            r = sub["qqq_r1m"].dropna()
+            r = sub["r1m"].dropna()
             lo, hi = block_boot_ci(r.to_numpy(), seed=seed) if with_ci else (np.nan, np.nan)
+            sp = sub["tilt_spread"].dropna()
             rows.append({
                 "corr_regime": cz, "dix_regime": dz, "n_days": len(sub),
-                "qqq_mean": round(float(r.mean()), 2) if len(r) else np.nan,
-                "qqq_med": round(float(r.median()), 2) if len(r) else np.nan,
-                "qqq_hit": round(float((r > 0).mean() * 100)) if len(r) else np.nan,
+                "mean": round(float(r.mean()), 2) if len(r) else np.nan,
+                "med": round(float(r.median()), 2) if len(r) else np.nan,
+                "hit": round(float((r > 0).mean() * 100)) if len(r) else np.nan,
                 "ci_lo": round(lo, 2) if np.isfinite(lo) else np.nan,
                 "ci_hi": round(hi, 2) if np.isfinite(hi) else np.nan,
-                "spread_mean": round(float(sub["tilt_spread"].mean()), 2),
+                "spread_mean": round(float(sp.mean()), 2) if len(sp) else np.nan,
             })
     return pd.DataFrame(rows)
 
 
-def interaction_report(M):
-    lines = ["=== INTERACTION REGRESSION (QQQ r1m; Newey-West 21-lag t-stats) ===",
+def interaction_report(M, proxy):
+    lines = [f"=== INTERACTION REGRESSION ({proxy} r1m; Newey-West 21-lag t-stats) ===",
              "  Does the DIX read differently by comovement regime? zRV controls for",
              "  the corr<->vol overlap (corr(zCORR,zRV)="
              f"{M['zCORR'].corr(M['zRV']):.2f})."]
-    d = M[["qqq_r1m", "zDIX", "zCORR", "zRV"]].dropna()
-    y = d["qqq_r1m"].to_numpy()
+    d = M[["r1m", "zDIX", "zCORR", "zRV"]].dropna()
+    y = d["r1m"].to_numpy()
     inter = (d["zDIX"] * d["zCORR"]).to_numpy()
     specs = [
         ("r1m ~ zDIX + zCORR + zDIX*zCORR",
@@ -488,10 +595,13 @@ def interaction_report(M):
     return "\n".join(lines)
 
 
-def spread_report(M, czone_col):
-    lines = ["=== PER-NAME DARK-FLOW TILT: Q5-minus-Q1 1-month spread by regime ===",
-             "  tilt = 5d-MA raw dark ratio minus the name's own expanding mean;",
+def spread_report(M, czone_col, cadence="daily"):
+    lines = [f"=== PER-NAME DARK-FLOW TILT ({cadence}): Q5-minus-Q1 1-month spread "
+             "by regime ===",
+             "  tilt = MA raw dark ratio minus the name's own expanding mean;",
              "  spread = mean fwd r21 of top-20% tilt names minus bottom-20%."]
+    if M["tilt_spread"].notna().sum() == 0:
+        return lines[0] + "\n  (no per-name dark-flow panel for this index)"
     seed = 300
     for z in ZONES:
         sub = M[M[czone_col] == z]
@@ -509,8 +619,8 @@ def spread_report(M, czone_col):
     return "\n".join(lines)
 
 
-def tape_report(M, with_ci=True):
-    lines = ["=== TAPE TAXONOMY (trailing 21d QQQ sign x breadth tercile) ===",
+def tape_report(M, proxy, with_ci=True):
+    lines = [f"=== TAPE TAXONOMY (trailing 21d {proxy} sign x breadth tercile) ===",
              "  'all stocks rally' vs 'only a certain group rallies', counted directly."]
     order = ["broad rally", "mid rally", "narrow rally",
              "selective selloff", "mid selloff", "broad selloff"]
@@ -521,15 +631,15 @@ def tape_report(M, with_ci=True):
             continue
         seed += 1
         lines.append(f"  {tape:18s} n={len(sub):4d}  avg_corr {sub['avg_corr'].mean():.2f}  "
-                     f"->  QQQ 1m " + fmt_stats(sub["qqq_r1m"], with_ci, seed=seed))
-    # DIX inside the two rally tapes with enough days
+                     f"->  {proxy} 1m " + fmt_stats(sub["r1m"], with_ci, seed=seed))
+    # DIX inside the tapes with enough days
     for tape in ("broad rally", "mid rally", "narrow rally", "broad selloff"):
         sub = M[M["tape"] == tape]
         if len(sub) < 120:
             continue
         parts = []
         for dz in DZONES:
-            r = sub[sub["dz_full"] == dz]["qqq_r1m"].dropna()
+            r = sub[sub["dz_full"] == dz]["r1m"].dropna()
             parts.append(f"{dz} {r.mean():+.2f}% (n={len(r)})" if len(r) else f"{dz} --")
         lines.append(f"    {tape} by DIX: " + "   ".join(parts))
     return "\n".join(lines)
@@ -547,7 +657,7 @@ def entry_events(M, mask, min_gap=WINDOW):
     return entries
 
 
-def entry_report(M, czone_col, dzone_col):
+def entry_report(M, czone_col, dzone_col, proxy):
     lines = [f"=== REGIME-ENTRY EVENT STUDY ({czone_col} basis; first day the "
              "condition forms, 21-session cool-down) ==="]
     conds = [
@@ -562,14 +672,14 @@ def entry_report(M, czone_col, dzone_col):
         if not idx:
             lines.append(f"  {label:26s} entries=  0")
             continue
-        r = M["qqq_r1m"].iloc[idx].dropna()
+        r = M["r1m"].iloc[idx].dropna()
         last = M.index[idx[-1]].date()
-        lines.append(f"  {label:26s} entries={len(idx):3d}  QQQ " + fmt_stats(r, with_ci=False)
-                     + f"   [last entry {last}]")
+        lines.append(f"  {label:26s} entries={len(idx):3d}  {proxy} "
+                     + fmt_stats(r, with_ci=False) + f"   [last entry {last}]")
     return "\n".join(lines)
 
 
-def oos_report(M):
+def oos_report(M, proxy):
     """Cutoffs and loadings fitted < OOS_SPLIT, evaluated on the rest."""
     tr = M[M.index < OOS_SPLIT]
     te = M[M.index >= OOS_SPLIT].copy()
@@ -585,13 +695,13 @@ def oos_report(M):
 
     te["cz_oos"] = zone_by_train("avg_corr", ZONES)
     te["dz_oos"] = zone_by_train("dix5", DZONES)
-    base = te["qqq_r1m"].dropna()
-    lines.append(f"  test baseline: QQQ {base.mean():+.2f}% (hit {100 * (base > 0).mean():.0f}%, "
-                 f"n={len(base)})")
+    base = te["r1m"].dropna()
+    lines.append(f"  test baseline: {proxy} {base.mean():+.2f}% "
+                 f"(hit {100 * (base > 0).mean():.0f}%, n={len(base)})")
     for cz in ZONES:
         parts = []
         for dz in DZONES:
-            r = te[(te["cz_oos"] == cz) & (te["dz_oos"] == dz)]["qqq_r1m"].dropna()
+            r = te[(te["cz_oos"] == cz) & (te["dz_oos"] == dz)]["r1m"].dropna()
             parts.append(f"{dz} {r.mean():+.2f}% (n={len(r)})" if len(r) else f"{dz} --")
         sp = te[te["cz_oos"] == cz]["tilt_spread"].dropna()
         parts.append(f"tilt-spread {sp.mean():+.2f}pp" if len(sp) else "tilt-spread --")
@@ -605,9 +715,9 @@ def oos_report(M):
         return (df[c] - mu[c]) / sd[c]
 
     dtr = pd.DataFrame({"D": zc(tr, "dix5"), "C": zc(tr, "avg_corr"),
-                        "r": tr["qqq_r1m"]}).dropna()
+                        "r": tr["r1m"]}).dropna()
     dte = pd.DataFrame({"D": zc(te, "dix5"), "C": zc(te, "avg_corr"),
-                        "r": te["qqq_r1m"]}).dropna()
+                        "r": te["r1m"]}).dropna()
     if len(dtr) >= 200 and len(dte) >= 60:
         Xtr = np.column_stack([np.ones(len(dtr)), dtr["D"], dtr["C"], dtr["D"] * dtr["C"]])
         beta, se, t, p, _ = ols_nw(dtr["r"].to_numpy(), Xtr)
@@ -619,6 +729,39 @@ def oos_report(M):
         lines.append(f"  interaction fit on train (zDIX*zCORR b={beta[3]:+.2f}, "
                      f"t={t[3]:+.2f})   OOS corr(pred, realized)={oc:+.3f} (n={len(dte)})   "
                      f"OOS mean when pred>train-avg: {edge:+.2f}pp vs all-test")
+    return "\n".join(lines)
+
+
+def cross_index_report(frames):
+    """Pairwise correlation of the AVG_CORR gauges, regime agreement, and
+    each index's forward return by how many of the three sit in LowCorr
+    (full-sample basis, common dates)."""
+    lines = ["=== CROSS-INDEX COMOVEMENT-REGIME AGREEMENT (full-sample basis) ==="]
+    if len(frames) < 2:
+        return lines[0] + "\n  (needs at least two indices)"
+    keys = list(frames)
+    ac = pd.DataFrame({k: frames[k]["avg_corr"] for k in keys}).dropna()
+    cz = pd.DataFrame({k: frames[k]["cz_full"] for k in keys}).dropna()
+    r1 = pd.DataFrame({f"{k}_r1m": frames[k]["r1m"] for k in keys})
+    lines.append(f"  common days: {len(ac)}  "
+                 f"[{ac.index.min().date()} -> {ac.index.max().date()}]")
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            lines.append(f"  corr(AVG_CORR {a}, {b}) = {ac[a].corr(ac[b]):+.2f}   "
+                         f"same regime {100 * (cz[a] == cz[b]).mean():.0f}% of days")
+    if len(keys) == 3:
+        all_same = (cz.nunique(axis=1) == 1).mean()
+        lines.append(f"  all three in the same regime: {100 * all_same:.0f}% of days")
+    nlow = (cz == "LowCorr").sum(axis=1)
+    lines.append("  forward 1m by number of indices in LowCorr:")
+    for k in range(len(keys) + 1):
+        sub = r1.reindex(nlow[nlow == k].index)
+        if not len(sub):
+            continue
+        parts = [f"{c[:-4]} {sub[c].dropna().mean():+.2f}%" for c in r1.columns
+                 if sub[c].notna().sum()]
+        lines.append(f"    {k} of {len(keys)} dispersed: n={len(sub):4d}   "
+                     + "   ".join(parts))
     return "\n".join(lines)
 
 
@@ -638,14 +781,13 @@ def barometer_crosscheck(M, barometer_path):
                 "  (no SER series in the barometer page -- skipped)")
     ser = json.loads(m.group(1))
     dates = pd.to_datetime(ser["dates"])
-    lines = ["=== EXTERNAL GAUGE CROSS-CHECK (vs GEX/dispersion barometer) ==="]
+    lines = ["=== EXTERNAL GAUGE CROSS-CHECK (NDX AVG_CORR vs GEX/dispersion barometer) ==="]
     ours = M["avg_corr"]
     for key, label in (("cor", "realized top-50 SPX corr"),
                        ("cor1m", "Cboe COR1M implied corr")):
         if key not in ser:
             continue
-        s = pd.Series([np.nan if v is None else float(v) for v in ser[key]],
-                      index=dates, dtype="float64")
+        s = series_from(ser[key], dates)
         d = pd.concat([ours, s], axis=1, join="inner").dropna()
         if len(d) < 100:
             lines.append(f"  {label}: insufficient overlap")
@@ -659,65 +801,112 @@ def barometer_crosscheck(M, barometer_path):
 
 
 # ----------------------------------------------------------------------------
+def report_index(name, M, meta, args):
+    proxy = meta["proxy"]
+    with_ci = not args.no_ci
+    print(f"##### {name}: {meta['note']}  "
+          f"({M.index.min().date()} -> {M.index.max().date()}, {len(M)} days) #####")
+    if meta["dropped"]:
+        print(f"Dropped by close-vs-r21 validation: {meta['dropped']}")
+    print(f"AVG_CORR: mean {M['avg_corr'].mean():.2f}  "
+          f"p10 {M['avg_corr'].quantile(0.10):.2f}  p90 {M['avg_corr'].quantile(0.90):.2f}  "
+          f"latest {M['avg_corr'].iloc[-1]:.2f}\n")
+    tables = {}
+    for basis, czl, dzl in (("full-sample", "cz_full", "dz_full"),
+                            ("EXPANDING (no look-ahead)", "cz_exp", "dz_exp")):
+        Mb = M if basis == "full-sample" else M[(M[czl] != "NA") & (M[dzl] != "NA")]
+        print(describe_regimes(Mb, czl, proxy, with_ci))
+        print()
+        tab = dix_by_corr_table(Mb, czl, dzl, with_ci)
+        print(f"=== {proxy} 1m FORWARD BY corr-regime x DIX-regime ({basis}) ===")
+        print(tab.to_string(index=False))
+        print()
+        if basis == "full-sample":
+            tables[name] = tab
+    print(episode_report(M, "cz_full"))
+    print()
+    print(interaction_report(M, proxy))
+    print()
+    print(spread_report(M, "cz_full",
+                        cadence="weekly, raw print" if name == "SPX" else "daily"))
+    print()
+    print(tape_report(M, proxy, with_ci))
+    print()
+    print(entry_report(M[(M["cz_exp"] != "NA") & (M["dz_exp"] != "NA")],
+                       "cz_exp", "dz_exp", proxy))
+    print()
+    print(oos_report(M, proxy))
+    print()
+    return tables[name]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--html", default="docs/index.html",
                     help="built dashboard HTML carrying the payload (default docs/index.html)")
+    ap.add_argument("--indices", default="ndx,spx,iwm",
+                    help="comma list of ndx/spx/iwm (default all three; "
+                         "spx and iwm need network or a warm cache)")
+    ap.add_argument("--basket-size", type=int, default=BASKET_N,
+                    help=f"constituent basket size for the SPX/IWM gauges (default {BASKET_N})")
+    ap.add_argument("--cache-dir", default=".ndx_dark_cache",
+                    help="holdings/price cache directory (default .ndx_dark_cache)")
+    ap.add_argument("--refresh", action="store_true",
+                    help="force re-download of the SPX/IWM basket prices")
     ap.add_argument("--csv", default=None,
-                    help="write the corr-regime x DIX table to this CSV")
+                    help="write the per-index corr-regime x DIX tables to this CSV")
     ap.add_argument("--aligned-csv", default=None,
-                    help="write the aligned per-day frame here")
+                    help="write the aligned per-day frames here (one file per index, "
+                         "suffixed _ndx/_spx/_iwm before the extension)")
     ap.add_argument("--barometer", default="docs/gex_dispersion.html",
                     help="built GEX/dispersion page for the external gauge cross-check "
                          "(skipped when absent)")
     ap.add_argument("--min-valid-corr", type=float, default=0.98,
                     help="min corr between packed-close 21d returns and the payload's "
-                         "adjusted r21 before a name is dropped (default 0.98)")
+                         "adjusted r21 before an NDX name is dropped (default 0.98)")
     ap.add_argument("--no-ci", action="store_true",
                     help="skip the block-bootstrap CIs (faster)")
     args = ap.parse_args()
 
     P = load_payload(args.html)
-    M, meta = build_frame(P, min_valid_corr=args.min_valid_corr)
-    if args.aligned_csv:
-        M.to_csv(args.aligned_csv)
+    print(f"Payload generated: {P.get('generated')}\n")
+    wanted = [w.strip().upper() for w in args.indices.split(",") if w.strip()]
 
-    print(f"Payload generated: {P.get('generated')}")
-    print(f"Universe: {len(meta['names'])} NDX grid names vs {meta['bench']}  "
-          f"({M.index.min().date()} -> {M.index.max().date()}, {len(M)} days)")
-    if meta["dropped"]:
-        print(f"Dropped by close-vs-r21 validation: {meta['dropped']}")
-    print(f"AVG_CORR: mean {M['avg_corr'].mean():.2f}  "
-          f"p10 {M['avg_corr'].quantile(0.10):.2f}  p90 {M['avg_corr'].quantile(0.90):.2f}\n")
+    frames, metas, tabs = {}, {}, []
+    for name in ("NDX", "SPX", "IWM"):
+        if name not in wanted:
+            continue
+        try:
+            if name == "NDX":
+                M, meta = build_ndx_frame(P, min_valid_corr=args.min_valid_corr)
+            else:
+                M, meta = build_basket_frame(P, name, args.basket_size,
+                                             args.cache_dir, refresh=args.refresh)
+                if name == "SPX":
+                    sp = spx_weekly_tilt(P)
+                    if sp is not None:
+                        M[["tilt_q5", "tilt_q1", "tilt_spread"]] = (
+                            sp[["q5", "q1", "spread"]].reindex(M.index))
+        except RuntimeError as e:
+            print(f"##### {name}: SKIPPED ({e}) #####\n", file=sys.stderr)
+            continue
+        frames[name], metas[name] = M, meta
+        if args.aligned_csv:
+            stem, dot, ext = args.aligned_csv.rpartition(".")
+            M.to_csv(f"{stem}_{name.lower()}{dot}{ext}" if dot else
+                     f"{args.aligned_csv}_{name.lower()}")
+        tab = report_index(name, M, meta, args)
+        tab.insert(0, "index", name)
+        tabs.append(tab)
 
-    with_ci = not args.no_ci
-    for basis, czl, dzl in (("full-sample", "cz_full", "dz_full"),
-                            ("EXPANDING (no look-ahead)", "cz_exp", "dz_exp")):
-        Mb = M if basis == "full-sample" else M[(M[czl] != "NA") & (M[dzl] != "NA")]
-        print(describe_regimes(Mb, czl, with_ci))
-        print()
-        tab = dix_by_corr_table(Mb, czl, dzl, with_ci)
-        print(f"=== QQQ 1m FORWARD BY corr-regime x DIX-regime ({basis}) ===")
-        print(tab.to_string(index=False))
-        print()
-        if basis == "full-sample" and args.csv:
-            tab.to_csv(args.csv, index=False)
+    if args.csv and tabs:
+        pd.concat(tabs, ignore_index=True).to_csv(args.csv, index=False)
 
-    print(episode_report(M, "cz_full"))
+    print(cross_index_report(frames))
     print()
-    print(interaction_report(M))
-    print()
-    print(spread_report(M, "cz_full"))
-    print()
-    print(tape_report(M, with_ci))
-    print()
-    print(entry_report(M[(M["cz_exp"] != "NA") & (M["dz_exp"] != "NA")],
-                       "cz_exp", "dz_exp"))
-    print()
-    print(oos_report(M))
-    print()
-    print(barometer_crosscheck(M, args.barometer))
+    if "NDX" in frames:
+        print(barometer_crosscheck(frames["NDX"], args.barometer))
 
 
 if __name__ == "__main__":
