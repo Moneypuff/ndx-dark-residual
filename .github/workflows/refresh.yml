@@ -20,7 +20,8 @@ on:
         default: false
   # Auto-refresh at 10:00pm America/New_York every trading day (Mon-Fri). GitHub cron is
   # fixed-UTC and cannot follow US daylight-saving, so BOTH candidate times fire and the `gate`
-  # job lets exactly one through -- whichever actually lands on 22:00 ET today. FINRA publishes
+  # job lets exactly one through -- whichever cron MAPS to 22:00 ET today (the gate keys off the
+  # triggering cron, not the wall clock, so a run GitHub delayed still counts). FINRA publishes
   # the session's consolidated short-volume file after ~5pm ET; Cboe's COR1M/DSPX and
   # SqueezeMetrics' GEX+/DIX EOD files have been observed publishing anywhere from ~9:30pm ET to
   # well past 10pm some evenings -- an earlier 7pm, then 9pm slot both still landed a session
@@ -46,28 +47,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Gate: proceed only when it is really 10:00pm ET on a weekday (so the "wrong" cron for the
-  # current DST offset is skipped), or on any manual/other trigger.
+  # Gate: proceed only for the cron that represents 10:00pm ET on a weekday (so the "wrong" cron
+  # for the current DST offset is skipped), or on any manual/other trigger.
+  #
+  # This is DELAY-TOLERANT by design. The gate must NOT test the wall-clock hour at execution
+  # time: GitHub's scheduler routinely delays cron runs 30-90+ minutes, and the old
+  # `[ "$hour" = "22" ]` check made a delayed-but-correct run push past 22:xx ET into 23:xx and
+  # skip its own build -- silently, since a skipped `build` job still leaves the run green. (The
+  # optsnap.yml gate learned the same lesson; see its comment.) Instead we key off the cron that
+  # actually TRIGGERED this run -- github.event.schedule carries the exact cron string -- and
+  # compute what ET hour that cron's SCHEDULED instant maps to today. That mapping is independent
+  # of how late GitHub actually started the run, and still lets exactly one of the two DST crons
+  # through: whichever one lands on 22:00 ET tonight.
   gate:
     runs-on: ubuntu-latest
     outputs:
       proceed: ${{ steps.check.outputs.proceed }}
     steps:
-      - name: Decide whether to run (10:00pm ET on trading days)
+      - name: Decide whether to run (cron that maps to 10:00pm ET on a trading day)
         id: check
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           if [ "${{ github.event_name }}" != "schedule" ]; then
             echo "Non-schedule trigger (${{ github.event_name }}) -> proceed."
             echo "proceed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          hour=$(TZ=America/New_York date +%H)
-          dow=$(TZ=America/New_York date +%u)   # 1=Mon .. 7=Sun (ET local)
-          if [ "$hour" = "22" ] && [ "$dow" -ge 1 ] && [ "$dow" -le 5 ]; then
-            echo "22:00 ET on a weekday (dow=$dow) -> proceed."
+          # UTC hour field of the cron that fired this run ("2" for "7 2 * * 2-6", "3" for "7 3 ...").
+          sched_hour=$(printf '%s\n' "$SCHEDULE" | awk '{print $2}')
+          # This cron's scheduled instant, as a UTC timestamp on today's UTC date. (A cron delayed
+          # up to ~21h still executes on its own UTC day, so today's UTC date is the right anchor.)
+          instant="$(date -u +%Y-%m-%d)T$(printf '%02d' "$sched_hour"):00:00Z"
+          # Map that fixed instant into America/New_York -- this resolves EDT vs EST automatically.
+          et_hour=$((10#$(TZ=America/New_York date -d "$instant" +%H)))   # 10# forces decimal
+          et_dow=$(TZ=America/New_York date -d "$instant" +%u)            # 1=Mon .. 7=Sun (ET local)
+          echo "Triggered by cron '$SCHEDULE' -> its 10pm-candidate instant $instant maps to ${et_hour}:00 ET (dow=$et_dow)."
+          if [ "$et_hour" -eq 22 ] && [ "$et_dow" -ge 1 ] && [ "$et_dow" -le 5 ]; then
+            echo "This cron is tonight's 22:00 ET weekday slot -> proceed (regardless of scheduler delay)."
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Not 22:00 ET weekday (ET hour=$hour dow=$dow) -> skip."
+            echo "This cron maps to ${et_hour}:00 ET dow=$et_dow, not the 22:00 ET weekday slot -> skip."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
           fi
 
