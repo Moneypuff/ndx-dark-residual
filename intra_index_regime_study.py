@@ -130,6 +130,9 @@ BASKET_N = 100         # default basket size for the fetched SPX/IWM universes
 FETCH_START = "2019-10-01"   # SPX/IWM DIX starts 2020-01; buffer for the 21d warm-up
 ZONES = ("LowCorr", "MidCorr", "HighCorr")
 DZONES = ("DIXLow", "DIXMid", "DIXHigh")
+VZONES = ("VolLow", "VolMid", "VolHigh")
+TAIL_COMPLETE = 0.95   # min share of basket names with a close before the
+                       # frame's trailing rows count as a settled session
 IDX_PROXY = {"NDX": "QQQ", "SPX": "SPY", "IWM": "IWM"}
 
 
@@ -425,6 +428,14 @@ def assemble_frame(px, proxy_close, dix, r1m):
     `px`), DIX5, tape label and the index's forward return. `proxy_close` is
     the index proxy's own price series (QQQ/SPY/IWM) for the vol control and
     the trailing-return leg of the tape."""
+    # latest-day completeness guard: drop TRAILING rows where fewer than
+    # TAIL_COMPLETE of the basket names have a close -- a partial/unsettled
+    # last session must not drive the gauges' "current" reads
+    comp = px.notna().mean(axis=1)
+    live = np.where(comp.to_numpy() >= TAIL_COMPLETE)[0]
+    if len(live) and live[-1] < len(px) - 1:
+        px = px.iloc[: live[-1] + 1]
+
     ret = daily_returns(px)
     M = pd.DataFrame(index=px.index)
     M["avg_corr"] = avg_pairwise_corr(ret)
@@ -444,6 +455,13 @@ def assemble_frame(px, proxy_close, dix, r1m):
         M[prefix + "z_full"] = zones_30_40_30(M[col], "full", labels)
         M[prefix + "z_exp"] = zones_30_40_30(M[col], "expanding", labels)
         M[prefix + "z_roll"] = zones_30_40_30(M[col], "rolling", labels)
+    # realized-vol zones (the competing conditioning variable; corr and vol
+    # are ~0.8 correlated, so every corr claim owes the reader this parallel)
+    M["vz_roll"] = zones_30_40_30(M["rv"], "rolling", VZONES)
+    # DIX zone on a one-session-lagged signal: FINRA publishes day t's file
+    # after the close, so dz_roll_l1 is what a live trader could act on at
+    # the close of day t (the conservative timing convention)
+    M["dz_roll_l1"] = zones_30_40_30(M["dix5"].shift(1), "rolling", DZONES)
 
     # era-adjusted forward return (diagnostic ONLY -- demeaning uses the full
     # calendar year, i.e. within-year future information; it answers "was this
@@ -698,7 +716,8 @@ def dix_by_corr_table(M, czone_col, dzone_col, with_ci=True):
     the print gate keep their counts but blank the means."""
     rows = []
     seed = 100
-    for cz in ZONES:
+    czones = VZONES if czone_col.startswith("vz") else ZONES
+    for cz in czones:
         for dz in DZONES:
             mask = (M[czone_col] == cz) & (M[dzone_col] == dz)
             if not mask.any():
@@ -750,6 +769,51 @@ def flagship_report(M, czone_col, dzone_col):
             lines.append(f"    per-year: {yl}")
         if np.isfinite(lo):
             lines.append(f"    leave-one-year-out mean range: [{lo:+.2f}, {hi:+.2f}]")
+    return "\n".join(lines)
+
+
+def vol_parallel_report(M, proxy, with_ci=False):
+    """The competing conditioning variable, run in parallel: (a) the DIX
+    grid inside realized-VOL terciles instead of correlation terciles;
+    (b) nested NW regressions -- does zCORR add anything over zRV?;
+    (c) the DIX Low->High gradient double-sorted vol x corr (gate-limited)."""
+    lines = [f"=== COMOVEMENT vs VOLATILITY ({proxy}; corr(zCORR,zRV)="
+             f"{M['zCORR'].corr(M['zRV']):.2f}) ==="]
+    Mb = M[(M["vz_roll"] != "NA") & (M["dz_roll"] != "NA")]
+    tab = dix_by_corr_table(Mb, "vz_roll", "dz_roll", with_ci=with_ci)
+    lines.append("  -- DIX grid inside realized-VOL terciles (rolling basis) --")
+    lines.append(tab[["corr_regime", "dix_regime", "n_days", "n_eps", "mean",
+                      "ex", "hit", "gate"]].rename(
+        columns={"corr_regime": "vol_regime"}).to_string(index=False))
+    # nested models
+    d = M[["r1m", "zDIX", "zCORR", "zRV"]].dropna()
+    y = d["r1m"].to_numpy()
+    specs = [("r1m ~ zRV", ["zRV"]),
+             ("r1m ~ zRV + zCORR", ["zRV", "zCORR"])]
+    for label, cols in specs:
+        X = np.column_stack([np.ones(len(d))] + [d[c].to_numpy() for c in cols])
+        beta, se, t, p, r2 = ols_nw(y, X)
+        terms = "   ".join(f"{c} {b:+.2f} (t={tt:+.2f})"
+                           for c, b, tt in zip(cols, beta[1:], t[1:]))
+        lines.append(f"  {label:22s} {terms}   R2={100 * r2:.1f}%")
+    # double sort: DIX gradient within vol x corr cells (mostly gated out --
+    # which is itself the honest answer on this sample size)
+    parts = []
+    for vz in VZONES:
+        for cz in ZONES:
+            cell = []
+            for dz in ("DIXLow", "DIXHigh"):
+                mask = ((M["vz_roll"] == vz) & (M["cz_roll"] == cz)
+                        & (M["dz_roll"] == dz))
+                st = mask_stats(M, mask, with_ci=False)
+                cell.append(st)
+            if all(s["gate"] for s in cell):
+                parts.append(f"  {vz}/{cz}: DIXLow {cell[0]['mean']:+.2f}% "
+                             f"(n={cell[0]['n_days']}) -> DIXHigh "
+                             f"{cell[1]['mean']:+.2f}% (n={cell[1]['n_days']})")
+    lines.append("  -- DIX Low->High gradient, double-sorted vol x corr "
+                 "(only cells passing the gate) --")
+    lines += parts if parts else ["  (no vol x corr cell passes the print gate)"]
     return "\n".join(lines)
 
 
@@ -856,6 +920,9 @@ def entry_report(M, czone_col, dzone_col, proxy):
         ("enter LowCorr & DIXLow", (M[czone_col] == "LowCorr") & (M[dzone_col] == "DIXLow")),
         ("enter HighCorr & DIXLow", (M[czone_col] == "HighCorr") & (M[dzone_col] == "DIXLow")),
     ]
+    if "dz_roll_l1" in M.columns:
+        conds.append(("enter LowCorr & DIXHigh (lag-1)",
+                      (M[czone_col] == "LowCorr") & (M["dz_roll_l1"] == "DIXHigh")))
     for label, mask in conds:
         idx = entry_events(M, mask)
         if not idx:
@@ -1058,9 +1125,19 @@ def report_index(name, M, meta, args):
             tables[name] = tab
             print(flagship_report(Mb, czl, dzl))
             print()
+            # realistic timing: same grid on the one-session-lagged DIX zone
+            Ml = M[(M["cz_roll"] != "NA") & (M["dz_roll_l1"] != "NA")]
+            lag = dix_by_corr_table(Ml, "cz_roll", "dz_roll_l1", with_ci=False)
+            print(f"=== {proxy} 1m FORWARD, DIX signal LAGGED 1 SESSION "
+                  "(tradeable timing: FINRA prints after the close) ===")
+            print(lag[["corr_regime", "dix_regime", "n_days", "n_eps",
+                       "mean", "ex", "hit", "gate"]].to_string(index=False))
+            print()
     print(episode_report(M, "cz_roll"))
     print()
     print(interaction_report(M, proxy))
+    print()
+    print(vol_parallel_report(M, proxy))
     print()
     print(spread_report(M, "cz_roll",
                         cadence="weekly, raw print" if name == "SPX" else "daily"))

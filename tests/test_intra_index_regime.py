@@ -366,6 +366,28 @@ def test_assemble_frame_columns_and_zones():
     # full-sample corr zones split ~30/40/30
     frac_low = (M["cz_full"] == "LowCorr").mean()
     assert 0.2 < frac_low < 0.4
+    # vol zones and the lag-1 DIX zone exist; the lag-1 zone at t equals the
+    # unlagged zone at t-1 once both windows are warmed up
+    assert set(M["vz_roll"]) <= set(S.VZONES) | {"NA"}
+    dz, dzl = M["dz_roll"].to_numpy(), M["dz_roll_l1"].to_numpy()
+    warm = max(S.EXP_MIN + 1, 1)
+    if len(M) > warm + 5:
+        assert (dzl[warm + 1:] == dz[warm:-1]).all()
+
+
+def test_assemble_frame_trailing_completeness_guard():
+    rng = np.random.default_rng(11)
+    n = 300
+    idx = _bdays(n)
+    px = pd.DataFrame(
+        {f"N{i:02d}": 100.0 * np.cumprod(1 + rng.normal(0, 0.01, n))
+         for i in range(35)}, index=idx)
+    px.iloc[-1, : 20] = np.nan          # last session: only 15/35 names settled
+    proxy = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    dix = pd.Series(0.45, index=idx)
+    r1m = pd.Series(1.0, index=idx)
+    M = S.assemble_frame(px, proxy, dix, r1m)
+    assert M.index.max() < idx[-1]      # the partial last session is dropped
 
 
 # ---------------------------------------------------------------------------
