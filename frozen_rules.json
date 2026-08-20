@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "frozen_utc": "2026-08-20",
+  "note": "Pre-registered rules for the intra-index regime study. NEVER edit a rule after its freeze date -- a changed rule is a new rule id with its own freeze date. The nightly regime-state build evaluates these against live data and the scoring workflow appends the readings (and, 21 sessions later, realized outcomes) to the regime-scoring-data branch. The forward log is the only evidence that can upgrade the study's in-sample claims.",
+  "zone_basis": "rolling 504-session percentiles, 30/40/30 split (cz_roll / dz_roll_l1 in intra_index_regime_study.py); DIX zone always on the one-session-lagged signal (FINRA publishes after the close).",
+  "horizon_sessions": 21,
+  "rules": {
+    "ndx_tilt_screen_v1": {
+      "description": "Avoid-screen: while the NDX comovement zone is LowCorr, names in the top 20% of the per-name dark-flow tilt (5d-MA raw dark ratio minus own expanding mean, payload panel) are flagged as avoid. Hypothesis at freeze: flagged names lag the rest of the index over the next 21 sessions (point-in-time in-sample estimate -0.6pp/month, episode CI touching zero).",
+      "active_when": "NDX cz_roll == LowCorr",
+      "emits": "list of flagged tickers, refreshed daily, intended for weekly use",
+      "outcome": "mean 21-session forward return of flagged names minus unflagged NDX names, resolved in batch by the study against the then-current payload (--score-log); the nightly scorer records the names only"
+    },
+    "ndx_dixlow_caution_v1": {
+      "description": "Caution flag: NDX comovement zone LowCorr AND lag-1 DIX zone DIXLow. Hypothesis at freeze: flagged days run ~2pp/month below the same-period baseline (the corrected study's surviving index-level leg; era-adjusted -2.4pp in-sample).",
+      "active_when": "NDX cz_roll == LowCorr and NDX dz_roll_l1 == DIXLow",
+      "outcome": "QQQ 21-session forward return on flagged days vs non-flagged LowCorr days, resolved from the scoring log's own closes"
+    },
+    "all_dispersed_derisk_v1": {
+      "description": "Risk flag: all three indices' comovement zones LowCorr simultaneously. Hypothesis at freeze: flagged days run below the same-period baseline in all three indices (era-adjusted -1.6 to -2.1pp in-sample; episode CIs include zero -- this rule exists to settle exactly that).",
+      "active_when": "NDX, SPX and IWM cz_roll all == LowCorr",
+      "outcome": "QQQ/SPY/IWM 21-session forward returns on flagged vs non-flagged days, resolved from the scoring log's own closes"
+    }
+  }
+}

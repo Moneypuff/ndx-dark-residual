@@ -1,5 +1,12 @@
 # Intra-index regime study — improvement plan (Tiers 1–3)
 
+> **Status: IMPLEMENTED** (all ten phases, Aug 2026). The corrected results
+> live in `INTRA_INDEX_REGIME_FINDINGS.md`; the SPX-ex-NDX crossed leg
+> populates on the first nightly build carrying `spx.dix_ex`, and the
+> forward-scoring log accumulates on `regime-scoring-data` once
+> `regime_score.yml` starts firing. This document is kept as the design
+> record; its "Rules" and "Decision log" still govern follow-up work.
+
 Execution plan for hardening `intra_index_regime_study.py` /
 `INTRA_INDEX_REGIME_FINDINGS.md` against the four-referee critique
 (econometrics, data/domain, practitioner, robustness). The critique's

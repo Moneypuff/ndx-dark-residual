@@ -1,0 +1,83 @@
+name: Regime scoring log (regime-scoring-data branch)
+
+# Appends the published regime-state row to the append-only scoring log and
+# resolves 21-row forward outcomes from the log's own closes. This is the
+# forward evidence for the pre-registered rules in frozen_rules.json -- the
+# in-sample study can never retro-fit it. Mirrors optsnap.yml's pattern:
+# contents: write, but pushes ONLY to the regime-scoring-data orphan branch,
+# never to main.
+#
+# Runs daily after the nightly refresh + catch-up window has settled
+# (refresh fires 22:00 ET, catch-up retries until 06:00 ET; 11:37 UTC is
+# comfortably after both in either DST offset). If the site is unreachable
+# or the state page has not been produced yet, the run skips cleanly.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "37 11 * * 2-6"   # daily after the ET-overnight build window, Tue-Sat UTC
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regime-scoring
+  cancel-in-progress: false
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo (for the scorer script)
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pandas
+        run: pip install pandas
+
+      - name: Fetch the published regime state
+        id: fetch
+        run: |
+          if curl -fsSL "https://moneypuff.github.io/ndx-dark-residual/regime_state.json" \
+               -o regime_state.json; then
+            echo "have=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No published regime_state.json yet -- skipping."
+            echo "have=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch (or bootstrap) the regime-scoring-data branch
+        if: steps.fetch.outputs.have == 'true'
+        run: |
+          REPO_URL="https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git clone --depth 1 --branch regime-scoring-data "$REPO_URL" scoredata; then
+            echo "Fetched existing regime-scoring-data branch."
+          else
+            echo "Branch missing -- bootstrapping an orphan regime-scoring-data."
+            mkdir scoredata && cd scoredata
+            git init -q -b regime-scoring-data
+            git remote add origin "$REPO_URL"
+            printf '# regime-scoring-data\n\nAppend-only forward-scoring log for the pre-registered\nregime rules (frozen_rules.json on main). Written nightly by\n.github/workflows/regime_score.yml; state.csv is append-only,\noutcomes.csv is regenerated deterministically from it.\n' > README.md
+          fi
+
+      - name: Append state row and resolve outcomes
+        if: steps.fetch.outputs.have == 'true'
+        run: python scripts/score_regime_log.py --state-json regime_state.json --dir scoredata
+
+      - name: Commit and push (only to regime-scoring-data)
+        if: steps.fetch.outputs.have == 'true'
+        run: |
+          cd scoredata
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No change tonight (already logged)."
+          else
+            git commit -q -m "Score regime log: $(date -u +%F)"
+            git push origin regime-scoring-data
+          fi
