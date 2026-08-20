@@ -10,6 +10,8 @@ must not look ahead), the close-vs-r21 validation guard that drops names whose
 packed closes are on a different basis, the daily dark-flow tilt spread, the
 tape taxonomy, and the entry cool-down. All synthetic; no payload required.
 """
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -451,6 +453,67 @@ def test_spx_weekly_tilt_aligned_payload():
 
 
 # ---------------------------------------------------------------------------
+# point-in-time membership + factor-neutralized tilt
+# ---------------------------------------------------------------------------
+def test_membership_mask_windows_and_reentry():
+    idx = _bdays(30)
+    mem = pd.DataFrame({
+        "ticker": ["AAA", "BBB", "BBB"],
+        "added": [idx[0], idx[0], idx[20]],
+        "removed": [pd.NaT, idx[10], pd.NaT],
+    })
+    W = S.membership_mask(mem, idx, ["AAA", "BBB"])
+    assert W["AAA"].all()
+    assert W["BBB"].iloc[9] and not W["BBB"].iloc[10]      # removed is exclusive
+    assert not W["BBB"].iloc[15] and W["BBB"].iloc[20]     # second stint reopens
+
+
+def test_row_halves_median_split():
+    idx = _bdays(3)
+    p = pd.DataFrame({"A": [1.0, 5.0, np.nan], "B": [2.0, 1.0, 1.0],
+                      "C": [3.0, 2.0, 2.0]}, index=idx)
+    h = S.row_halves(p)
+    assert h.loc[idx[0], "A"] == "lo" and h.loc[idx[0], "C"] == "hi"
+    assert h.loc[idx[1], "A"] == "hi"
+    assert pd.isna(h.loc[idx[2], "A"])                     # NaN stays NaN
+
+
+def test_tilt_spread_demean_groups_kills_factor_bet():
+    # Tilt aligns perfectly with a two-group factor whose groups have
+    # different mean returns but NO within-group tilt-return relation:
+    # the raw spread is the factor gap; the group-demeaned spread is ~0.
+    n_days, n_names = 60, 60
+    idx = _bdays(n_days)
+    names = [f"N{i:02d}" for i in range(n_names)]
+    d = pd.DataFrame(0.4, index=idx, columns=names)
+    d.iloc[-5:, :30] = 0.6           # group G1 runs hot recently = high tilt
+    fwd = pd.DataFrame(1.0, index=idx, columns=names)
+    fwd.iloc[:, :30] = -3.0                                # G1 underperforms
+    groups = pd.DataFrame([["G1"] * 30 + ["G2"] * 30] * n_days,
+                          index=idx, columns=names)
+    raw = S.tilt_spread(d, fwd, names, min_names=50, min_obs=10)
+    neu = S.tilt_spread(d, fwd, names, min_names=50, min_obs=10,
+                        demean_groups=groups)
+    assert raw["spread"].iloc[-1] == pytest.approx(-4.0)
+    assert neu["spread"].iloc[-1] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_tilt_spread_subset_restricts_cross_section():
+    n_days, n_names = 60, 80
+    idx = _bdays(n_days)
+    names = [f"N{i:02d}" for i in range(n_names)]
+    d = pd.DataFrame(0.4, index=idx, columns=names)
+    d.iloc[-5:, :16] = 0.6
+    fwd = pd.DataFrame(1.0, index=idx, columns=names)
+    fwd.iloc[:, :16] = -3.0
+    # subset excludes every high-tilt name -> flat cross-section -> spread 0
+    sub = pd.DataFrame(True, index=idx, columns=names)
+    sub.iloc[:, :16] = False
+    out = S.tilt_spread(d, fwd, names, min_names=50, min_obs=10, subset=sub)
+    assert out["spread"].iloc[-1] == pytest.approx(0.0, abs=1e-12)
+
+
+# ---------------------------------------------------------------------------
 # tape_label
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("tr,b,expect", [
@@ -478,6 +541,64 @@ def test_entry_events_cooldown():
     mask.iloc[40:42] = True   # entry at 40 -- past the cool-down, counted
     entries = S.entry_events(M, mask, min_gap=21)
     assert entries == [5, 40]
+
+
+# ---------------------------------------------------------------------------
+# transition machinery (Phase 7)
+# ---------------------------------------------------------------------------
+def test_ols_cluster_recovers_slope_and_inflates_se():
+    rng = np.random.default_rng(40)
+    G, per = 12, 40
+    ids = np.repeat(np.arange(G), per)
+    x = rng.normal(0, 1, G * per)
+    cluster_eff = np.repeat(rng.normal(0, 2.0, G), per)   # strong episode effect
+    y = 1.0 + 0.5 * x + cluster_eff + rng.normal(0, 0.2, G * per)
+    X = np.column_stack([np.ones(len(x)), x])
+    beta, se_cl, t, p, n_cl = S.ols_cluster(y, X, ids)
+    assert n_cl == G
+    assert beta[1] == pytest.approx(0.5, abs=0.15)
+    # naive iid OLS SE on the intercept must be far smaller than the cluster SE
+    u = y - X @ beta
+    naive = np.sqrt((u @ u) / (len(y) - 2) * np.linalg.inv(X.T @ X)[0, 0])
+    assert se_cl[0] > 2 * naive
+
+
+def test_wilson_ci_known_values():
+    lo, hi = S.wilson_ci(4, 4)
+    assert lo == pytest.approx(0.51, abs=0.02)   # 4/4 is NOT proof of ~1.0
+    assert hi > 0.99
+    lo0, hi0 = S.wilson_ci(0, 0)
+    assert np.isnan(lo0) and np.isnan(hi0)
+
+
+def test_regime_age_counts_consecutive_days():
+    idx = _bdays(8)
+    inlow = pd.Series([False, True, True, True, False, True, False, False], index=idx)
+    age = S._regime_age(inlow)
+    assert list(age) == [0, 1, 2, 3, 0, 1, 0, 0]
+
+
+def test_transition_report_boundary_control_kills_random_walk():
+    # A pure driftless random-walk gauge: its 5d slope 'predicts' exits only
+    # through proximity to the boundary. With the zPCT control in the spec,
+    # the d5_corr coefficient must not be significantly positive.
+    rng = np.random.default_rng(41)
+    n = 2000
+    idx = _bdays(n)
+    gauge = pd.Series(np.cumsum(rng.normal(0, 0.01, n)) + 0.3, index=idx)
+    px = pd.DataFrame(
+        {f"N{i:02d}": 100.0 * np.cumprod(1 + rng.normal(0, 0.01, n))
+         for i in range(35)}, index=idx)
+    proxy = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    r1m = pd.Series((proxy.shift(-21) / proxy - 1) * 100, index=idx)
+    M = S.assemble_frame(px, proxy, pd.Series(0.45, index=idx), r1m)
+    # overwrite the comovement gauge with the random walk and re-zone it
+    M["avg_corr"] = gauge.reindex(M.index)
+    M["cz_roll"] = S.zones_30_40_30(M["avg_corr"], "rolling", S.ZONES)
+    out = S.transition_report(M, "TEST")
+    m = re.search(r"d5_corr\s+([+-]\d+\.\d+)/sd \(t=([+-]\d+\.\d+)\)", out)
+    assert m, out
+    assert float(m.group(2)) < 2.0    # not significantly positive once controlled
 
 
 # ---------------------------------------------------------------------------

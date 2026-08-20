@@ -237,6 +237,42 @@ def cluster_boot_ci(r, ids, B=BOOT_B, seed=0, levels=(2.5, 97.5),
     return tuple(float(x) for x in np.percentile(means, levels))
 
 
+def ols_cluster(y, X, ids):
+    """OLS with cluster-robust (Liang-Zeger) standard errors, clusters from
+    `ids` (episode ids). The day-level hazard rows inside one regime episode
+    are one draw, not sixty. Returns (beta, se, t, p, n_clusters)."""
+    n, k = X.shape
+    XtX_inv = np.linalg.inv(X.T @ X)
+    beta = XtX_inv @ (X.T @ y)
+    u = y - X @ beta
+    S = np.zeros((k, k))
+    uniq = np.unique(ids)
+    for g in uniq:
+        sel = ids == g
+        sg = X[sel].T @ u[sel]
+        S += np.outer(sg, sg)
+    G = len(uniq)
+    if G > 1:
+        S *= G / (G - 1.0)
+    V = XtX_inv @ S @ XtX_inv
+    se = np.sqrt(np.maximum(np.diag(V), 0.0))
+    t = np.where(se > 0, beta / se, np.nan)
+    p = np.array([2 * _norm_sf(abs(tt)) if np.isfinite(tt) else np.nan for tt in t])
+    return beta, se, t, p, G
+
+
+def wilson_ci(k, n, z=1.96):
+    """Wilson score 95% interval for a binomial proportion -- the honest
+    wrapper around small-episode-count 'X of Y exited' claims."""
+    if n == 0:
+        return (np.nan, np.nan)
+    p = k / n
+    denom = 1.0 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return (center - half, center + half)
+
+
 def expanding_pctile(s, min_obs=EXP_MIN):
     """Percentile (0..1, mid-rank on ties) of each value within the series'
     OWN history up to and including that day. NaN until `min_obs`
@@ -374,23 +410,47 @@ def breadth_positive(close, window=WINDOW, min_names=MIN_NAMES):
 
 
 def tilt_spread(dpan, r21, names, q=(0.20, 0.80), min_names=TILT_MIN_NAMES,
-                min_obs=TILT_MIN_OBS, ma_window=5):
+                min_obs=TILT_MIN_OBS, ma_window=5, demean_groups=None,
+                subset=None):
     """Per-row equal-weight Q5-minus-Q1 forward-return spread on the per-name
     dark-flow TILT (`ma_window`-row MA of the raw dark ratio minus the name's
     own expanding mean, min `min_obs` rows). Rows are usually days;
     ma_window=1 gives the raw-print variant for weekly-sampled panels.
+
+    `demean_groups` (optional DataFrame of per-row/per-name bucket labels,
+    e.g. momentum halves or sectors) FACTOR-NEUTRALIZES the spread: each
+    day's forward returns are demeaned within their bucket before the
+    quantile means, so a spread that is really a disguised factor bet
+    (long staples / short growth, say) collapses to ~0. `subset` (optional
+    boolean DataFrame) restricts each day's cross-section to the names
+    where it is True (e.g. the high-retail-share half).
+
     Returns a DataFrame with q5/q1/spread (%, 21-session forward)."""
     d5 = dpan[names].rolling(ma_window, min_periods=max(1, ma_window - 2)).mean()
     tilt = d5 - dpan[names].expanding(min_periods=min_obs).mean()
     T = tilt.to_numpy(dtype=float)
     F = r21[names].to_numpy(dtype=float)
+    G = (demean_groups.reindex(index=dpan.index, columns=names).to_numpy()
+         if demean_groups is not None else None)
+    SUB = (subset.reindex(index=dpan.index, columns=names)
+           .fillna(False).to_numpy(dtype=bool) if subset is not None else None)
     q5 = np.full(len(dpan), np.nan)
     q1 = np.full(len(dpan), np.nan)
     for i in range(len(dpan)):
         ok = np.isfinite(T[i]) & np.isfinite(F[i])
+        if SUB is not None:
+            ok &= SUB[i]
+        if G is not None:
+            ok &= pd.notna(G[i])
         if ok.sum() < min_names:
             continue
         t, f = T[i][ok], F[i][ok]
+        if G is not None:
+            g = G[i][ok]
+            f = f.copy()
+            for lab in pd.unique(g):
+                sel = g == lab
+                f[sel] = f[sel] - f[sel].mean()
         lo, hi = np.quantile(t, q)
         q1[i] = f[t <= lo].mean()
         q5[i] = f[t >= hi].mean()
@@ -557,6 +617,141 @@ def build_basket_frame(P, index_key, basket_n, cache_dir, refresh=False):
     M = assemble_frame(px, proxy_close, dix, r1m)
     return M, {"names": px.shape[1], "dropped": {}, "proxy": IDX_PROXY[index_key],
                "note": note}
+
+
+def load_membership(path):
+    """data/ndx_membership.csv -> DataFrame(ticker, added, removed). A ticker
+    is a member on dates d with added <= d < removed (removed NaT = still in)."""
+    mem = pd.read_csv(path, parse_dates=["added", "removed"])
+    return mem
+
+
+def membership_mask(mem, index, columns):
+    """Boolean (dates x names) membership panel from the stint table --
+    True only while a name was actually in the index. Signals, forward
+    returns and expanding baselines are all masked by this, so departed
+    names contribute their real (pre-removal) history and nothing else."""
+    W = pd.DataFrame(False, index=index, columns=columns)
+    for _, row in mem.iterrows():
+        t = row["ticker"]
+        if t not in W.columns:
+            continue
+        hi = row["removed"] if pd.notna(row["removed"]) else None
+        sel = (W.index >= row["added"]) if hi is None else \
+            ((W.index >= row["added"]) & (W.index < hi))
+        W.loc[sel, t] = True
+    return W
+
+
+def row_halves(panel):
+    """Per-row median-split labels ('lo'/'hi') of a numeric panel -- the
+    bucket input for factor-neutralizing the tilt spread."""
+    med = panel.median(axis=1)
+    out = pd.DataFrame(np.where(panel.gt(med, axis=0), "hi", "lo"),
+                       index=panel.index, columns=panel.columns)
+    return out.where(panel.notna())
+
+
+def pit_tilt_report(P, M, membership_csv, cache_dir, refresh=False):
+    """Point-in-time re-estimation of the per-name tilt spread: FINRA+Yahoo
+    panels for every 2018+ NDX member (departed names included), membership
+    masking, and factor-neutralized variants. The PRIMARY number is the
+    momentum+beta-neutral LowCorr spread on the point-in-time panel."""
+    import ndx_dark_residual as N
+    lines = ["=== POINT-IN-TIME TILT PANEL (every 2018+ NDX member; "
+             "membership-masked) ==="]
+    mem = load_membership(membership_csv)
+    bench = P["bench"]
+    symbols = sorted(set(mem["ticker"]))
+    end = pd.Timestamp.today().normalize() + pd.Timedelta(days=1)
+    panels = N.build_universe_panels(symbols + [bench], "2018-08-01", end,
+                                     cache_dir=cache_dir or None, ns="pit",
+                                     refresh=refresh, label="PIT-NDX",
+                                     heal_frac=1.0)
+    dpi, adj = panels["dpi"], panels["adjclose"]
+    names = [t for t in symbols
+             if t in dpi.columns and t in adj.columns
+             and dpi[t].notna().sum() > TILT_MIN_OBS]
+    dropped = sorted(set(symbols) - set(names))
+    lines.append(f"  panel: {len(names)} of {len(symbols)} ever-members usable"
+                 + (f"; dropped (no FINRA/Yahoo history): {', '.join(dropped)}"
+                    if dropped else ""))
+    if len(dropped) > 0.15 * len(symbols):
+        lines.append("  ! >15% of ever-members missing -- treat the "
+                     "point-in-time numbers as indicative, not primary")
+
+    W = membership_mask(mem, dpi.index, names)
+    dpi_m = dpi[names].where(W)
+    r21 = (adj[names].shift(-21) / adj[names] - 1.0) * 100.0
+    r21_m = r21.where(W)          # signal day must be a membership day
+    # factor buckets
+    mom = row_halves((adj[names] / adj[names].shift(63) - 1.0).where(W))
+    ret = adj.pct_change()
+    bret = ret[bench]
+    beta = row_halves(ret[names].rolling(126).cov(bret)
+                      .div(bret.rolling(126).var(), axis=0).where(W))
+    momxbeta = (mom.fillna("") + "/" + beta.fillna("")).where(
+        mom.notna() & beta.notna())
+    smap = dict(getattr(N, "TICKER_SECTOR", {}))
+    smap.update(P.get("sector_map") or {})
+    sector = pd.DataFrame({t: [smap.get(t, "Other")] * len(dpi.index)
+                           for t in names}, index=dpi.index).where(W)
+
+    variants = [
+        ("point-in-time, raw", {}),
+        ("mom63-neutral", {"demean_groups": mom}),
+        ("beta126-neutral", {"demean_groups": beta}),
+        ("mom+beta-neutral (PRIMARY)", {"demean_groups": momxbeta}),
+        ("sector-neutral", {"demean_groups": sector}),
+    ]
+    cz = M["cz_roll"].reindex(dpi.index)
+    for label, kw in variants:
+        sp = tilt_spread(dpi_m, r21_m, names, **kw)
+        Mi = pd.DataFrame({"spread": sp["spread"]})
+        mask = (cz == "LowCorr") & Mi["spread"].notna()
+        st = mask_stats(Mi, mask, col="spread", with_ci=True, seed=41)
+        pre = Mi.loc[mask & (Mi.index < OOS_SPLIT), "spread"]
+        post = Mi.loc[mask & (Mi.index >= OOS_SPLIT), "spread"]
+        era = (f"   pre-2024 {pre.mean():+.2f}pp (n={len(pre)}) / "
+               f"2024+ {post.mean():+.2f}pp (n={len(post)})"
+               if len(pre) >= GATE_DAYS and len(post) >= GATE_DAYS else "")
+        lines.append(f"  LowCorr {label:28s} " + fmt_cell(st) + era)
+
+    # retail-internalization split: off-exchange share of consolidated volume
+    # (FINRA total / Yahoo volume) -- if the spread lives in the high-share
+    # half, the per-name signal reads as crowded-retail intensity, not
+    # institutional accumulation
+    if "volume" in panels and panels["volume"] is not None:
+        share = (panels["total"][names] / panels["volume"][names]).clip(0, 1)
+        share_h = row_halves(share.where(W))
+        for lab, side in (("high off-exch share half", "hi"),
+                          ("low  off-exch share half", "lo")):
+            sp = tilt_spread(dpi_m, r21_m, names, subset=(share_h == side),
+                             min_names=TILT_MIN_NAMES // 2)
+            Mi = pd.DataFrame({"spread": sp["spread"]})
+            mask = (cz == "LowCorr") & Mi["spread"].notna()
+            st = mask_stats(Mi, mask, col="spread", with_ci=True, seed=43)
+            lines.append(f"  LowCorr, {lab:26s} " + fmt_cell(st))
+
+    # bucket concentration + persistence on LowCorr days (is the 'spread'
+    # really a handful of static style baskets?)
+    d5 = dpi_m.rolling(5, min_periods=3).mean()
+    tilt = d5 - dpi_m.expanding(min_periods=TILT_MIN_OBS).mean()
+    low_days = cz[cz == "LowCorr"].index.intersection(tilt.index)
+    tl = tilt.loc[low_days]
+    qhi = tl.ge(tl.quantile(0.8, axis=1), axis=0)
+    qlo = tl.le(tl.quantile(0.2, axis=1), axis=0)
+    top5 = qhi.sum().sort_values(ascending=False).head(5)
+    bot5 = qlo.sum().sort_values(ascending=False).head(5)
+    rk = tl.rank(axis=1)
+    ac = rk.corrwith(rk.shift(21), axis=1).mean()
+    lines.append("  Q5 most-frequent (LowCorr days): "
+                 + ", ".join(f"{t} {int(v)}d" for t, v in top5.items()))
+    lines.append("  Q1 most-frequent (LowCorr days): "
+                 + ", ".join(f"{t} {int(v)}d" for t, v in bot5.items()))
+    lines.append(f"  tilt cross-sectional rank autocorr at 21d: {ac:+.2f} "
+                 "(high = quasi-static baskets, few independent bets)")
+    return "\n".join(lines)
 
 
 def spx_weekly_tilt(P):
@@ -1070,6 +1265,181 @@ def crossed_report(frames, P):
     return "\n".join(lines)
 
 
+def _regime_age(inlow):
+    """Consecutive sessions already spent in the regime, per day (0 outside)."""
+    age = np.zeros(len(inlow), dtype=int)
+    c = 0
+    for i, v in enumerate(np.asarray(inlow, dtype=bool)):
+        c = c + 1 if v else 0
+        age[i] = c
+    return pd.Series(age, index=inlow.index)
+
+
+def transition_report(M, proxy):
+    """Do dispersed regimes announce their own end? Mature (age>=21) LowCorr
+    days, rolling basis. The earlier scratchpad version of this analysis had
+    two defects this one removes: (1) the strongest 'precursor' (the gauge's
+    own short-term slope) was largely PROXIMITY TO THE EXIT BOUNDARY -- a
+    driftless random walk shows the same pattern -- so every model here
+    carries the rolling percentile of AVG_CORR as a mandatory control;
+    (2) day-counts overstated the information ~20x -- inference is
+    episode-clustered (LPM with Liang-Zeger SEs) and the episode-level
+    counts are printed first."""
+    lines = [f"=== REGIME TRANSITIONS ({proxy}; mature LowCorr, rolling basis) ==="]
+    inlow = M["cz_roll"] == "LowCorr"
+    fut = pd.concat([(~inlow).shift(-h) for h in range(1, WINDOW + 1)], axis=1)
+    y = fut.any(axis=1).astype(float)
+    y.iloc[-WINDOW:] = np.nan
+    age = _regime_age(inlow)
+    pct_corr = rolling_pctile(M["avg_corr"])       # distance-to-boundary control
+    ids_all = run_ids(inlow.to_numpy())
+
+    feats = {
+        "d5_corr": M["avg_corr"].diff(5),
+        "d21_dix": M["dix5"].diff(21),
+        "breadth": M["breadth"],
+        "d21_breadth": M["breadth"].diff(21),
+        "tr21": M["tr21"],
+        "d21_disp": M["disp21"].diff(21),
+    }
+    mat = (inlow & (age >= WINDOW) & y.notna() & pct_corr.notna()).to_numpy()
+    n_eps = len(np.unique(ids_all[mat]))
+    if mat.sum() < GATE_DAYS or n_eps < GATE_EPISODES:
+        return lines[0] + (f"\n  below gate: {int(mat.sum())} mature days / "
+                           f"{n_eps} episodes")
+    ym = y.to_numpy()[mat]
+    lines.append(f"  {int(mat.sum())} mature days across {n_eps} episodes; "
+                 f"base P(exit<=21d) = {ym.mean():.2f}")
+
+    def z(s):
+        v = s.to_numpy(dtype=float)[mat]
+        return (v - np.nanmean(v)) / (np.nanstd(v) + 1e-12)
+
+    zb = z(pct_corr)
+    ids_m = ids_all[mat]
+    # boundary control alone, then each feature on top of it
+    Xb = np.column_stack([np.ones(mat.sum()), zb])
+    bb, _, tb, _, _ = ols_cluster(ym, Xb, ids_m)
+    lines.append("  LPM of exit<=21d, episode-clustered t-stats; every spec "
+                 "controls for the boundary distance (zPCT = rolling pctile "
+                 "of AVG_CORR):")
+    lines.append(f"    zPCT alone: {bb[1]:+.2f}/sd (t={tb[1]:+.2f})   "
+                 "<- the mechanical part")
+    for name, s in feats.items():
+        zf = z(s)
+        ok = np.isfinite(zf)
+        if ok.sum() < GATE_DAYS or np.nanstd(zf[ok]) < 1e-6:
+            lines.append(f"    {name:12s} (degenerate/constant -- skipped)")
+            continue
+        X = np.column_stack([np.ones(ok.sum()), zb[ok], zf[ok]])
+        b, _, t, _, G = ols_cluster(ym[ok], X, ids_m[ok])
+        lines.append(f"    {name:12s} {b[2]:+.2f}/sd (t={t[2]:+.2f})   "
+                     f"[zPCT {b[1]:+.2f} (t={t[1]:+.2f}); {G} eps]")
+    # d21_dix works only in up-tapes? interaction with 1(tr21>0)
+    zdix = z(feats["d21_dix"])
+    up = (feats["tr21"].to_numpy(dtype=float)[mat] > 0).astype(float)
+    ok = np.isfinite(zdix)
+    if ok.sum() >= GATE_DAYS and np.nanstd(zdix[ok]) > 1e-6 and 0 < up[ok].mean() < 1:
+        X = np.column_stack([np.ones(ok.sum()), zb[ok], zdix[ok],
+                             (zdix * up)[ok], up[ok]])
+        b, _, t, _, _ = ols_cluster(ym[ok], X, ids_m[ok])
+        lines.append(f"    d21_dix split: base {b[2]:+.2f} (t={t[2]:+.2f})   "
+                     f"extra in up-tapes {b[3]:+.2f} (t={t[3]:+.2f})")
+
+    # episode-level view: one row per episode that reaches age 21
+    rows = []
+    for g in np.unique(ids_all[ids_all >= 0]):
+        pos = np.where(ids_all == g)[0]
+        if len(pos) < WINDOW:
+            continue
+        p21 = pos[WINDOW - 1]                      # the day the episode matures
+        if not np.isfinite(y.iloc[p21]):
+            continue
+        rows.append({"exit": y.iloc[p21] == 1.0,
+                     "d5_corr_up": feats["d5_corr"].iloc[p21] > 0,
+                     "dix_up": feats["d21_dix"].iloc[p21] > 0})
+    if rows:
+        E = pd.DataFrame(rows)
+        k, n = int(E["exit"].sum()), len(E)
+        lo, hi = wilson_ci(k, n)
+        lines.append(f"  episode-level (at age 21): {k}/{n} ended within the "
+                     f"next 21 sessions [Wilson {lo:.2f},{hi:.2f}]")
+        for col, lab in (("d5_corr_up", "corr slope up"), ("dix_up", "DIX rising")):
+            for v in (True, False):
+                sub = E[E[col] == v]
+                if len(sub):
+                    kk = int(sub["exit"].sum())
+                    lo, hi = wilson_ci(kk, len(sub))
+                    lines.append(f"    {lab:14s}={str(v):5s}: {kk}/{len(sub)} "
+                                 f"[Wilson {lo:.2f},{hi:.2f}]")
+
+    # creep vs jump into HighCorr (the durable null: correlation spikes are
+    # jumps -- not forecastable from the gauge's own level)
+    hi_mask = (M["cz_roll"] == "HighCorr")
+    entries = entry_events(M, hi_mask)
+    c = M["avg_corr"].to_numpy(dtype=float)
+    rises, lates = [], []
+    for i in entries:
+        if i < 40:
+            continue
+        rise = c[i] - c[i - 40]
+        if rise > 0:
+            rises.append(rise)
+            lates.append((c[i] - c[i - 5]) / rise)
+    if rises:
+        lines.append(f"  entries into HighCorr: median 40d gauge rise "
+                     f"{np.median(rises):.2f}, median share of it in the "
+                     f"final 5 sessions {100 * np.median(lates):.0f}% "
+                     f"({len(rises)} entries) -- spikes are jumps, not creeps")
+    return "\n".join(lines)
+
+
+def transition_cross_report(frames):
+    """'Last one dispersed' pooled across indices at the EPISODE level, with
+    a Wilson interval -- the day-level '100%' version of this claim rested
+    on 3-5 episodes per index and is not quotable."""
+    lines = ["=== LAST-ONE-DISPERSED (pooled episodes, rolling basis) ==="]
+    if len(frames) < 3:
+        return lines[0] + "\n  (needs all three indices)"
+    keys = list(frames)
+    cz = pd.DataFrame({k: frames[k]["cz_roll"] for k in keys}).dropna()
+    cz = cz[(cz != "NA").all(axis=1)]
+    k_exit = n_runs = 0
+    base_k = base_n = 0
+    for key in keys:
+        M = frames[key]
+        inlow = M["cz_roll"] == "LowCorr"
+        fut = pd.concat([(~inlow).shift(-h) for h in range(1, WINDOW + 1)], axis=1)
+        y = fut.any(axis=1).astype(float)
+        y.iloc[-WINDOW:] = np.nan
+        others = [o for o in keys if o != key]
+        sole = (cz[key] == "LowCorr") & (cz[others] != "LowCorr").all(axis=1)
+        sole = sole.reindex(M.index).fillna(False)
+        ids = run_ids(sole.to_numpy())
+        for g in np.unique(ids[ids >= 0]):
+            first = np.where(ids == g)[0][0]
+            if np.isfinite(y.iloc[first]):
+                n_runs += 1
+                k_exit += int(y.iloc[first] == 1.0)
+        # benchmark: all LowCorr episode starts (age handled the same way)
+        idsb = run_ids(inlow.to_numpy())
+        for g in np.unique(idsb[idsb >= 0]):
+            first = np.where(idsb == g)[0][0]
+            if np.isfinite(y.iloc[first]):
+                base_n += 1
+                base_k += int(y.iloc[first] == 1.0)
+    lo, hi = wilson_ci(k_exit, n_runs)
+    blo, bhi = wilson_ci(base_k, base_n)
+    lines.append(f"  sole-dispersed runs (all indices pooled): {k_exit}/{n_runs} "
+                 f"exited within 21 sessions [Wilson {lo:.2f},{hi:.2f}]")
+    lines.append(f"  benchmark, ALL LowCorr episode starts: {base_k}/{base_n} "
+                 f"[Wilson {blo:.2f},{bhi:.2f}]")
+    lines.append("  read: the intervals overlap unless the pooled count is "
+                 "large -- treat 'last one dispersed exits' as structure, "
+                 "not a rate")
+    return "\n".join(lines)
+
+
 def cross_index_report(frames):
     """Pairwise correlation of the AVG_CORR gauges, regime agreement, and
     each index's forward return by how many of the three sit in LowCorr
@@ -1206,6 +1576,9 @@ def report_index(name, M, meta, args):
     print()
     print(oos_report(M, proxy))
     print()
+    if getattr(args, "transitions", False):
+        print(transition_report(M, proxy))
+        print()
     return tables[name]
 
 
@@ -1231,6 +1604,17 @@ def main():
     ap.add_argument("--barometer", default="docs/gex_dispersion.html",
                     help="built GEX/dispersion page for the external gauge cross-check "
                          "(skipped when absent)")
+    ap.add_argument("--transitions", action="store_true",
+                    help="add the regime-transition section (episode-clustered "
+                         "hazard models with a boundary-distance control, "
+                         "episode-level counts, creep-vs-jump)")
+    ap.add_argument("--point-in-time", action="store_true",
+                    help="re-estimate the NDX tilt spread on a point-in-time "
+                         "membership panel (every 2018+ member; needs network "
+                         "or a warm 'pit' cache) with factor-neutral variants")
+    ap.add_argument("--membership", default="data/ndx_membership.csv",
+                    help="membership stint table for --point-in-time "
+                         "(default data/ndx_membership.csv)")
     ap.add_argument("--min-valid-corr", type=float, default=0.98,
                     help="min corr between packed-close 21d returns and the payload's "
                          "adjusted r21 before an NDX name is dropped (default 0.98)")
@@ -1277,8 +1661,20 @@ def main():
     if args.csv and tabs:
         pd.concat(tabs, ignore_index=True).to_csv(args.csv, index=False)
 
+    if args.point_in_time and "NDX" in frames:
+        try:
+            print(pit_tilt_report(P, frames["NDX"], args.membership,
+                                  args.cache_dir, refresh=args.refresh))
+        except Exception as e:                                   # noqa: BLE001
+            print(f"=== POINT-IN-TIME TILT PANEL ===\n  skipped ({e})",
+                  file=sys.stderr)
+        print()
+
     print(crossed_report(frames, P))
     print()
+    if args.transitions:
+        print(transition_cross_report(frames))
+        print()
     print(cross_index_report(frames))
     print()
     if "NDX" in frames:
