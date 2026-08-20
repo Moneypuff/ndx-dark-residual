@@ -391,6 +391,40 @@ def test_assemble_frame_trailing_completeness_guard():
 
 
 # ---------------------------------------------------------------------------
+# crossed-input identification report
+# ---------------------------------------------------------------------------
+def _synthetic_frame(seed, n=900):
+    rng = np.random.default_rng(seed)
+    idx = _bdays(n, start="2020-01-02")
+    base = rng.normal(0, 1, n)
+    px = pd.DataFrame(
+        {f"N{i:02d}": 100.0 * np.cumprod(1 + (0.5 * base + rng.normal(0, 1, n)) / 100)
+         for i in range(35)}, index=idx)
+    proxy = pd.Series(100.0 * np.cumprod(1 + base / 100), index=idx)
+    dix = pd.Series(0.45 + 0.05 * np.sin(np.arange(n) / 17)
+                    + rng.normal(0, 0.01, n), index=idx)
+    r1m = pd.Series((proxy.shift(-21) / proxy - 1) * 100, index=idx)
+    return S.assemble_frame(px, proxy, dix, r1m)
+
+
+def test_crossed_report_renders_four_rows_and_ex_leg():
+    frames = {"NDX": _synthetic_frame(30), "SPX": _synthetic_frame(31)}
+    out = S.crossed_report(frames, {})
+    assert "NDX gauge+DIX -> QQQ" in out and "SPX gauge+DIX -> QQQ" in out
+    assert "no spx.dix_ex" in out
+    # with a dix_ex series in the payload, the ex-NDX leg renders too
+    dates = [d.strftime("%Y-%m-%d") for d in frames["SPX"].index]
+    P = {"spx": {"dates": dates,
+                 "dix_ex": [0.44] * len(dates), "dix_ex_names": 400}}
+    out2 = S.crossed_report(frames, P)
+    assert "ex-NDX DIX (400nm) -> SPY" in out2
+
+
+def test_crossed_report_skips_without_both_indices():
+    assert "needs both" in S.crossed_report({"NDX": _synthetic_frame(32)}, {})
+
+
+# ---------------------------------------------------------------------------
 # spx_weekly_tilt (payload plumbing guards)
 # ---------------------------------------------------------------------------
 def test_spx_weekly_tilt_missing_and_mismatched_payloads():

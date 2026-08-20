@@ -1013,6 +1013,63 @@ def oos_report(M, proxy):
     return "\n".join(lines)
 
 
+def crossed_report(frames, P):
+    """Common-window identification of the NDX-vs-SPX contrast. The two
+    comovement gauges are ~0.96 correlated, so 'the DIX gradient is an NDX
+    phenomenon' can only be believed if it survives crossing the legs on
+    one shared window: each index's (gauge, DIX) pair scored against BOTH
+    outcomes, plus the SPX-ex-NDX DIX (payload `spx.dix_ex`) when the
+    build carries it -- is the SPX gauge's flatness dilution by the NDX
+    overlap, or does the non-tech S&P not carry the signal at all?"""
+    lines = ["=== CROSSED-INPUT IDENTIFICATION (NDX vs SPX, common window; "
+             "LowCorr row only) ==="]
+    if "NDX" not in frames or "SPX" not in frames:
+        return lines[0] + "\n  (needs both NDX and SPX frames)"
+    A, B = frames["NDX"], frames["SPX"]
+    common = A.index.intersection(B.index)
+    if len(common) < 500:
+        return lines[0] + f"\n  (common window too short: {len(common)} days)"
+    lines.append(f"  common window: {common.min().date()} -> {common.max().date()} "
+                 f"({len(common)} days; rolling zones are trailing, so "
+                 "restriction does not re-fit them)")
+
+    def row(gauge_f, dix_zone_col, dix_f, out_f, label):
+        Mi = pd.DataFrame({
+            "cz": gauge_f["cz_roll"].reindex(common),
+            "dz": dix_f[dix_zone_col].reindex(common),
+            "r1m": out_f["r1m"].reindex(common),
+            "r1m_ex": out_f["r1m_ex"].reindex(common),
+        })
+        parts = []
+        for dz in DZONES:
+            mask = (Mi["cz"] == "LowCorr") & (Mi["dz"] == dz)
+            st = mask_stats(Mi, mask, with_ci=False)
+            parts.append(f"{dz} {st['mean']:+.2f}% (ex {st.get('ex', np.nan):+.2f}, "
+                         f"n={st['n_days']}d/{st['n_eps']}ep)" if st["gate"]
+                         else f"{dz} -- (n={st['n_days']})")
+        return f"  {label:34s} " + "   ".join(parts)
+
+    lines.append(row(A, "dz_roll", A, A, "NDX gauge+DIX -> QQQ"))
+    lines.append(row(A, "dz_roll", A, B, "NDX gauge+DIX -> SPY"))
+    lines.append(row(B, "dz_roll", B, B, "SPX gauge+DIX -> SPY"))
+    lines.append(row(B, "dz_roll", B, A, "SPX gauge+DIX -> QQQ"))
+
+    # SPX-ex-NDX DIX (needs a payload built after the dix_ex change)
+    ex = (P.get("spx") or {}).get("dix_ex")
+    if ex is not None:
+        dates = pd.to_datetime(P["spx"]["dates"])
+        dix_ex5 = series_from(ex, dates).rolling(5, min_periods=3).mean()
+        Bx = B.copy()
+        Bx["dz_ex"] = zones_30_40_30(dix_ex5.reindex(B.index), "rolling", DZONES)
+        n_ex = P["spx"].get("dix_ex_names")
+        lines.append(row(B, "dz_ex", Bx, B,
+                         f"SPX gauge + ex-NDX DIX ({n_ex}nm) -> SPY"))
+    else:
+        lines.append("  (payload has no spx.dix_ex -- rebuild the dashboard "
+                     "for the ex-NDX leg)")
+    return "\n".join(lines)
+
+
 def cross_index_report(frames):
     """Pairwise correlation of the AVG_CORR gauges, regime agreement, and
     each index's forward return by how many of the three sit in LowCorr
@@ -1220,6 +1277,8 @@ def main():
     if args.csv and tabs:
         pd.concat(tabs, ignore_index=True).to_csv(args.csv, index=False)
 
+    print(crossed_report(frames, P))
+    print()
     print(cross_index_report(frames))
     print()
     if "NDX" in frames:
