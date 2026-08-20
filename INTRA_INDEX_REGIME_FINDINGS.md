@@ -6,7 +6,7 @@ only a certain group rallies — and study how each index's DIX reads inside
 each regime, at the index level and per name. **NDX: 30 Aug 2018 – 18 Aug
 2026, 2,001 sessions, 102 grid names (point-in-time panel: 180 of 182
 ever-members). SPX/IWM: 6 Jan 2020 →, ~1,660 sessions, top-99 iShares
-baskets.**
+baskets (SPX point-in-time tilt panel: 657 of 665 ever-members, 2018+).**
 
 This is the post-review revision: the study was refereed for era
 confounds, episode-level uncertainty, survivorship, timing and mechanism,
@@ -17,7 +17,7 @@ that is the correction working, not a data change.
 Reproduce:
 ```
 python intra_index_regime_study.py --transitions --csv intra_index_regimes.csv
-python intra_index_regime_study.py --indices ndx --point-in-time   # + PIT tilt panel
+python intra_index_regime_study.py --point-in-time ndx,spx   # + both PIT tilt panels
 ```
 
 ## Inference standards (what every number below has survived)
@@ -155,13 +155,45 @@ Regrading of what was previously called "the study's most robust cell":
   +1.4%/month; there is no decline to short, only a lag to avoid, and a
   40-name daily-rebalanced spread would spend most of 0.6pp on costs.
 
+### Does the tilt effect generalize? SPX point-in-time (the identification test)
+
+The obvious question for a claim this fragile is whether it is an NDX
+artifact or a real per-name dark-flow phenomenon. Built the same way as
+the NDX panel — every 2018+ S&P 500 member (`data/spx_membership.csv`,
+667 stints from Wikipedia's maintained change log, 657 of 665 usable),
+membership-masked, same five variants:
+
+| SPX panel / variant | spread | epCI | pre-2024 / 2024+ |
+|---|---:|---|---|
+| point-in-time (657 ever-members) | +0.06pp | [−0.4, +0.5] | +0.21 / −0.04 |
+| PIT, momentum-neutral | +0.02pp | [−0.4, +0.5] | +0.23 / −0.11 |
+| PIT, beta-neutral | +0.03pp | [−0.4, +0.5] | +0.22 / −0.10 |
+| PIT, momentum+beta-neutral (primary) | −0.03pp | [−0.4, +0.4] | +0.19 / −0.17 |
+| PIT, sector-neutral | +0.04pp | [−0.3, +0.4] | +0.16 / −0.05 |
+
+**The effect does not generalize.** In the S&P 500 the LowCorr tilt spread
+is a flat coin flip — hit rate 49–51% in every variant, magnitude an
+order smaller than NDX's, CI centered on zero rather than merely touching
+it. Q5/Q1 concentration is comparably static (BXP/BAX/HCA/RMD/YUM vs
+NDAQ/CMG/IFF/AMZN/MMM, 21d rank autocorrelation +0.32 — the instrument
+quality is fine; the effect just isn't there). This is now a proper
+point-in-time test, not the old weekly-cadence `spx_rel` proxy (kept
+below for the record but no longer load-bearing) — and it sharpens the
+NDX result rather than undermining it: **the per-name dark-flow drag is
+concentrated in the mega-cap tech/growth names NDX is built from, not a
+broad-market phenomenon.** That is one more point for the crowding
+reading over a generic-equities dark-accumulation story: NDX names are
+exactly the high-retail-attention names a crowding effect would
+concentrate in.
+
 ## SPX and IWM inside their own dispersed regimes
 
-- **SPX: flat.** LowCorr row +0.50 → +1.03 → +1.09 (era-adjusted all
-  negative: −1.24 → −0.55); flagship cell ex −0.55, epCI [−0.5, +2.5]. The
-  weekly `spx_rel` tilt check is ~0 in LowCorr (−0.08, [−0.3, +0.2]) — a
-  weak instrument (weekly raw prints), reported for completeness, no
-  longer cited as corroboration of anything.
+- **SPX: flat, on both axes.** The comovement-DIX row +0.50 → +1.03 →
+  +1.09 (era-adjusted all negative: −1.24 → −0.55); flagship cell ex
+  −0.55, epCI [−0.5, +2.5]. The per-name tilt spread is now confirmed
+  flat too (above) — SPX carries neither of the two NDX-surviving
+  effects. The old weekly `spx_rel` proxy (−0.08, [−0.3, +0.2]) is
+  superseded by the point-in-time result and no longer cited.
 - **IWM: the "inversion" is demoted to suggestive.** LowCorr×DIXHigh is
   −0.91% (ex −2.29, hit 43%) but epCI [−2.9, +1.0] spans zero, the whole
   LowCorr row is negative regardless of DIX (−0.20/−0.86/−0.91 — the
@@ -234,9 +266,11 @@ The tape×DIX sub-splits duplicate the 3×3s and are no longer quoted.
    the *gradient* — mostly the DIX-Low leg sitting ~2.4pp below era — and
    it belongs to both large-cap gauges, expressed strongest in QQQ. The
    +2.9%/82% cell as previously quoted was era-inflated.
-3. **The per-name tilt is a modest, style-clean, retail-flavored drag**
-   (−0.6pp PIT, CI touching zero): defensible as an avoid-screen in
-   dispersed tapes, no longer as "the most robust cell".
+3. **The per-name tilt is a modest, style-clean, retail-flavored drag —
+   and it's NDX-specific.** −0.6pp PIT in NDX (CI touching zero) vs a
+   clean null in a point-in-time S&P 500 panel (+0.06 to −0.03pp, CI
+   centered on zero, hit ~50% in every variant). Defensible as an
+   avoid-screen in NDX dispersed tapes; not a broad-market effect.
 4. **Regime endings**: watch the gauge's own short-term slope and breadth
    deterioration; ignore DIX changes and "last one dispersed" as timing
    signals; nothing forecasts the correlation spike itself.
@@ -251,11 +285,18 @@ The tape×DIX sub-splits duplicate the 3×3s and are no longer quoted.
   columns use within-year future information (diagnostic only).
 - Corr ↔ vol ≈ 0.8: "dispersed" and "quiet" largely overlap in-sample.
 - IWM instruments are doubly reconstructed (current-holdings DIX,
-  22.6%-coverage winners basket); SPX basket covers 75% of index weight.
-- The PIT panel drops 2 of 182 ever-members (HONA, SPCX — no history) and
-  keeps both Alphabet share classes (mild Q1 double-count); membership
-  windows from `data/ndx_membership.csv` (public reconstitution history,
-  hand-reviewed; regenerate with `fetch_ndx_membership.py`).
+  22.6%-coverage winners basket); SPX comovement basket covers 75% of
+  index weight (the tilt panel above uses the full point-in-time
+  membership, not the basket).
+- The NDX PIT panel drops 2 of 182 ever-members (HONA, SPCX — no
+  history); the SPX PIT panel drops 8 of 665 (ANDV, BF-B, BRK-B, EVHC,
+  FDXF, GGP, HONA, VMRK — BRK-B's absence is a ticker-format mismatch
+  between FINRA/Yahoo, not a real gap, but it was not chased down).
+  Both keep dual share classes (mild Q1/Q5 double-count in NDX's
+  GOOG/GOOGL). Membership windows from `data/ndx_membership.csv` (188
+  stints) and `data/spx_membership.csv` (667 stints), both from public,
+  actively maintained reconstitution histories, hand-reviewed;
+  regenerate with `fetch_ndx_membership.py` / `fetch_spx_membership.py`.
 - NDX packed closes are split-adjusted, dividend-unadjusted (validated
   ≥0.995 vs adjusted r21); SPX/IWM baskets use Yahoo adjusted closes.
 - Equal-weight gauges vs cap-weighted outcomes; the tape taxonomy's

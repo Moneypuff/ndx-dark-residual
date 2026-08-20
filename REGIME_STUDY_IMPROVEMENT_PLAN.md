@@ -1,11 +1,21 @@
 # Intra-index regime study — improvement plan (Tiers 1–3)
 
-> **Status: IMPLEMENTED** (all ten phases, Aug 2026). The corrected results
-> live in `INTRA_INDEX_REGIME_FINDINGS.md`; the SPX-ex-NDX crossed leg
-> populates on the first nightly build carrying `spx.dix_ex`, and the
-> forward-scoring log accumulates on `regime-scoring-data` once
-> `regime_score.yml` starts firing. This document is kept as the design
-> record; its "Rules" and "Decision log" still govern follow-up work.
+> **Status: IMPLEMENTED** (all ten phases, Aug 2026), plus one follow-up
+> beyond the original plan: Phase 3's point-in-time tilt panel was
+> extended to SPX (`data/spx_membership.csv`, 667 stints from Wikipedia's
+> S&P 500 change log; `--point-in-time ndx,spx`). Result: the per-name
+> tilt effect does **not** generalize to the S&P 500 (clean null, CI
+> centered on zero, ~50% hit rate) — sharpening the NDX finding to
+> "concentrated in mega-cap tech/growth names," not a broad-market
+> phenomenon. IWM's basket remains current-membership only (no free
+> point-in-time source found for Russell 2000 reconstitution history;
+> official data sits behind an FTSE Russell subscription). The corrected
+> results live in `INTRA_INDEX_REGIME_FINDINGS.md`; the SPX-ex-NDX
+> crossed leg populates on the first nightly build carrying
+> `spx.dix_ex`, and the forward-scoring log accumulates on
+> `regime-scoring-data` once `regime_score.yml` starts firing. This
+> document is kept as the design record; its "Rules" and "Decision log"
+> still govern follow-up work.
 
 Execution plan for hardening `intra_index_regime_study.py` /
 `INTRA_INDEX_REGIME_FINDINGS.md` against the four-referee critique
