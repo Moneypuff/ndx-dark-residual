@@ -377,6 +377,21 @@ def test_assemble_frame_columns_and_zones():
         assert (dzl[warm + 1:] == dz[warm:-1]).all()
 
 
+def test_assemble_frame_mae21_worst_forward_path():
+    n = 320
+    idx = _bdays(n)
+    rng = np.random.default_rng(12)
+    px = pd.DataFrame(
+        {f"N{i:02d}": 100.0 * np.cumprod(1 + rng.normal(0, 0.01, n))
+         for i in range(35)}, index=idx)
+    proxy = pd.Series(100.0, index=idx)
+    t0 = 280
+    proxy.iloc[t0 + 5] = 90.0          # a -10% day inside t0's forward window
+    M = S.assemble_frame(px, proxy, pd.Series(0.45, index=idx),
+                         pd.Series(1.0, index=idx))
+    assert M["mae21"].loc[idx[t0]] == pytest.approx(-10.0)
+
+
 def test_assemble_frame_trailing_completeness_guard():
     rng = np.random.default_rng(11)
     n = 300

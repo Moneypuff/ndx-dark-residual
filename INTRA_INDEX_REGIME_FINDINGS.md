@@ -1,266 +1,266 @@
 # Intra-index comovement regimes × DIX → 1-month forward returns
 
-The cross-index comovement study asked how the three DIX gauges line up
-*across* indices. This study divides the data into regimes *inside* each
-index — NDX-100, S&P 500, Russell 2000/IWM: at times all constituents rally
-together and correlation is high; in lower-correlation periods only a
-certain group rallies while the rest sells off. It then asks how each
-index's DIX reads inside each regime — at the index level and per name.
-**NDX: 30 Aug 2018 – 18 Aug 2026, 2,001 sessions, 102 grid names. SPX/IWM:
-6 Jan 2020 →, 1,664 sessions, top-99 iShares baskets.**
+Divide each index's history into comovement regimes — at times all
+constituents rally together and correlation is high; in dispersed periods
+only a certain group rallies — and study how each index's DIX reads inside
+each regime, at the index level and per name. **NDX: 30 Aug 2018 – 18 Aug
+2026, 2,001 sessions, 102 grid names (point-in-time panel: 180 of 182
+ever-members). SPX/IWM: 6 Jan 2020 →, ~1,660 sessions, top-99 iShares
+baskets.**
+
+This is the post-review revision: the study was refereed for era
+confounds, episode-level uncertainty, survivorship, timing and mechanism,
+and every number below is produced under the corrected standards. Earlier
+versions of this document quoted larger effects; where a headline shrank,
+that is the correction working, not a data change.
 
 Reproduce:
 ```
-python intra_index_regime_study.py --csv intra_index_regimes.csv   # all three
-python intra_index_regime_study.py --indices ndx                   # offline
+python intra_index_regime_study.py --transitions --csv intra_index_regimes.csv
+python intra_index_regime_study.py --indices ndx --point-in-time   # + PIT tilt panel
 ```
-NDX is read entirely from the payload embedded in `docs/index.html`
-(per-name split-adjusted closes, raw dark ratios, adjusted 1-month forward
-returns — both payload encodings supported). SPX/IWM comovement gauges come
-from fetched constituent baskets (top-100 IVV / IWM holdings by weight,
-Yahoo adjusted closes via the shared incremental cache; holdings cached to
-JSON), with DIX and outcomes from the payload's own `spx` / `iwm` series.
-The optional external cross-check reads `docs/gex_dispersion.html`.
 
-## Definitions
+## Inference standards (what every number below has survived)
 
-- **AVG_CORR** = equal-weight average pairwise correlation of daily returns
-  across all names with a full trailing 21-session window (min 30 names).
-  The index-internal realized analog of Cboe's implied-correlation gauges.
-- **DISP21** = 21-session mean of the daily cross-sectional std of returns.
-- **BREADTH** = fraction of names with a positive trailing 21-session return.
-- **Comovement regime** = Low/Mid/High on a 30/40/30 split of AVG_CORR, on
-  two bases: **full-sample** cutoffs (mild look-ahead) and **expanding**
-  cutoffs (each day vs its own past only, min 250 obs — live-knowable).
-- **DIX5** = 5-day MA of each index's dollar-DIX, zoned the same way.
-- **Tilt** (per name) = 5d MA of the raw daily dark ratio minus the name's
-  own expanding mean (min 60 obs) — the dashboard's "name-specific vs own
-  average" signal. **Tilt spread** = mean 1-month forward return of the
-  top-20%-tilt names minus the bottom-20%, each day. Daily panels exist
-  only for NDX; the SPX variant runs at the payload's weekly `spx_rel`
-  cadence on the raw single-day print; IWM has no per-name panel.
-- **Forward return** = each index's own proxy (QQQ/SPY/IWM) 21 sessions
-  ahead (payload `r21`, %). No look-ahead in any outcome.
-- **CI** = 95% moving-block bootstrap (21-day blocks); suppressed under 42
-  scored days.
-- NDX packed closes are split-adjusted but not dividend-adjusted; every
-  name's compounded 21d close return is validated against its adjusted
-  `r21` (0.98 gate; nothing dropped in the current build — worst name
-  0.995, dividends only). SPX/IWM baskets use Yahoo adjusted closes.
+- **Rolling-basis zones**: Low/Mid/High are 30/40/30 splits against a
+  trailing 504-session window — live-knowable *and* drift-proof. (Expanding
+  percentiles on the drifting dollar-DIX had turned zones into calendar
+  labels: the old headline cell compared mostly-2020-23 DIXHigh days
+  against mostly-2025-26 DIXLow days. Expanding and full-sample tables
+  remain in the script output as comparisons.)
+- **Episode-cluster CIs** (`epCI`): regimes arrive in multi-week episodes;
+  CIs resample whole episodes, not 21-day blocks. Day counts are printed
+  with episode counts everywhere.
+- **Era-adjusted means** (`ex`): each cell also reported net of its own
+  calendar-year baseline (diagnostic — the demeaning uses full-year info).
+- **Print gate**: no mean is quoted below 42 scored days AND 5 episodes
+  (10 events for entry studies).
+- **Timing**: FINRA publishes day t's file after the close; headline cells
+  are re-run with the DIX signal lagged one session.
+- **Two PRIMARY cells** (pre-specified): the NDX LowCorr×DIXHigh forward
+  return, and the NDX LowCorr tilt spread. Everything else is descriptive;
+  with ~150 printed cells, isolated "significant" cells are expected by
+  chance.
 
-## The regimes themselves (full-sample basis)
+## What the gauge measures (mechanism, stated honestly)
 
-| Index | Regime | n | avg corr | dispersion | breadth | vol | own 1m fwd | 95% CI |
-|---|---|---:|---:|---:|---:|---:|---:|---|
-| NDX | LowCorr  | 601 | 0.13 | 2.31% | 0.62 | 14.6 | **+0.33%** | [−0.9, +1.5] |
-| NDX | MidCorr  | 799 | 0.27 | 1.95% | 0.60 | 17.9 | +2.08% | [+0.8, +3.3] |
-| NDX | HighCorr | 601 | 0.48 | 2.14% | 0.48 | 31.8 | +2.47% | [+0.4, +4.5] |
-| SPX | LowCorr  | 499 | 0.12 | 1.97% | 0.63 | 10.4 | **+0.32%** | [−0.5, +1.1] |
-| SPX | MidCorr  | 666 | 0.25 | 1.65% | 0.60 | 13.4 | +1.47% | [+0.3, +2.6] |
-| SPX | HighCorr | 499 | 0.47 | 1.85% | 0.50 | 26.7 | +2.14% | [+0.2, +4.0] |
-| IWM | LowCorr  | 499 | 0.16 | 3.95% | 0.59 | 16.1 | **−0.24%** | [−2.0, +1.4] |
-| IWM | MidCorr  | 666 | 0.26 | 3.13% | 0.58 | 20.8 | +0.81% | [−0.9, +2.4] |
-| IWM | HighCorr | 499 | 0.39 | 3.71% | 0.46 | 32.7 | **+2.84%** | [+1.0, +4.8] |
+FINRA's daily file records the short-marked share of **all off-exchange
+volume** — today mostly wholesaler internalization of retail flow, and
+flow rather than positioning. "High DIX = dark accumulation" is one
+interpretation (SqueezeMetrics'); a high per-name ratio can equally read
+as crowded retail intensity. This study treats the ratios as signals to be
+conditioned and tested. The evidence below (index-level positive, per-name
+negative, per-name effect concentrated in high off-exchange-share names)
+sits more comfortably with the crowding reading at the name level.
 
-The shape is universal: high-comovement tapes are panic tapes (vol up,
-breadth down, everything falling together) and precede the *best* months —
-mean reversion — while the low-correlation, dispersed tape precedes the
-weakest. The monotone regime effect is strongest for IWM (−0.24% → +2.84%,
-zCORR NW-t +4.4 before the vol control) and smallest after expanding
-cutoffs (part of the effect is full-sample relabeling). Small-cap
-dispersion runs structurally ~2× large-cap (3–4%/day vs ~2%) on a narrower
-correlation range.
+## The regimes themselves (rolling basis)
 
-Longest episodes land where they should for all three: **HighCorr** = the
-2022 bear, the COVID crash, (NDX) late 2018; **LowCorr** = Jul–Nov 2025,
-Dec 2025–Mar 2026, and Apr–Aug 2026 — the current episode. **As of 18 Aug
-2026 all three indices sit in LowCorr simultaneously** (NDX AVG_CORR 0.07 —
-the 2.5th percentile of its whole history — with dispersion at 3.6%/day).
+| Index | Regime | n days/eps | breadth | vol | own 1m fwd | ex (era-adj) | epCI |
+|---|---|---:|---:|---:|---:|---:|---|
+| NDX | LowCorr | 720/30 | 0.63 | 14.9 | +1.46% | **−0.91** | [+0.1, +2.5] |
+| NDX | HighCorr | 400/24 | 0.44 | 34.7 | +2.70% | **+2.22** | [+0.2, +6.0] |
+| SPX | LowCorr | 675/39 | 0.63 | 10.7 | +0.82% | −0.88 | [−0.1, +1.5] |
+| SPX | HighCorr | 310/15 | 0.46 | 24.2 | +2.01% | +1.84 | [−0.2, +4.4] |
+| IWM | LowCorr | 529/45 | 0.58 | 16.8 | −0.65% | −1.84 | [−2.4, +1.3] |
+| IWM | HighCorr | 310/27 | 0.44 | 28.5 | +2.15% | +1.77 | [+0.4, +4.5] |
 
-## Headline: where the DIX gradient lives — and where it doesn't
+The ordering — dispersed tapes precede below-era months, panic tapes
+above-era months — survives era adjustment in all three indices and
+strengthens excluding COVID/2022. It is entangled with volatility
+(corr(zCORR, zRV) ≈ 0.8); the script's vol-parallel panel shows a vol-only
+version reproduces part but not all of it (the NDX DIX gradient inside
+low-VOL terciles is +1.0→+2.5 vs +(−0.2)→+2.9 inside low-CORR terciles,
+and in the nested regression neither zRV nor zCORR is separately
+significant).
 
-Own-proxy 1-month forward by comovement regime × DIX regime, **expanding
-(no-look-ahead) basis**:
+## PRIMARY 1 — the NDX DIX gradient in dispersed tapes (corrected)
 
-| LowCorr regime only | DIX Low | DIX Mid | DIX High |
+QQQ 1-month forward inside the NDX LowCorr regime, rolling basis:
+
+| | DIX Low | DIX Mid | DIX High |
 |---|---:|---:|---:|
-| **NDX** | −0.11% (n=120, hit 46%) | +0.87% (n=386) | **+2.76% (n=249, hit 82%, CI [+1.3, +4.2])** |
-| **SPX** | +0.82% (n=93) | +0.87% (n=424) | +1.09% (n=224) |
-| **IWM** | +0.29% (n=133) | −0.31% (n=288) | **−1.29% (n=138, hit 42%)** |
+| raw mean | −0.23% (n=269/35ep) | +2.16% | **+2.90% (n=184/31ep, hit 82%)** |
+| era-adjusted | **−2.35** | −0.19 | **+0.18** |
+| epCI | [−1.4, +1.2] | [+1.1, +3.2] | [+0.9, +4.8] |
+| lag-1 signal | −0.34% | +2.19% | +2.97% |
 
-- **NDX**: in the dispersed tape, DIX discriminates hard — a ~2.9pp
-  Low→High gradient with the only tight, positive CI in the row (same
-  pattern on the full-sample basis, −0.71% → +1.45%). In mid/high-corr
-  regimes the gradient is flat or inverted; in panic regimes low DIX
-  (capitulation) precedes the biggest bounces (+6.22%, n=30 —
-  anecdote-sized).
-- **SPX does not inherit the NDX result**: the gradient is ~flat
-  (+0.8→+1.1) on both bases. Whatever information the dark-flow level
-  carries in dispersed tapes, it is an NDX-100 phenomenon, not a
-  large-cap-index generic.
-- **IWM inverts it**: high IWM DIX in a dispersed small-cap tape has been
-  *bad* (−1.29%, hit 42%; entry-day version: 14 entries, −1.01%, hit 43%).
-  This extends the cross-index study's finding #4 — "a high IWM DIX alone
-  is a poor omen for small caps" — and locates it: the damage is done in
-  the low-correlation regime.
-- Interaction regressions (`r1m ~ zDIX + zCORR + zDIX·zCORR`, NW-21) agree
-  in sign everywhere (interaction −0.4 to −0.7) but are not significant at
-  5% for any index, and for SPX/IWM the zCORR level effect migrates to the
-  realized-vol control (zRV t=+2.0/+2.4; corr↔vol 0.8). Treat the 3×3s as
-  conditioning maps of when DIX has worked, not proven coefficients.
+What survived and what didn't:
 
-## Which group rallies? Per-name dark flow in the dispersed tape
+- **The gradient survived** (~2.5–3.2pp Low→High, monotone, on 26–35
+  episodes per leg with balanced year mixes, intact at lag-1 timing;
+  leave-one-year-out range of the High cell [+1.85, +3.69]).
+- **The level claim did not**: the High cell's era-adjusted mean is
+  +0.18pp — the celebrated +2.9%/82% is mostly the unconditional strength
+  of the years the cell lives in. The informative cell is actually the
+  **DIX-Low leg: −2.35pp below its own era** — in dispersed tapes, *low*
+  dark-flow share has been the warning, more than high share being a
+  buy signal.
+- **Risk of holding the High cell**: fwd p10/p90 [−3.0, +7.8]; max adverse
+  excursion inside the 21-session hold: median −1.6%, worst −13.6%.
+- **Not NDX-specific.** Crossed inputs on the common 2020+ window: NDX
+  gauge+DIX→SPY reproduces ~59% of the gradient (+0.02→+1.94) and SPX
+  gauge+DIX→QQQ carries +0.08→+2.03, while SPX gauge+DIX→SPY is flat
+  (+0.50→+1.09). The contrast the earlier draft called "an NDX-100
+  phenomenon" decomposes into: **the outcome leg (QQQ responds harder
+  than SPY) plus a smaller DIX-gauge leg** — both large-cap dark-flow
+  gauges carry it. (The SPX-ex-NDX DIX leg is packed by the pipeline as
+  `spx.dix_ex` and will populate on the next nightly build.)
+- **OOS (2024+) is mixed**: under live rolling zones the DIXHigh test cell
+  has only 37 days (gated); under train-frozen cutoffs High beats Mid
+  (+1.79 vs +0.21) but Low isn't bad (+1.80, n=57/11ep). The train-fitted
+  interaction transfers weakly (OOS corr +0.18, NW t=+1.62).
 
-Daily Q5-minus-Q1 tilt spread of 1-month forward returns, by regime
-(full-sample basis):
+Entry-day version (rolling basis) — and one more casualty: at *formation*
+the DIX split does not differentiate. Enter LowCorr & DIXHigh: 17 entries,
++2.63%, hit 82% (lag-1: 16 entries, +2.77%); enter LowCorr & DIXLow: 20
+entries, +2.57%, hit 80%; enter LowCorr alone: 21 entries, +3.05%. The
+old expanding-basis entry gradient was another zone-drift artifact. The
+gradient is an *environment* description (it accrues inside episodes,
+via the DIX-Low leg), not an entry trigger.
 
-| | Regime | n | spread | 95% CI | Q5 (high tilt) | Q1 (low tilt) |
-|---|---|---:|---:|---|---:|---:|
-| NDX (daily) | LowCorr  | 552 | **−1.59pp** | **[−2.6, −0.6]** | +0.64% | +2.23% |
-| NDX (daily) | MidCorr  | 797 | +0.02pp | [−0.6, +0.6] | +2.15% | +2.14% |
-| NDX (daily) | HighCorr | 593 | −0.07pp | [−0.8, +0.6] | +3.44% | +3.51% |
-| SPX (weekly) | LowCorr  | 93 | −0.07pp | [−0.4, +0.2] | +0.44% | +0.52% |
-| SPX (weekly) | MidCorr  | 129 | −0.11pp | [−0.4, +0.2] | +1.63% | +1.75% |
-| SPX (weekly) | HighCorr | 95 | −0.69pp | [−1.2, −0.1] | +2.60% | +3.29% |
+## PRIMARY 2 — the per-name tilt spread (corrected: point-in-time panel)
 
-**In NDX low-correlation regimes, per-name dark flow does identify the
-groups — with a negative sign.** Names whose dark ratio runs above their
-own norm lag by ~1.6pp/month (the only CI excluding zero; −1.9pp on 2024+
-test days); the group that rallies is the one *without* an elevated
-dark-flow tilt. In mid/high-correlation tapes everything comoves and the
-cross-section carries nothing. This matches the dashboard's long-standing
-per-name finding (elevated name-specific dark ratio skews forward returns
-negative) and sharpens it: **that signal is a low-correlation-regime
-phenomenon.**
+Q5-minus-Q1 one-month spread on the name-specific tilt (5d-MA raw dark
+ratio minus own expanding mean), NDX LowCorr days:
 
-The SPX check runs at a weekly cadence on the noisier single-day print, so
-it is a weaker instrument: it shows the same overall negative constant
-(−0.28pp, t=−2.3) but its (small) regime concentration sits in HighCorr
-rather than LowCorr. Read it as "the negative per-name signal exists in the
-S&P too", not as a regime contradiction with equal evidence.
+| Panel / variant | spread | epCI | pre-2024 / 2024+ |
+|---|---:|---|---|
+| current members (survivorship-censored) | −1.07pp | [−2.3, −0.0] | — |
+| **point-in-time (180 ever-members)** | **−0.60pp** | [−1.3, +0.1] | −0.37 / −0.80 |
+| PIT, momentum-neutral | −0.64pp | [−1.4, +0.1] | −0.46 / −0.81 |
+| PIT, beta-neutral | −0.57pp | [−1.2, +0.1] | −0.28 / −0.83 |
+| PIT, momentum+beta-neutral (primary) | −0.65pp | [−1.3, +0.1] | −0.32 / −0.94 |
+| PIT, sector-neutral | −0.48pp | [−1.0, +0.0] | −0.28 / −0.66 |
+| PIT, high off-exch-share half | −0.93pp | [−1.9, +0.1] | — |
+| PIT, low off-exch-share half | −0.42pp | [−1.0, +0.3] | — |
 
-## Tape taxonomy — "all rally" vs "only a certain group rallies"
+Regrading of what was previously called "the study's most robust cell":
 
-Trailing 21d index return sign × breadth tercile (NDX shown; SPX/IWM in
-the script output are shaped the same):
+- **Survivorship was nearly half the magnitude** (−1.07 → −0.60 once
+  departed members are included with membership-masked histories).
+- **The sign is consistent** (negative in 5 of 7 years, LOYO range
+  [−1.57, −0.71] on the current-members panel) and is **not** a momentum,
+  beta or sector bet — neutralizations barely move it. But the
+  episode-cluster CI now touches zero and the effect is 2× stronger
+  post-2024, so "regime-specific alpha" and "post-2023 era effect" remain
+  unidentified.
+- **It reads as a retail-crowding signal**: twice the size among names
+  with a high off-exchange share of volume (−0.93 vs −0.42).
+- The buckets are quasi-static (Q5 lived in CTSH/KHC/NXPI/GILD/CHTR; Q1 in
+  AMZN/GOOGL/GOOG/NFLX/MU; 21d rank autocorrelation +0.29) — closer to one
+  persistent tilt than 720 independent bets, which is exactly what the
+  episode CI prices in.
+- Practical form: an **avoid-screen** (don't hold high-tilt names in
+  dispersed tapes), not a long/short spread — the Q5 leg still went *up*
+  +1.4%/month; there is no decline to short, only a lag to avoid, and a
+  40-name daily-rebalanced spread would spend most of 0.6pp on costs.
 
-| Tape (NDX) | n | avg corr | QQQ 1m fwd | 95% CI |
-|---|---:|---:|---:|---|
-| broad rally | 667 | 0.28 | +1.18% | [−0.2, +2.5] |
-| mid rally | 561 | 0.21 | +1.44% | [+0.5, +2.4] |
-| narrow rally | 74 | 0.25 | +2.48% | [+1.3, +3.7] |
-| selective selloff | 2 | 0.39 | — | — |
-| mid selloff | 96 | 0.28 | −0.14% | [−1.9, +1.8] |
-| broad selloff | 601 | 0.39 | +2.68% | [+1.0, +4.5] |
+## SPX and IWM inside their own dispersed regimes
 
-- **Selective selloffs barely exist anywhere** (NDX 2 days, SPX 0, IWM 4
-  in the shared window): when an index falls, breadth collapses and
-  correlation spikes with it. Selectivity is a *rally-side* phenomenon.
-- Narrow rallies have *not* been fragile in any index (NDX +2.48%, SPX
-  +1.43%, IWM +2.34% — leadership persisting, not topping).
-- DIX splits the rally tapes in NDX (broad rally: DIXLow +0.31% / DIXHigh
-  +2.47%) and more weakly in SPX (+0.49% / +1.79%); in broad selloffs the
-  *low*-DIX washouts bounce hardest in every index (NDX +3.40%, SPX
-  +2.55%, IWM +3.22%).
+- **SPX: flat.** LowCorr row +0.50 → +1.03 → +1.09 (era-adjusted all
+  negative: −1.24 → −0.55); flagship cell ex −0.55, epCI [−0.5, +2.5]. The
+  weekly `spx_rel` tilt check is ~0 in LowCorr (−0.08, [−0.3, +0.2]) — a
+  weak instrument (weekly raw prints), reported for completeness, no
+  longer cited as corroboration of anything.
+- **IWM: the "inversion" is demoted to suggestive.** LowCorr×DIXHigh is
+  −0.91% (ex −2.29, hit 43%) but epCI [−2.9, +1.0] spans zero, the whole
+  LowCorr row is negative regardless of DIX (−0.20/−0.86/−0.91 — the
+  regime, not the DIX, carries IWM's bad news), and the cell partially
+  reverses on a thin 2024+ leg. The doubly-reconstructed IWM instrument
+  (current-holdings DIX, 22.6%-coverage winners basket) caps how much this
+  row can ever say.
 
-## Regime-entry event study (expanding basis, 21-session cool-down)
+## Do dispersed regimes announce their own end? (transitions, corrected)
 
-| Entry condition | NDX | SPX | IWM |
-|---|---:|---:|---:|
-| enter LowCorr | +2.92% (18, hit 83%) | +1.71% (22, 73%) | +1.18% (27, 59%) |
-| enter LowCorr & DIXHigh | **+3.17% (21, 81%)** | +0.84% (21, 67%) | **−1.01% (14, 43%)** |
-| enter LowCorr & DIXLow | +1.41% (13, 58%) | +2.36% (13, 92%) | −0.47% (18, 44%) |
-| enter HighCorr | +0.91% (17, 76%) | +0.73% (10, 60%) | +1.27% (16, 50%) |
+Episode-clustered hazard models on mature (age ≥ 21d) LowCorr days, every
+spec controlling for distance-to-boundary (the rolling percentile of the
+gauge — a driftless random walk "predicts" its own exits through proximity
+alone, and the test suite pins that this control kills such a signal):
 
-The entry view repeats the per-index story: the low-corr + high-DIX setup
-survives entry-day scoring only for NDX; for IWM the same setup is the
-*worst* row. (Each cell is a couple dozen events — direction, not
-precision.)
+- **The gauge's own 5-day slope survives for the large caps**: +0.15/sd
+  (t=+4.0, 13 episodes) NDX, +0.16/sd (t=+2.7, 12 eps) SPX — correlation
+  turning up inside a mature dispersed tape raises the exit hazard beyond
+  boundary mechanics. For IWM it flips (−0.17/sd) with the boundary term
+  dominant (+0.35/sd, t=+5.5) — small-cap exits are mostly proximity.
+- **Deteriorating breadth helps at the margin** (d21_breadth −0.14/sd,
+  t=−2.4 NDX; −0.11, t=−1.8 SPX).
+- **The "rising DIX precedes the exit" precursor died** under honest
+  construction (d21_dix t = −0.6 NDX / +1.0 SPX / +0.2 IWM).
+- **"Last one dispersed → exits 100%" died**: pooled at the episode level
+  it is 42/54 (Wilson [0.65, 0.87]) vs 82/114 (Wilson [0.63, 0.79]) for
+  *all* LowCorr episode starts — indistinguishable.
+- **The durable null stands**: entries into HighCorr are jumps, not creeps
+  (~35% of the whole 40-day gauge rise lands in the final 5 sessions;
+  12–22 entries per index). Correlation spikes are not forecastable from
+  the comovement gauges, and Cboe COR1M gives no usable early warning
+  either.
+- Episode-level counts are small everywhere (9–13 mature episodes per
+  index): treat even the surviving slopes as one-cycle evidence.
 
-## Out-of-sample split (fit < 2024, evaluate 2024+; ~660 test days each)
+## Cross-index agreement (rolling basis, 1,414 common days)
 
-- Test baselines: QQQ +1.96%, SPY +1.69%, IWM +1.64%.
-- **NDX tilt spread holds OOS**: −1.94pp on LowCorr test days.
-- **The NDX index-level DIX gradient does not stay monotone OOS** (LowCorr:
-  DIXLow +1.80/DIXMid +0.21/DIXHigh +1.79 — High still beats Mid, but the
-  Low leg stopped being bad). IWM's inversion partially reverses OOS on a
-  thin DIXHigh leg (+5.07%, n=19) — small-cap cells get very sparse after
-  2024 under train cutoffs.
-- Train-fitted interaction models transfer modestly everywhere: OOS
-  corr(pred, realized) = +0.18 (NDX), +0.39 (SPX), +0.28 (IWM) — but the
-  SPX/IWM numbers leaning on sparse high-corr test cells; the cross-index
-  two-factor model managed 0.00 on the same kind of test.
+NDX↔SPX gauges are nearly one gauge (corr +0.96, same regime 83% of days);
+IWM decouples (+0.81/+0.83, ~61%). Forward 1m by number of indices in
+LowCorr:
 
-## Cross-index comovement agreement
-
-Common window 6 Jan 2020 – 18 Aug 2026 (1,663 days), full-sample basis:
-
-- corr(AVG_CORR): NDX↔SPX **+0.96** (same regime 84% of days), NDX↔IWM
-  +0.81 (61%), SPX↔IWM +0.83 (62%). All three agree 54% of days — the
-  large-cap gauges are nearly one gauge; small caps genuinely decouple.
-- Forward 1m by number of indices in LowCorr:
-
-| dispersed | n | NDX | SPX | IWM |
+| dispersed | n days/eps | NDX (ex) | SPX (ex) | IWM (ex) |
 |---|---:|---:|---:|---:|
-| 0 of 3 | 963 | +2.37% | +1.82% | +1.71% |
-| 1 of 3 | 191 | +2.31% | +1.32% | +0.05% |
-| 2 of 3 | 202 | +1.78% | +1.27% | +0.86% |
-| 3 of 3 | 307 | **−0.70%** | **−0.24%** | +0.05% |
+| 0 of 3 | 572/35 | +2.15 (+1.66) | +1.99 (+1.31) | +1.90 (+1.51) |
+| 3 of 3 | 387/38 | +0.12 (−2.11), epCI [−1.4,+2.0] | +0.17 (−1.55), [−0.9,+1.4] | −0.31 (−1.65), [−2.1,+1.5] |
 
-**Everything-dispersed is the weakest environment on record for all three
-indices** — and it is the current one (all three in LowCorr since late
-Apr 2026).
+The earlier draft's "weakest environment on record" is **not** a
+statistical claim — every 3-of-3 epCI includes zero. What holds is the
+consistent within-year drag (era-adjusted −1.6 to −2.1pp across all three
+indices, sign right in 6 of 6 years for NDX) and the ordering vs 0-of-3.
+All three indices have been jointly dispersed since late April 2026;
+current-regime reads carry an as-of date and are computed only on complete
+sessions.
 
-External cross-check: NDX AVG_CORR vs the GEX/dispersion barometer —
-corr(level) **+0.95** against the realized top-50 SPX correlation and
-**+0.73** against Cboe COR1M (+0.90 / +0.34 on 21d changes).
+## Tape structure (kept for its structural facts only)
 
-## What the pattern says
+Selective selloffs barely exist (NDX 2 days, SPX 0, IWM 4): when an index
+falls, breadth collapses and correlation spikes — selectivity is a
+rally-side phenomenon (partly by construction: equal-weight breadth vs a
+cap-weighted index leg). Narrow rallies have not been fragile in any index.
+The tape×DIX sub-splits duplicate the 3×3s and are no longer quoted.
 
-1. **Comovement is a real conditioning variable for the DIX — but the
-   conditioning differs by index.** The unconditional "level carries
-   nothing" result decomposes three ways: in low-correlation tapes the DIX
-   level carries a ~3pp/month monotone gradient for NDX, roughly nothing
-   for SPX, and the *opposite* sign for IWM. A single pooled rule would
-   have averaged these away.
-2. **In dispersed tapes, per-name dark flow tells you which group** (NDX):
-   avoid the names with elevated dark-flow tilt (−1.6pp/month, CI excludes
-   zero, holds OOS). This remains the study's most robust cell; the weekly
-   SPX check sees the same negative constant.
-3. **Selectivity is rally-side only, in every index**: selloffs are broad
-   by construction (correlation spikes), so "only a certain group rallies"
-   regimes are low-corr *up* tapes — and narrow rallies have continued,
-   not died.
-4. **The regime now** (Aug 2026): all three indices dispersed at once —
-   historically the weakest forward environment (NDX −0.70%/month) — with
-   the NDX at record-low correlation. Watch each index's own DIX zone
-   through its own map: high NDX DIX would be constructive, high IWM DIX
-   would not.
-5. Interaction coefficients are only marginal (|t| ≈ 1–1.6), the corr
-   level effect is entangled with vol for SPX/IWM, and several OOS legs
-   are thin — treat the 3×3s as conditioning maps, not standalone
-   triggers.
+## What the pattern says (post-review grading)
+
+1. **The regime axis is real but era-entangled**: dispersed tapes run
+   ~1–2pp/month below their own year's baseline, panic tapes ~2pp above,
+   in all three indices — with vol as an inseparable co-driver at this
+   sample size.
+2. **Dark flow inside dispersed tapes**: the surviving index-level fact is
+   the *gradient* — mostly the DIX-Low leg sitting ~2.4pp below era — and
+   it belongs to both large-cap gauges, expressed strongest in QQQ. The
+   +2.9%/82% cell as previously quoted was era-inflated.
+3. **The per-name tilt is a modest, style-clean, retail-flavored drag**
+   (−0.6pp PIT, CI touching zero): defensible as an avoid-screen in
+   dispersed tapes, no longer as "the most robust cell".
+4. **Regime endings**: watch the gauge's own short-term slope and breadth
+   deterioration; ignore DIX changes and "last one dispersed" as timing
+   signals; nothing forecasts the correlation spike itself.
+5. Everything rests on ~10–40 episodes per claim from one macro cycle.
+   The pre-registered forward-scoring log (see `frozen_rules.json` once
+   Phase 10 of the improvement plan lands) is the only thing that will
+   settle points 2–4.
 
 ## Caveats
 
-- **Survivorship.** All universes are *current* membership (NDX grid
-  names; top-100 present-day IVV/IWM holdings — for IWM that is also a
-  winners-by-weight tilt). Comovement gauges are fairly insensitive to
-  membership; per-name results describe today's constituents.
-- **Basket coverage.** The SPX basket covers 75% of index weight; the IWM
-  basket only 22.6% (99 of ~2,000 names in the current build) — a
-  behavioral proxy for the small-cap tape, not a replication of the index.
-- **Overlapping windows.** ~2,000/1,660 sessions ≈ 95/79 independent
-  months; block bootstrap and the entry studies are the honest lenses.
-- **Corr ↔ vol.** AVG_CORR and each proxy's realized vol are ~0.8
-  correlated; with a vol control neither is separately significant.
-  "Low-corr regime" and "quiet tape" largely overlap in this sample.
-- **Equal-weight gauges.** AVG_CORR/BREADTH weight the largest and
-  smallest basket names equally.
-- Tape/breadth cutoffs are full-sample (descriptive); the tape tables are
-  not live signals as printed.
-- The SPX tilt check runs on the payload's weekly-sampled `spx_rel` block
-  (raw single-day print, ~330 rows) — a much weaker instrument than the
-  NDX daily panel; IWM has no per-name dark-flow panel at all.
-- The per-index 3×3 tables (with CIs) are written to
-  `intra_index_regimes.csv`.
+- One macro cycle (2018–2026); 9–59 episodes behind any cell; era-adjusted
+  columns use within-year future information (diagnostic only).
+- Corr ↔ vol ≈ 0.8: "dispersed" and "quiet" largely overlap in-sample.
+- IWM instruments are doubly reconstructed (current-holdings DIX,
+  22.6%-coverage winners basket); SPX basket covers 75% of index weight.
+- The PIT panel drops 2 of 182 ever-members (HONA, SPCX — no history) and
+  keeps both Alphabet share classes (mild Q1 double-count); membership
+  windows from `data/ndx_membership.csv` (public reconstitution history,
+  hand-reviewed; regenerate with `fetch_ndx_membership.py`).
+- NDX packed closes are split-adjusted, dividend-unadjusted (validated
+  ≥0.995 vs adjusted r21); SPX/IWM baskets use Yahoo adjusted closes.
+- Equal-weight gauges vs cap-weighted outcomes; the tape taxonomy's
+  selloff asymmetry is partly definitional.
+- Per-index 3×3 tables (all bases, with both CI families, year mixes and
+  gates) are in `intra_index_regimes.csv`; the full report adds the
+  expanding/full-sample comparisons, vol parallels, lag-1 grids and
+  transition models.

@@ -55,6 +55,18 @@ Per-index inputs
             names is a behavioral proxy for the small-cap tape, not a
             replication of the index's weight (coverage is printed).
 
+What the gauge measures: FINRA's daily consolidated file records the
+short-marked share of ALL off-exchange volume -- today mostly wholesaler
+internalization of retail flow, not "dark pools" in the institutional
+sense, and flow rather than positioning. The SqueezeMetrics reading
+(market makers print short when filling customer buys, so a high short
+share = passive accumulation) is one interpretation; a high per-name
+ratio can equally read as crowded retail intensity. This study treats
+the DIX and the per-name ratio as SIGNALS to be conditioned and tested,
+not as a measured quantity of "dark buying" -- and the point-in-time
+section's off-exchange-share split is the direct test between the two
+readings.
+
 Per-name dark-flow tilt (for the "which group rallies" test): each name's
 5-day-MA raw dark ratio minus its own expanding mean (min 60 obs) -- the
 dashboard's "name-specific vs own average" signal. Each day the names are
@@ -506,6 +518,12 @@ def assemble_frame(px, proxy_close, dix, r1m):
     pret = daily_returns(proxy_close.to_frame("p"))["p"]
     M["rv"] = pret.rolling(WINDOW).std(ddof=0) * np.sqrt(252)
     M["tr21"] = (proxy_close / proxy_close.shift(WINDOW) - 1.0) * 100.0
+    # max adverse excursion inside the 21-session hold: the worst cumulative
+    # proxy return between t+1 and t+21 (%). A +2.5% cell mean at 32-vol hides
+    # -15% intermediate paths; this is the risk column for gate-passing cells.
+    fmin = pd.concat([proxy_close.shift(-h) for h in range(1, WINDOW + 1)],
+                     axis=1).min(axis=1)
+    M["mae21"] = (fmin / proxy_close - 1.0) * 100.0
 
     M = M[M["avg_corr"].notna() & M["dix5"].notna()].copy()
 
@@ -964,6 +982,14 @@ def flagship_report(M, czone_col, dzone_col):
             lines.append(f"    per-year: {yl}")
         if np.isfinite(lo):
             lines.append(f"    leave-one-year-out mean range: [{lo:+.2f}, {hi:+.2f}]")
+        if col == "r1m" and st.get("gate"):
+            r = M.loc[mask.to_numpy(), col].dropna()
+            mae = M.loc[mask.to_numpy(), "mae21"].dropna()
+            if len(r) and len(mae):
+                lines.append(
+                    f"    risk: fwd p10/p90 [{r.quantile(0.10):+.1f}, "
+                    f"{r.quantile(0.90):+.1f}]   max adverse excursion in the "
+                    f"hold: med {mae.median():+.1f}%, worst {mae.min():+.1f}%")
     return "\n".join(lines)
 
 
