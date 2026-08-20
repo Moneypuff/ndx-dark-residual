@@ -529,6 +529,34 @@ def test_tilt_spread_subset_restricts_cross_section():
 
 
 # ---------------------------------------------------------------------------
+# point-in-time config / sector-map selection (per-index generalization)
+# ---------------------------------------------------------------------------
+def test_pit_config_has_both_indices_with_distinct_namespaces():
+    assert S.PIT_CONFIG["NDX"]["proxy"] == "QQQ"
+    assert S.PIT_CONFIG["SPX"]["proxy"] == "SPY"
+    # the point-in-time fetch must never share a cache namespace with the
+    # main dashboard build's current-member panels ("" for NDX, "sp500" for
+    # SPX) or with each other
+    ns = {cfg["ns"] for cfg in S.PIT_CONFIG.values()}
+    assert len(ns) == len(S.PIT_CONFIG)
+    assert "" not in ns and "sp500" not in ns
+
+
+def test_pit_sector_map_reads_the_right_payload_slot():
+    P = {"sector_map": {"AAA": "Tech"},
+         "spx_grid": {"sector_map": {"BBB": "Financials"}}}
+    ndx_map = S.pit_sector_map(P, "NDX")
+    spx_map = S.pit_sector_map(P, "SPX")
+    assert ndx_map.get("AAA") == "Tech" and "BBB" not in ndx_map
+    assert spx_map.get("BBB") == "Financials" and "AAA" not in spx_map
+
+
+def test_pit_sector_map_tolerates_missing_payload_slots():
+    assert S.pit_sector_map({}, "NDX") is not None
+    assert S.pit_sector_map({}, "SPX") is not None
+
+
+# ---------------------------------------------------------------------------
 # tape_label
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("tr,b,expect", [

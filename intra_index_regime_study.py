@@ -112,6 +112,7 @@ Usage
     python intra_index_regime_study.py --indices ndx          # offline
     python intra_index_regime_study.py --csv intra_index_regimes.csv
     python intra_index_regime_study.py --barometer docs/gex_dispersion.html
+    python intra_index_regime_study.py --point-in-time ndx,spx  # + PIT tilt panels
 """
 import argparse
 import base64
@@ -670,21 +671,46 @@ def row_halves(panel):
     return out.where(panel.notna())
 
 
-def pit_tilt_report(P, M, membership_csv, cache_dir, refresh=False):
-    """Point-in-time re-estimation of the per-name tilt spread: FINRA+Yahoo
-    panels for every 2018+ NDX member (departed names included), membership
-    masking, and factor-neutralized variants. The PRIMARY number is the
-    momentum+beta-neutral LowCorr spread on the point-in-time panel."""
+PIT_CONFIG = {
+    # proxy = the beta/outcome benchmark ticker for this index; ns = the
+    # FINRA cache namespace for its ever-member panel, kept separate from
+    # the main dashboard's current-member namespace ("" for NDX, "sp500"
+    # for SPX) so a point-in-time fetch never mutates the nightly cache.
+    "NDX": {"proxy": "QQQ", "ns": "pit"},
+    "SPX": {"proxy": "SPY", "ns": "pit_spx"},
+}
+
+
+def pit_sector_map(P, index_key):
+    """Best-available sector labels for `index_key`'s point-in-time panel:
+    the static GICS map plus whatever sector labels the payload carries for
+    that index's grid (NDX: top-level `sector_map`; SPX: `spx_grid.sector_map`,
+    which also covers non-NDX S&P names via the SPDR sector-fund holdings)."""
     import ndx_dark_residual as N
-    lines = ["=== POINT-IN-TIME TILT PANEL (every 2018+ NDX member; "
+    smap = dict(getattr(N, "TICKER_SECTOR", {}))
+    if index_key == "SPX":
+        smap.update((P.get("spx_grid") or {}).get("sector_map") or {})
+    else:
+        smap.update(P.get("sector_map") or {})
+    return smap
+
+
+def pit_tilt_report(P, M, membership_csv, cache_dir, index_key="NDX", refresh=False):
+    """Point-in-time re-estimation of `index_key`'s per-name tilt spread:
+    FINRA+Yahoo panels for every 2018+ member (departed names included),
+    membership masking, and factor-neutralized variants. The PRIMARY number
+    is the momentum+beta-neutral LowCorr spread on the point-in-time panel."""
+    import ndx_dark_residual as N
+    cfg = PIT_CONFIG[index_key]
+    bench = cfg["proxy"]
+    lines = [f"=== POINT-IN-TIME TILT PANEL ({index_key}; every 2018+ member; "
              "membership-masked) ==="]
     mem = load_membership(membership_csv)
-    bench = P["bench"]
     symbols = sorted(set(mem["ticker"]))
     end = pd.Timestamp.today().normalize() + pd.Timedelta(days=1)
     panels = N.build_universe_panels(symbols + [bench], "2018-08-01", end,
-                                     cache_dir=cache_dir or None, ns="pit",
-                                     refresh=refresh, label="PIT-NDX",
+                                     cache_dir=cache_dir or None, ns=cfg["ns"],
+                                     refresh=refresh, label=f"PIT-{index_key}",
                                      heal_frac=1.0)
     dpi, adj = panels["dpi"], panels["adjclose"]
     names = [t for t in symbols
@@ -710,8 +736,7 @@ def pit_tilt_report(P, M, membership_csv, cache_dir, refresh=False):
                       .div(bret.rolling(126).var(), axis=0).where(W))
     momxbeta = (mom.fillna("") + "/" + beta.fillna("")).where(
         mom.notna() & beta.notna())
-    smap = dict(getattr(N, "TICKER_SECTOR", {}))
-    smap.update(P.get("sector_map") or {})
+    smap = pit_sector_map(P, index_key)
     sector = pd.DataFrame({t: [smap.get(t, "Other")] * len(dpi.index)
                            for t in names}, index=dpi.index).where(W)
 
@@ -1634,13 +1659,17 @@ def main():
                     help="add the regime-transition section (episode-clustered "
                          "hazard models with a boundary-distance control, "
                          "episode-level counts, creep-vs-jump)")
-    ap.add_argument("--point-in-time", action="store_true",
-                    help="re-estimate the NDX tilt spread on a point-in-time "
-                         "membership panel (every 2018+ member; needs network "
-                         "or a warm 'pit' cache) with factor-neutral variants")
-    ap.add_argument("--membership", default="data/ndx_membership.csv",
-                    help="membership stint table for --point-in-time "
+    ap.add_argument("--point-in-time", default="",
+                    help="comma list of ndx/spx to re-estimate the per-name tilt "
+                         "spread on a point-in-time membership panel (every "
+                         "2018+ member; needs network or a warm 'pit'/'pit_spx' "
+                         "cache) with factor-neutral variants, e.g. 'ndx,spx'")
+    ap.add_argument("--membership-ndx", default="data/ndx_membership.csv",
+                    help="NDX membership stint table for --point-in-time "
                          "(default data/ndx_membership.csv)")
+    ap.add_argument("--membership-spx", default="data/spx_membership.csv",
+                    help="SPX membership stint table for --point-in-time "
+                         "(default data/spx_membership.csv)")
     ap.add_argument("--min-valid-corr", type=float, default=0.98,
                     help="min corr between packed-close 21d returns and the payload's "
                          "adjusted r21 before an NDX name is dropped (default 0.98)")
@@ -1687,12 +1716,23 @@ def main():
     if args.csv and tabs:
         pd.concat(tabs, ignore_index=True).to_csv(args.csv, index=False)
 
-    if args.point_in_time and "NDX" in frames:
+    pit_wanted = [w.strip().upper() for w in args.point_in_time.split(",") if w.strip()]
+    membership_paths = {"NDX": args.membership_ndx, "SPX": args.membership_spx}
+    for key in pit_wanted:
+        if key not in frames:
+            print(f"=== POINT-IN-TIME TILT PANEL ({key}) ===\n"
+                  f"  skipped ({key} frame not built -- pass it in --indices)\n",
+                  file=sys.stderr)
+            continue
+        if key not in PIT_CONFIG:
+            print(f"=== POINT-IN-TIME TILT PANEL ({key}) ===\n"
+                  f"  skipped (no point-in-time support for {key})\n", file=sys.stderr)
+            continue
         try:
-            print(pit_tilt_report(P, frames["NDX"], args.membership,
-                                  args.cache_dir, refresh=args.refresh))
+            print(pit_tilt_report(P, frames[key], membership_paths[key], args.cache_dir,
+                                  index_key=key, refresh=args.refresh))
         except Exception as e:                                   # noqa: BLE001
-            print(f"=== POINT-IN-TIME TILT PANEL ===\n  skipped ({e})",
+            print(f"=== POINT-IN-TIME TILT PANEL ({key}) ===\n  skipped ({e})",
                   file=sys.stderr)
         print()
 
