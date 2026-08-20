@@ -121,6 +121,10 @@ TILT_MIN_OBS_WEEKLY = 12   # same guard in weekly rows (the spx_rel cadence)
 BOOT_B = 2000          # bootstrap replications
 BOOT_L = 21            # moving-block length (= the forward-return horizon)
 EXP_MIN = 250          # min history before an expanding-window zone is defined
+ROLL_WIN = 504         # rolling-percentile window for the zone bases (~2 years)
+GATE_DAYS = 42         # print gate: min scored days before a conditional mean prints
+GATE_EPISODES = 5      # print gate: min distinct episodes behind the mean
+GATE_EVENTS = 10       # print gate: min entries before an event-study mean prints
 OOS_SPLIT = "2024-01-01"
 BASKET_N = 100         # default basket size for the fetched SPX/IWM universes
 FETCH_START = "2019-10-01"   # SPX/IWM DIX starts 2020-01; buffer for the 21d warm-up
@@ -192,6 +196,44 @@ def block_boot_ci(r, B=BOOT_B, L=BOOT_L, seed=0, levels=(2.5, 97.5)):
     return tuple(float(x) for x in np.percentile(means, levels))
 
 
+def run_ids(mask):
+    """Integer id per contiguous True run of `mask` (positional contiguity:
+    consecutive rows of the frame), -1 on False rows. The cluster unit for
+    episode-level inference."""
+    m = np.asarray(mask, dtype=bool)
+    ids = np.full(len(m), -1, dtype=int)
+    cur, prev = -1, False
+    for i, v in enumerate(m):
+        if v and not prev:
+            cur += 1
+        if v:
+            ids[i] = cur
+        prev = v
+    return ids
+
+
+def cluster_boot_ci(r, ids, B=BOOT_B, seed=0, levels=(2.5, 97.5),
+                    min_clusters=GATE_EPISODES):
+    """Episode-cluster bootstrap 95% CI for the mean of `r`: resample whole
+    contiguous episodes (cluster ids from `run_ids`) with replacement.
+    Regime days arrive in a handful of multi-week episodes, so this is the
+    honest uncertainty; the 21-day moving-block CI understates it whenever
+    episodes run longer than a month. NaN below `min_clusters` episodes."""
+    r = np.asarray(r, dtype=float)
+    ids = np.asarray(ids)
+    ok = np.isfinite(r) & (ids >= 0)
+    r, ids = r[ok], ids[ok]
+    uniq = np.unique(ids)
+    if len(uniq) < min_clusters:
+        return (np.nan, np.nan)
+    groups = [r[ids == u] for u in uniq]
+    rng = np.random.default_rng(seed)
+    draws = rng.integers(0, len(groups), size=(B, len(groups)))
+    means = np.array([np.concatenate([groups[j] for j in row]).mean()
+                      for row in draws])
+    return tuple(float(x) for x in np.percentile(means, levels))
+
+
 def expanding_pctile(s, min_obs=EXP_MIN):
     """Percentile (0..1, mid-rank on ties) of each value within the series'
     OWN history up to and including that day. NaN until `min_obs`
@@ -207,13 +249,33 @@ def expanding_pctile(s, min_obs=EXP_MIN):
     return pd.Series(out, index=s.index)
 
 
+def rolling_pctile(s, window=ROLL_WIN, min_obs=EXP_MIN):
+    """Percentile (0..1, mid-rank on ties) of each value within its own
+    TRAILING `window` sessions only. Unlike the expanding variant this
+    re-normalizes as old history rolls off, so a non-stationary series (the
+    dollar-DIX drifted 0.41 -> 0.49 -> 0.43 across 2018-2026) cannot turn
+    zone membership into a calendar label. NaN until `min_obs` observations."""
+    v = s.to_numpy(dtype=float)
+    out = np.full(len(v), np.nan)
+    for i in range(min_obs - 1, len(v)):
+        hist = v[max(0, i - window + 1): i + 1]
+        hist = hist[np.isfinite(hist)]
+        if len(hist) < min_obs or not np.isfinite(v[i]):
+            continue
+        out[i] = (hist < v[i]).mean() + 0.5 * (hist == v[i]).mean()
+    return pd.Series(out, index=s.index)
+
+
 def zones_30_40_30(s, basis="full", labels=("Low", "Mid", "High"), min_obs=EXP_MIN):
     """Low/Mid/High on a 30/40/30 split of `s` (the comovement study's zone
     convention). basis='full' uses full-sample 30th/70th pct cutoffs (mild
     look-ahead); basis='expanding' ranks each day against its own past only
-    (NaN -> 'NA' until min_obs)."""
-    if basis == "expanding":
-        pct = expanding_pctile(s, min_obs=min_obs)
+    (NaN -> 'NA' until min_obs); basis='rolling' ranks against the trailing
+    ROLL_WIN sessions only (live-knowable AND drift-proof -- the headline
+    basis)."""
+    if basis in ("expanding", "rolling"):
+        pct = (expanding_pctile if basis == "expanding" else rolling_pctile)(
+            s, min_obs=min_obs)
         out = np.where(pct.isna(), "NA",
                        np.where(pct <= 0.30, labels[0],
                                 np.where(pct >= 0.70, labels[2], labels[1])))
@@ -376,10 +438,17 @@ def assemble_frame(px, proxy_close, dix, r1m):
 
     M = M[M["avg_corr"].notna() & M["dix5"].notna()].copy()
 
-    # zones on both bases
+    # zones on all three bases (rolling = headline: live-knowable and
+    # drift-proof; expanding kept for comparison; full-sample = descriptive)
     for col, prefix, labels in (("avg_corr", "c", ZONES), ("dix5", "d", DZONES)):
         M[prefix + "z_full"] = zones_30_40_30(M[col], "full", labels)
         M[prefix + "z_exp"] = zones_30_40_30(M[col], "expanding", labels)
+        M[prefix + "z_roll"] = zones_30_40_30(M[col], "rolling", labels)
+
+    # era-adjusted forward return (diagnostic ONLY -- demeaning uses the full
+    # calendar year, i.e. within-year future information; it answers "was this
+    # cell anything beyond its era?", it is not a live signal)
+    M["r1m_ex"] = M["r1m"] - M["r1m"].groupby(M.index.year).transform("mean")
 
     # z-scores for the regressions (full-sample; the OOS section refits its own)
     for col, z in (("dix5", "zDIX"), ("avg_corr", "zCORR"), ("rv", "zRV")):
@@ -494,31 +563,106 @@ def spx_weekly_tilt(P):
 # ----------------------------------------------------------------------------
 # Reports
 # ----------------------------------------------------------------------------
-def fmt_stats(r, with_ci=True, seed=0):
-    r = pd.Series(r).dropna()
-    if not len(r):
-        return "--"
-    s = f"{r.mean():+.2f}% (med {r.median():+.2f}, hit {100 * (r > 0).mean():3.0f}%)"
-    if with_ci:
-        lo, hi = block_boot_ci(r.to_numpy(), seed=seed)
-        if np.isfinite(lo):
-            s += f" [CI {lo:+.1f},{hi:+.1f}]"
-    return s
+def mask_stats(M, mask, col="r1m", with_ci=True, seed=0):
+    """Standard cell statistics for the rows of `M` where `mask` holds:
+    day AND episode counts, mean/median/hit of `col`, the era-adjusted mean
+    (for r1m), and the episode-cluster bootstrap CI. `gate` is the global
+    print gate -- a conditional mean may only be quoted when the cell has
+    >= GATE_DAYS scored days and >= GATE_EPISODES distinct episodes."""
+    m = mask.to_numpy() if hasattr(mask, "to_numpy") else np.asarray(mask)
+    ids_all = run_ids(m)
+    vals = M[col].to_numpy(dtype=float)
+    fin = m & np.isfinite(vals)
+    n_days = int(fin.sum())
+    st = {"n_days": n_days, "n_eps": int(len(np.unique(ids_all[fin])))}
+    st["gate"] = n_days >= GATE_DAYS and st["n_eps"] >= GATE_EPISODES
+    if n_days:
+        r = vals[fin]
+        st.update(mean=float(r.mean()), med=float(np.median(r)),
+                  hit=float((r > 0).mean() * 100))
+        if col == "r1m" and "r1m_ex" in M.columns:
+            ex = M["r1m_ex"].to_numpy(dtype=float)[fin]
+            st["ex"] = float(np.nanmean(ex)) if np.isfinite(ex).any() else np.nan
+        st["ci"] = (cluster_boot_ci(vals[fin], ids_all[fin], seed=seed)
+                    if with_ci and st["gate"] else (np.nan, np.nan))
+    return st
+
+
+def fmt_cell(st):
+    """One-line rendering of a mask_stats cell; below the print gate only
+    the counts appear (no mean -- Rule: never quote an ungated mean)."""
+    n = f"n={st['n_days']}d/{st['n_eps']}ep"
+    if not st["n_days"]:
+        return f"--  ({n})"
+    if not st["gate"]:
+        return f"--  (below gate; {n})"
+    s = f"{st['mean']:+.2f}% (med {st['med']:+.2f}, hit {st['hit']:3.0f}%)"
+    if np.isfinite(st.get("ex", np.nan)):
+        s += f"  ex {st['ex']:+.2f}"
+    lo, hi = st.get("ci", (np.nan, np.nan))
+    if np.isfinite(lo):
+        s += f"  [epCI {lo:+.1f},{hi:+.1f}]"
+    return s + f"  ({n})"
+
+
+def year_mix(M, mask, col="r1m", top=3):
+    """Top-`top` calendar-year shares of a cell's scored days, e.g.
+    '23:44% 20:31% 25:12%' -- the direct diagnostic for era-confounded
+    zones (a healthy cell is not dominated by one year)."""
+    m = mask.to_numpy() if hasattr(mask, "to_numpy") else np.asarray(mask)
+    fin = m & np.isfinite(M[col].to_numpy(dtype=float))
+    if not fin.any():
+        return ""
+    yrs = pd.Series(M.index.year[fin]).value_counts(normalize=True)
+    return " ".join(f"{y % 100:02d}:{100 * s:.0f}%" for y, s in yrs.head(top).items())
+
+
+def per_year_line(M, mask, col="r1m", min_days=10):
+    """Per-year means for a cell ('20:+3.2 21:+1.0 25:-0.4'; years with
+    fewer than `min_days` scored days print '.')."""
+    m = mask.to_numpy() if hasattr(mask, "to_numpy") else np.asarray(mask)
+    v = M[col].where(pd.Series(m, index=M.index))
+    parts = []
+    for y, g in v.groupby(M.index.year):
+        g = g.dropna()
+        if len(g) == 0:
+            continue
+        parts.append(f"{y % 100:02d}:{g.mean():+.1f}" if len(g) >= min_days
+                     else f"{y % 100:02d}:.")
+    return " ".join(parts)
+
+
+def loyo_range(M, mask, col="r1m"):
+    """Leave-one-year-out range of a cell's mean -- how much any single
+    calendar year moves the number."""
+    m = mask.to_numpy() if hasattr(mask, "to_numpy") else np.asarray(mask)
+    v = M[col].where(pd.Series(m, index=M.index)).dropna()
+    if len(v) < GATE_DAYS:
+        return (np.nan, np.nan)
+    means = []
+    for y in v.index.year.unique():
+        rest = v[v.index.year != y]
+        if len(rest) >= GATE_DAYS // 2:
+            means.append(rest.mean())
+    return (float(min(means)), float(max(means))) if means else (np.nan, np.nan)
 
 
 def describe_regimes(M, zcol, proxy, with_ci=True):
-    lines = [f"=== COMOVEMENT REGIMES ({zcol}; 30/40/30 split of AVG_CORR) ==="]
+    lines = [f"=== COMOVEMENT REGIMES ({zcol}; 30/40/30 split of AVG_CORR) ===",
+             "  ex = era-adjusted mean (minus same-calendar-year baseline; "
+             "diagnostic only)   epCI = episode-cluster bootstrap 95%"]
     seed = 0
     for z in ZONES:
-        sub = M[M[zcol] == z]
+        mask = M[zcol] == z
+        sub = M[mask]
         if not len(sub):
             continue
         seed += 1
+        st = mask_stats(M, mask, with_ci=with_ci, seed=seed)
         lines.append(
-            f"  {z:9s} n={len(sub):4d}  avg_corr {sub['avg_corr'].mean():.2f}  "
+            f"  {z:9s} avg_corr {sub['avg_corr'].mean():.2f}  "
             f"disp {sub['disp21'].mean():.2f}%  breadth {sub['breadth'].mean():.2f}  "
-            f"{proxy}vol {sub['rv'].mean():4.1f}  ->  {proxy} 1m "
-            + fmt_stats(sub["r1m"], with_ci, seed=seed))
+            f"{proxy}vol {sub['rv'].mean():4.1f}  ->  {proxy} 1m " + fmt_cell(st))
     return "\n".join(lines)
 
 
@@ -548,27 +692,65 @@ def episode_report(M, zcol):
 
 
 def dix_by_corr_table(M, czone_col, dzone_col, with_ci=True):
+    """corr-regime x DIX-regime table. Every row carries day AND episode
+    counts, the era-adjusted mean, an episode-cluster CI (the honest one)
+    plus the legacy 21d block CI, and the cell's top-3 year mix. Rows below
+    the print gate keep their counts but blank the means."""
     rows = []
     seed = 100
     for cz in ZONES:
         for dz in DZONES:
-            sub = M[(M[czone_col] == cz) & (M[dzone_col] == dz)]
-            if not len(sub):
+            mask = (M[czone_col] == cz) & (M[dzone_col] == dz)
+            if not mask.any():
                 continue
             seed += 1
-            r = sub["r1m"].dropna()
-            lo, hi = block_boot_ci(r.to_numpy(), seed=seed) if with_ci else (np.nan, np.nan)
-            sp = sub["tilt_spread"].dropna()
+            st = mask_stats(M, mask, with_ci=with_ci, seed=seed)
+            r = M.loc[mask, "r1m"].dropna()
+            blo, bhi = (block_boot_ci(r.to_numpy(), seed=seed)
+                        if with_ci and st["gate"] else (np.nan, np.nan))
+            sp = M.loc[mask, "tilt_spread"].dropna()
+            gate = st["gate"]
             rows.append({
-                "corr_regime": cz, "dix_regime": dz, "n_days": len(sub),
-                "mean": round(float(r.mean()), 2) if len(r) else np.nan,
-                "med": round(float(r.median()), 2) if len(r) else np.nan,
-                "hit": round(float((r > 0).mean() * 100)) if len(r) else np.nan,
-                "ci_lo": round(lo, 2) if np.isfinite(lo) else np.nan,
-                "ci_hi": round(hi, 2) if np.isfinite(hi) else np.nan,
-                "spread_mean": round(float(sp.mean()), 2) if len(sp) else np.nan,
+                "corr_regime": cz, "dix_regime": dz,
+                "n_days": st["n_days"], "n_eps": st["n_eps"],
+                "mean": round(st["mean"], 2) if gate else np.nan,
+                "ex": round(st.get("ex", np.nan), 2) if gate else np.nan,
+                "med": round(st["med"], 2) if gate else np.nan,
+                "hit": round(st["hit"]) if gate else np.nan,
+                "ep_ci_lo": round(st["ci"][0], 2) if np.isfinite(st["ci"][0]) else np.nan,
+                "ep_ci_hi": round(st["ci"][1], 2) if np.isfinite(st["ci"][1]) else np.nan,
+                "blk_ci_lo": round(blo, 2) if np.isfinite(blo) else np.nan,
+                "blk_ci_hi": round(bhi, 2) if np.isfinite(bhi) else np.nan,
+                "spread_mean": (round(float(sp.mean()), 2)
+                                if len(sp) >= GATE_DAYS else np.nan),
+                "years": year_mix(M, mask),
+                "gate": "ok" if gate else "low-n",
             })
     return pd.DataFrame(rows)
+
+
+def flagship_report(M, czone_col, dzone_col):
+    """Era diagnostics for the two PRIMARY (pre-specified) cells: per-year
+    means and the leave-one-year-out range. Everything else in this report
+    is descriptive; these two are the study's registered claims."""
+    lines = ["=== FLAGSHIP CELL DIAGNOSTICS (PRIMARY, pre-specified; all other "
+             "cells are descriptive) ==="]
+    cells = [
+        ("LowCorr & DIXHigh -> r1m", (M[czone_col] == "LowCorr")
+         & (M[dzone_col] == "DIXHigh"), "r1m"),
+        ("LowCorr tilt spread", (M[czone_col] == "LowCorr")
+         & M["tilt_spread"].notna(), "tilt_spread"),
+    ]
+    for label, mask, col in cells:
+        st = mask_stats(M, mask, col=col, with_ci=True, seed=17)
+        lo, hi = loyo_range(M, mask, col=col)
+        lines.append(f"  {label:26s} " + fmt_cell(st))
+        yl = per_year_line(M, mask, col=col)
+        if yl:
+            lines.append(f"    per-year: {yl}")
+        if np.isfinite(lo):
+            lines.append(f"    leave-one-year-out mean range: [{lo:+.2f}, {hi:+.2f}]")
+    return "\n".join(lines)
 
 
 def interaction_report(M, proxy):
@@ -604,11 +786,15 @@ def spread_report(M, czone_col, cadence="daily"):
         return lines[0] + "\n  (no per-name dark-flow panel for this index)"
     seed = 300
     for z in ZONES:
-        sub = M[M[czone_col] == z]
+        mask = (M[czone_col] == z) & M["tilt_spread"].notna()
+        sub = M[mask]
         seed += 1
-        lines.append(f"  {z:9s} n={sub['tilt_spread'].notna().sum():4d}   spread "
-                     + fmt_stats(sub["tilt_spread"], seed=seed)
+        st = mask_stats(M, mask, col="tilt_spread", seed=seed)
+        lines.append(f"  {z:9s} spread " + fmt_cell(st)
                      + f"   (Q5 {sub['tilt_q5'].mean():+.2f}%, Q1 {sub['tilt_q1'].mean():+.2f}%)")
+        if z == "LowCorr" and st["n_days"]:
+            lines.append(f"    LowCorr per-year: "
+                         f"{per_year_line(M, mask, col='tilt_spread')}")
     d = M[["tilt_spread", "zCORR"]].dropna()
     if len(d) > 100:
         X = np.column_stack([np.ones(len(d)), d["zCORR"].to_numpy()])
@@ -626,21 +812,24 @@ def tape_report(M, proxy, with_ci=True):
              "selective selloff", "mid selloff", "broad selloff"]
     seed = 400
     for tape in order:
-        sub = M[M["tape"] == tape]
-        if not len(sub):
+        mask = M["tape"] == tape
+        if not mask.any():
             continue
         seed += 1
-        lines.append(f"  {tape:18s} n={len(sub):4d}  avg_corr {sub['avg_corr'].mean():.2f}  "
-                     f"->  {proxy} 1m " + fmt_stats(sub["r1m"], with_ci, seed=seed))
-    # DIX inside the tapes with enough days
+        sub = M[mask]
+        st = mask_stats(M, mask, with_ci=with_ci, seed=seed)
+        lines.append(f"  {tape:18s} avg_corr {sub['avg_corr'].mean():.2f}  "
+                     f"->  {proxy} 1m " + fmt_cell(st))
+    # DIX inside the tapes (rolling-basis zones), print-gated
     for tape in ("broad rally", "mid rally", "narrow rally", "broad selloff"):
-        sub = M[M["tape"] == tape]
-        if len(sub) < 120:
+        if (M["tape"] == tape).sum() < 120:
             continue
         parts = []
         for dz in DZONES:
-            r = sub[sub["dz_full"] == dz]["r1m"].dropna()
-            parts.append(f"{dz} {r.mean():+.2f}% (n={len(r)})" if len(r) else f"{dz} --")
+            mask = (M["tape"] == tape) & (M["dz_roll"] == dz)
+            st = mask_stats(M, mask, with_ci=False)
+            parts.append(f"{dz} {st['mean']:+.2f}% (n={st['n_days']}d/{st['n_eps']}ep)"
+                         if st["gate"] else f"{dz} -- (n={st['n_days']})")
         lines.append(f"    {tape} by DIX: " + "   ".join(parts))
     return "\n".join(lines)
 
@@ -674,8 +863,13 @@ def entry_report(M, czone_col, dzone_col, proxy):
             continue
         r = M["r1m"].iloc[idx].dropna()
         last = M.index[idx[-1]].date()
+        if len(r) < GATE_EVENTS:
+            lines.append(f"  {label:26s} entries={len(idx):3d}  -- (below "
+                         f"{GATE_EVENTS}-event gate)   [last entry {last}]")
+            continue
         lines.append(f"  {label:26s} entries={len(idx):3d}  {proxy} "
-                     + fmt_stats(r, with_ci=False) + f"   [last entry {last}]")
+                     f"{r.mean():+.2f}% (med {r.median():+.2f}, "
+                     f"hit {100 * (r > 0).mean():3.0f}%)   [last entry {last}]")
     return "\n".join(lines)
 
 
@@ -698,14 +892,29 @@ def oos_report(M, proxy):
     base = te["r1m"].dropna()
     lines.append(f"  test baseline: {proxy} {base.mean():+.2f}% "
                  f"(hit {100 * (base > 0).mean():.0f}%, n={len(base)})")
-    for cz in ZONES:
-        parts = []
-        for dz in DZONES:
-            r = te[(te["cz_oos"] == cz) & (te["dz_oos"] == dz)]["r1m"].dropna()
-            parts.append(f"{dz} {r.mean():+.2f}% (n={len(r)})" if len(r) else f"{dz} --")
-        sp = te[te["cz_oos"] == cz]["tilt_spread"].dropna()
-        parts.append(f"tilt-spread {sp.mean():+.2f}pp" if len(sp) else "tilt-spread --")
-        lines.append(f"  {cz:9s} " + "   ".join(parts))
+
+    def grid(frame, czl, dzl, tag):
+        out = [f"  -- {tag} --"]
+        for cz in ZONES:
+            parts = []
+            for dz in DZONES:
+                mask = (frame[czl] == cz) & (frame[dzl] == dz)
+                st = mask_stats(frame, mask, with_ci=False)
+                parts.append(f"{dz} {st['mean']:+.2f}% (n={st['n_days']}d/"
+                             f"{st['n_eps']}ep)" if st["gate"]
+                             else f"{dz} -- (n={st['n_days']})")
+            spm = (frame[czl] == cz) & frame["tilt_spread"].notna()
+            sps = mask_stats(frame, spm, col="tilt_spread", with_ci=False)
+            parts.append(f"tilt-spread {sps['mean']:+.2f}pp" if sps["gate"]
+                         else "tilt-spread --")
+            out.append(f"  {cz:9s} " + "   ".join(parts))
+        return out
+
+    # (a) live rolling-basis zones scored on the test window only -- what the
+    # headline construction actually delivered post-split
+    lines += grid(te, "cz_roll", "dz_roll", "live rolling-basis zones, test window")
+    # (b) the stricter classic variant: cutoff LEVELS frozen on train
+    lines += grid(te, "cz_oos", "dz_oos", "train-frozen cutoff levels")
 
     # interaction loadings from train applied to test
     mu = {c: tr[c].mean() for c in ("dix5", "avg_corr")}
@@ -725,9 +934,14 @@ def oos_report(M, proxy):
                 + beta[3] * dte["D"] * dte["C"]).to_numpy()
         real = dte["r"].to_numpy()
         oc = float(np.corrcoef(pred, real)[0, 1]) if len(dte) > 2 else np.nan
+        # overlap-honest significance: realized ~ pred with NW(21) errors
+        # (a plain day-count corr overstates n by ~21x on overlapping windows)
+        Xte = np.column_stack([np.ones(len(dte)), pred])
+        _, _, t_te, _, _ = ols_nw(real, Xte)
         edge = real[pred > dtr["r"].mean()].mean() - real.mean()
         lines.append(f"  interaction fit on train (zDIX*zCORR b={beta[3]:+.2f}, "
-                     f"t={t[3]:+.2f})   OOS corr(pred, realized)={oc:+.3f} (n={len(dte)})   "
+                     f"t={t[3]:+.2f})   OOS corr(pred, realized)={oc:+.3f} "
+                     f"(NW t={t_te[1]:+.2f}, n={len(dte)})   "
                      f"OOS mean when pred>train-avg: {edge:+.2f}pp vs all-test")
     return "\n".join(lines)
 
@@ -735,16 +949,18 @@ def oos_report(M, proxy):
 def cross_index_report(frames):
     """Pairwise correlation of the AVG_CORR gauges, regime agreement, and
     each index's forward return by how many of the three sit in LowCorr
-    (full-sample basis, common dates)."""
-    lines = ["=== CROSS-INDEX COMOVEMENT-REGIME AGREEMENT (full-sample basis) ==="]
+    (rolling basis, common dates). Cells carry era-adjusted means, episode
+    counts, and (for the contested all-dispersed row) episode-cluster CIs."""
+    lines = ["=== CROSS-INDEX COMOVEMENT-REGIME AGREEMENT (rolling basis) ===",
+             "  ex = era-adjusted mean (diagnostic)   epCI = episode-cluster 95%"]
     if len(frames) < 2:
         return lines[0] + "\n  (needs at least two indices)"
     keys = list(frames)
     ac = pd.DataFrame({k: frames[k]["avg_corr"] for k in keys}).dropna()
-    cz = pd.DataFrame({k: frames[k]["cz_full"] for k in keys}).dropna()
-    r1 = pd.DataFrame({f"{k}_r1m": frames[k]["r1m"] for k in keys})
-    lines.append(f"  common days: {len(ac)}  "
-                 f"[{ac.index.min().date()} -> {ac.index.max().date()}]")
+    cz = pd.DataFrame({k: frames[k]["cz_roll"] for k in keys}).dropna()
+    cz = cz[(cz != "NA").all(axis=1)]
+    lines.append(f"  common days: {len(cz)}  "
+                 f"[{cz.index.min().date()} -> {cz.index.max().date()}]")
     for i, a in enumerate(keys):
         for b in keys[i + 1:]:
             lines.append(f"  corr(AVG_CORR {a}, {b}) = {ac[a].corr(ac[b]):+.2f}   "
@@ -755,13 +971,28 @@ def cross_index_report(frames):
     nlow = (cz == "LowCorr").sum(axis=1)
     lines.append("  forward 1m by number of indices in LowCorr:")
     for k in range(len(keys) + 1):
-        sub = r1.reindex(nlow[nlow == k].index)
-        if not len(sub):
+        mask_dates = nlow[nlow == k].index
+        if not len(mask_dates):
             continue
-        parts = [f"{c[:-4]} {sub[c].dropna().mean():+.2f}%" for c in r1.columns
-                 if sub[c].notna().sum()]
-        lines.append(f"    {k} of {len(keys)} dispersed: n={len(sub):4d}   "
-                     + "   ".join(parts))
+        parts = []
+        for key in keys:
+            Mi = frames[key][["r1m", "r1m_ex"]].reindex(cz.index)
+            mask = pd.Series(False, index=cz.index)
+            mask.loc[mask_dates] = True
+            st = mask_stats(Mi, mask, with_ci=(k == len(keys)))
+            if st["gate"]:
+                s = f"{key} {st['mean']:+.2f}%"
+                if np.isfinite(st.get("ex", np.nan)):
+                    s += f" (ex {st['ex']:+.2f})"
+                lo, hi = st.get("ci", (np.nan, np.nan))
+                if np.isfinite(lo):
+                    s += f" [epCI {lo:+.1f},{hi:+.1f}]"
+            else:
+                s = f"{key} --"
+            parts.append(s)
+        eps = int(run_ids(nlow.eq(k).to_numpy()).max() + 1)
+        lines.append(f"    {k} of {len(keys)} dispersed: n={len(mask_dates):4d}d/"
+                     f"{eps}ep   " + "   ".join(parts))
     return "\n".join(lines)
 
 
@@ -812,28 +1043,32 @@ def report_index(name, M, meta, args):
           f"p10 {M['avg_corr'].quantile(0.10):.2f}  p90 {M['avg_corr'].quantile(0.90):.2f}  "
           f"latest {M['avg_corr'].iloc[-1]:.2f}\n")
     tables = {}
-    for basis, czl, dzl in (("full-sample", "cz_full", "dz_full"),
-                            ("EXPANDING (no look-ahead)", "cz_exp", "dz_exp")):
-        Mb = M if basis == "full-sample" else M[(M[czl] != "NA") & (M[dzl] != "NA")]
+    for basis, czl, dzl in (
+            ("ROLLING (headline: live-knowable, drift-proof)", "cz_roll", "dz_roll"),
+            ("expanding (no look-ahead, drift-EXPOSED)", "cz_exp", "dz_exp"),
+            ("full-sample (descriptive, look-ahead)", "cz_full", "dz_full")):
+        Mb = M if czl == "cz_full" else M[(M[czl] != "NA") & (M[dzl] != "NA")]
         print(describe_regimes(Mb, czl, proxy, with_ci))
         print()
         tab = dix_by_corr_table(Mb, czl, dzl, with_ci)
         print(f"=== {proxy} 1m FORWARD BY corr-regime x DIX-regime ({basis}) ===")
         print(tab.to_string(index=False))
         print()
-        if basis == "full-sample":
+        if czl == "cz_roll":
             tables[name] = tab
-    print(episode_report(M, "cz_full"))
+            print(flagship_report(Mb, czl, dzl))
+            print()
+    print(episode_report(M, "cz_roll"))
     print()
     print(interaction_report(M, proxy))
     print()
-    print(spread_report(M, "cz_full",
+    print(spread_report(M, "cz_roll",
                         cadence="weekly, raw print" if name == "SPX" else "daily"))
     print()
     print(tape_report(M, proxy, with_ci))
     print()
-    print(entry_report(M[(M["cz_exp"] != "NA") & (M["dz_exp"] != "NA")],
-                       "cz_exp", "dz_exp", proxy))
+    print(entry_report(M[(M["cz_roll"] != "NA") & (M["dz_roll"] != "NA")],
+                       "cz_roll", "dz_roll", proxy))
     print()
     print(oos_report(M, proxy))
     print()
@@ -870,7 +1105,12 @@ def main():
     args = ap.parse_args()
 
     P = load_payload(args.html)
-    print(f"Payload generated: {P.get('generated')}\n")
+    print(f"Payload generated: {P.get('generated')}")
+    print("NOTE: this report prints many conditional cells; only the two cells "
+          "marked PRIMARY in the flagship section are pre-specified claims -- "
+          "every other cell is descriptive. Means are suppressed below the "
+          f"print gate ({GATE_DAYS} days AND {GATE_EPISODES} episodes; "
+          f"{GATE_EVENTS} events for entry studies).\n")
     wanted = [w.strip().upper() for w in args.indices.split(",") if w.strip()]
 
     frames, metas, tabs = {}, {}, []

@@ -161,6 +161,106 @@ def test_expanding_pctile_midrank_on_ties():
 
 
 # ---------------------------------------------------------------------------
+# rolling percentile zones (the headline basis)
+# ---------------------------------------------------------------------------
+def test_rolling_pctile_no_lookahead():
+    rng = np.random.default_rng(20)
+    v = rng.normal(0, 1, 80)
+    s1 = pd.Series(v, index=_bdays(80))
+    s2 = pd.Series(np.concatenate([v, [99.0]]), index=_bdays(81))
+    p1 = S.rolling_pctile(s1, window=40, min_obs=20)
+    p2 = S.rolling_pctile(s2, window=40, min_obs=20)
+    assert np.allclose(p1.to_numpy(), p2.to_numpy()[:-1], equal_nan=True)
+
+
+def test_rolling_pctile_equals_expanding_when_window_covers_history():
+    rng = np.random.default_rng(21)
+    s = pd.Series(rng.normal(0, 1, 60), index=_bdays(60))
+    roll = S.rolling_pctile(s, window=1000, min_obs=20)
+    exp = S.expanding_pctile(s, min_obs=20)
+    assert np.allclose(roll.to_numpy(), exp.to_numpy(), equal_nan=True)
+
+
+def test_rolling_pctile_renormalizes_after_level_shift():
+    # A series that steps up permanently: once the old low level rolls out of
+    # the window, the new level must stop ranking as 'high' -- the property
+    # the expanding basis lacks (there the step stays >0.9 forever).
+    v = np.concatenate([np.zeros(60), np.ones(120)])
+    s = pd.Series(v, index=_bdays(180))
+    roll = S.rolling_pctile(s, window=60, min_obs=20)
+    exp = S.expanding_pctile(s, min_obs=20)
+    assert exp.iloc[-1] > 0.6                  # expanding: still 'high' (0.667)
+    # rolling: the trailing window is all ones -> mid-rank of a tie = 0.5
+    assert roll.iloc[-1] == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# episode ids, cluster bootstrap, print gates
+# ---------------------------------------------------------------------------
+def test_run_ids_contiguous_runs():
+    m = np.array([0, 1, 1, 0, 1, 0, 0, 1, 1, 1], dtype=bool)
+    ids = S.run_ids(m)
+    assert list(ids) == [-1, 0, 0, -1, 1, -1, -1, 2, 2, 2]
+
+
+def test_cluster_boot_ci_gates_on_episode_count():
+    r = np.random.default_rng(22).normal(0, 1, 100)
+    ids = np.repeat([0, 1, 2, 3], 25)          # only 4 episodes
+    lo, hi = S.cluster_boot_ci(r, ids)
+    assert np.isnan(lo) and np.isnan(hi)
+
+
+def test_cluster_boot_ci_wider_than_block_on_clustered_data():
+    # Six episodes whose LEVELS differ (a common episode effect): the block
+    # bootstrap sees ~n/21 pseudo-independent blocks and understates the
+    # episode-level variance; the cluster CI must come out wider.
+    rng = np.random.default_rng(23)
+    parts, ids = [], []
+    for e in range(6):
+        level = rng.normal(0, 3.0)             # episode effect
+        parts.append(level + rng.normal(0, 0.2, 60))
+        ids.append(np.full(60, e))
+    r = np.concatenate(parts)
+    ids = np.concatenate(ids)
+    clo, chi = S.cluster_boot_ci(r, ids, seed=1)
+    blo, bhi = S.block_boot_ci(r, seed=1)
+    assert (chi - clo) > (bhi - blo)
+
+
+def test_mask_stats_gate_and_excess():
+    n = 300
+    idx = _bdays(n, start="2022-01-03")        # spans 2022 and 2023
+    M = pd.DataFrame(index=idx)
+    M["r1m"] = 1.0
+    M.loc[idx.year == 2023, "r1m"] = 3.0
+    M["r1m_ex"] = M["r1m"] - M["r1m"].groupby(M.index.year).transform("mean")
+    # one long run: 100 days but a single episode -> below the episode gate
+    mask = pd.Series(False, index=idx)
+    mask.iloc[10:110] = True
+    st = S.mask_stats(M, mask)
+    assert st["n_days"] == 100 and st["n_eps"] == 1 and not st["gate"]
+    assert "--" in S.fmt_cell(st) and "below gate" in S.fmt_cell(st)
+    # six spread-out runs of 10 days -> passes both gates
+    mask2 = pd.Series(False, index=idx)
+    for k in range(6):
+        mask2.iloc[20 + 40 * k: 30 + 40 * k] = True
+    st2 = S.mask_stats(M, mask2)
+    assert st2["gate"] and st2["n_eps"] == 6
+    # era-excess: within-year demeaning makes a constant-per-year series 0
+    assert st2["ex"] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_year_mix_and_per_year_line():
+    idx = _bdays(300, start="2022-01-03")
+    M = pd.DataFrame({"r1m": 1.0}, index=idx)
+    mask = pd.Series(True, index=idx)
+    mix = S.year_mix(M, mask)
+    assert mix.startswith("22:") and "23:" in mix
+    line = S.per_year_line(M, mask)
+    assert "22:+1.0" in line and "23:+1.0" in line
+
+
+# ---------------------------------------------------------------------------
 # validate_names
 # ---------------------------------------------------------------------------
 def test_validate_names_drops_mismatched_basis():
