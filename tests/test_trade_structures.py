@@ -78,6 +78,51 @@ def test_bs_parity_and_limits():
 
 
 # ---------------------------------------------------------------------------
+# implied_vol
+# ---------------------------------------------------------------------------
+def test_implied_vol_round_trips_bs_price():
+    for spot, strike, t, iv, right in [
+        (100.0, 100.0, 0.5, 0.30, "C"), (100.0, 100.0, 0.5, 0.30, "P"),
+        (100.0, 130.0, 0.25, 0.55, "C"), (100.0, 70.0, 1.5, 0.18, "P"),
+        (57.0, 57.5, 0.02, 1.20, "C"),      # short-dated, high vol
+    ]:
+        price = T.bs_price(spot, strike, t, iv, right)
+        got = T.implied_vol(np.array([price]), np.array([spot]),
+                            np.array([strike]), np.array([t]), np.array([right]))
+        assert got[0] == pytest.approx(iv, abs=1e-4)
+
+
+def test_implied_vol_is_vectorized_over_arrays():
+    spots = np.array([100.0, 100.0, 50.0])
+    strikes = np.array([100.0, 110.0, 55.0])
+    ts = np.array([0.5, 0.5, 0.1])
+    ivs = np.array([0.30, 0.45, 0.90])
+    rights = np.array(["C", "C", "P"])
+    prices = np.array([T.bs_price(s, k, t, v, r)
+                       for s, k, t, v, r in zip(spots, strikes, ts, ivs, rights)])
+    got = T.implied_vol(prices, spots, strikes, ts, rights)
+    assert got == pytest.approx(ivs, abs=1e-4)
+
+
+def test_implied_vol_nan_for_unresolvable_inputs():
+    # non-positive price, non-positive spot, expired (t<=0)
+    bad = T.implied_vol(np.array([-1.0, 5.0, 5.0]),
+                        np.array([100.0, -1.0, 100.0]),
+                        np.array([100.0, 100.0, 100.0]),
+                        np.array([0.5, 0.5, 0.0]),
+                        np.array(["C", "C", "C"]))
+    assert np.all(np.isnan(bad))
+
+
+def test_implied_vol_nan_for_price_outside_no_arbitrage_band():
+    # below intrinsic (crossed/stale quote) -> unresolvable
+    below_intrinsic = T.implied_vol(np.array([5.0]), np.array([100.0]),
+                                    np.array([50.0]), np.array([0.5]),
+                                    np.array(["C"]))
+    assert np.isnan(below_intrinsic[0])
+
+
+# ---------------------------------------------------------------------------
 # leg_mark / structure_mark
 # ---------------------------------------------------------------------------
 T_YRS = (pd.Timestamp("2026-11-20") - pd.Timestamp("2026-08-10")).days / 365.25
