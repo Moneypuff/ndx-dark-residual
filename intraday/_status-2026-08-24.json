@@ -1,16 +1,16 @@
 {
  "date": "2026-08-24",
- "captured_utc": "2026-08-24T18:53:46+00:00",
+ "captured_utc": "2026-08-24T19:53:15+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
    "expiries": 10,
-   "rows": 2595
+   "rows": 2590
   },
   "QQQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 2278
+   "rows": 2266
   },
   "IWM": {
    "ok": true,
@@ -20,7 +20,7 @@
   "SMH": {
    "ok": true,
    "expiries": 10,
-   "rows": 1479
+   "rows": 1473
   },
   "IGV": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 1035
+   "rows": 1030
   },
   "EEM": {
    "ok": true,
@@ -135,7 +135,7 @@
   "GOOGL": {
    "ok": true,
    "expiries": 10,
-   "rows": 1012
+   "rows": 1014
   },
   "NVDA": {
    "ok": true,
@@ -160,22 +160,22 @@
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1019
+   "rows": 1010
   },
   "MU": {
    "ok": true,
    "expiries": 11,
-   "rows": 1591
+   "rows": 1578
   },
   "CRWV": {
    "ok": true,
    "expiries": 11,
-   "rows": 684
+   "rows": 687
   },
   "IONQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 478
+   "rows": 483
   },
   "OWL": {
    "ok": true,
@@ -185,7 +185,7 @@
   "RKLB": {
    "ok": true,
    "expiries": 9,
-   "rows": 456
+   "rows": 454
   },
   "ONDS": {
    "ok": true,
@@ -200,7 +200,7 @@
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 932
+   "rows": 918
   },
   "USO": {
    "ok": true,
@@ -210,17 +210,17 @@
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1711
+   "rows": 1702
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1090
+   "rows": 1088
   },
   "IBIT": {
    "ok": true,
    "expiries": 10,
-   "rows": 706
+   "rows": 708
   },
   "TLT": {
    "ok": true,
@@ -230,17 +230,17 @@
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 959
+   "rows": 962
   },
   "NBIS": {
    "ok": true,
    "expiries": 10,
-   "rows": 702
+   "rows": 697
   },
   "AAOI": {
    "ok": true,
    "expiries": 8,
-   "rows": 588
+   "rows": 584
   }
  }
 }
