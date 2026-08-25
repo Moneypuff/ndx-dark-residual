@@ -131,4 +131,18 @@ guide backtests everything else.
   environment, to be validated from GitHub runners via workflow_dispatch;
   if runners are throttled, the fallback is running the same script on a
   schedule elsewhere and pushing to the same branch.
-- History starts the day capture starts. There is no backfill.
+- History starts the day capture starts, with one exception:
+  `backfill_optsnap_from_orats.py` can extend it backward from a local
+  ORATS options-history duckdb when one is available (not part of the
+  CI pipeline — a local, one-off tool).
+- Every `iv` in a loaded snapshot is OUR OWN Black-Scholes (r=0) implied
+  vol (`load_snapshots` → `recompute_iv` → `trade_structures.implied_vol`),
+  inverted from the quoted price (mid bid/ask, or last trade when the
+  market isn't two-sided) — never the vendor's own impliedVolatility/mid
+  vol field. This is what keeps a Yahoo-captured day and an ORATS-backfilled
+  day on one consistent methodology instead of carrying a seam wherever
+  the sources meet. The big-OI strike map (`big_oi_map`) also drops any
+  strike whose expiry has already passed real calendar time as of the
+  build, not just the last snapshot date, so a stale build (a skipped
+  nightly run, a weekend) can't show an already-expired contract's last
+  OI as if it were still live.

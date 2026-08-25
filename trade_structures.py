@@ -111,6 +111,69 @@ def bs_price(spot, strike, t_years, iv, right):
     return call if right == "C" else call - spot + strike
 
 
+def _norm_cdf(x):
+    """Vectorized standard normal CDF (Abramowitz & Stegun 7.1.26, a numpy
+    stand-in for scipy.special.erf so implied_vol() needs no dependency
+    beyond numpy/pandas; |error| < 1.5e-7, plenty for a vol solver)."""
+    a1, a2, a3, a4, a5, p = (0.254829592, -0.284496736, 1.421413741,
+                              -1.453152027, 1.061405429, 0.3275911)
+    ax = np.abs(x) / np.sqrt(2.0)
+    t = 1.0 / (1.0 + p * ax)
+    poly = ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t
+    erf = 1.0 - poly * np.exp(-ax * ax)
+    return 0.5 * (1.0 + np.sign(x) * erf)
+
+
+def _bs_price_vec(spot, strike, t_years, iv, is_call):
+    """Vectorized bs_price (r=0, q=0) -- same model, array-shaped inputs,
+    used by implied_vol()'s bisection inner loop."""
+    v = np.maximum(iv * np.sqrt(t_years), 1e-12)
+    d1 = (np.log(spot / strike) + 0.5 * v * v) / v
+    d2 = d1 - v
+    call = spot * _norm_cdf(d1) - strike * _norm_cdf(d2)
+    return np.where(is_call, call, call - spot + strike)
+
+
+IV_LO, IV_HI, IV_ITERS = 1e-4, 5.0, 60   # solver bracket: 0.01%-500% vol
+
+
+def implied_vol(price, spot, strike, t_years, right):
+    """Black-Scholes (r=0, q=0) implied vol via bisection, vectorized over
+    numpy arrays (a full snapshot history is millions of contract-days).
+    This is OUR read on IV rather than trusting each vendor's own
+    convention (Yahoo's impliedVolatility, ORATS' quoted mid vol) -- one
+    consistent methodology across every source, so a backfilled day and a
+    live-captured day carry no vendor seam between them.
+
+    NaN wherever a solution can't be bracketed within [IV_LO, IV_HI]: a
+    non-positive price/spot/strike/t_years, or a price outside what the
+    model can produce in that vol range (already-expired rows, a crossed
+    or otherwise nonsensical quote)."""
+    price = np.asarray(price, dtype=float)
+    spot = np.asarray(spot, dtype=float)
+    strike = np.asarray(strike, dtype=float)
+    t_years = np.asarray(t_years, dtype=float)
+    is_call = np.asarray(right) == "C"
+
+    ok = np.isfinite(price) & (price > 0) & (spot > 0) & (strike > 0) & (t_years > 0)
+    s = np.where(ok, spot, 1.0)
+    k = np.where(ok, strike, 1.0)
+    t = np.where(ok, t_years, 1.0)
+    p = np.where(ok, price, 1.0)
+
+    lo = np.full_like(s, IV_LO)
+    hi = np.full_like(s, IV_HI)
+    for _ in range(IV_ITERS):
+        mid = (lo + hi) / 2.0
+        too_high = _bs_price_vec(s, k, t, mid, is_call) > p
+        hi = np.where(too_high, mid, hi)
+        lo = np.where(too_high, lo, mid)
+
+    bracketed = ((p > _bs_price_vec(s, k, t, IV_LO, is_call)) &
+                (p < _bs_price_vec(s, k, t, IV_HI, is_call)))
+    return np.where(ok & bracketed, (lo + hi) / 2.0, np.nan)
+
+
 def despike_smile(ks, vs, tol_floor=0.06, tol_frac=0.25, window=7):
     """Drop IV points that spike away from their rolling-median neighbors
     -- thin chains carry stale lines whose IV sits 10+ vol points off the

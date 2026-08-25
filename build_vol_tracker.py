@@ -74,16 +74,43 @@ LIQ_DEEP_OI = 2_000_000    # OI this deep passes on depth alone
 # ----------------------------------------------------------------------------
 # Pure computation (unit tested)
 # ----------------------------------------------------------------------------
+def recompute_iv(df):
+    """Overwrite the snapshot's vendor-supplied iv with our own Black-
+    Scholes (r=0) implied vol (trade_structures.implied_vol), inverted
+    from the quoted price -- mid of bid/ask when the market is two-sided,
+    the last trade otherwise. One consistent methodology across every
+    source (Yahoo's live capture, ORATS' backfill) instead of trusting
+    each vendor's own IV convention, so there's no seam where sources
+    meet. A row the model can't invert (no usable price, price outside
+    the no-arbitrage band) gets NaN, same as a vendor-missing iv did."""
+    if df.empty:
+        return df
+    bid, ask, last = (df["bid"].to_numpy(dtype=float), df["ask"].to_numpy(dtype=float),
+                      df["last"].to_numpy(dtype=float))
+    two_sided = (bid > 0) & (ask >= bid) & (ask > 0)
+    mid = np.where(two_sided, (bid + ask) / 2.0, np.nan)
+    price = np.where(np.isfinite(mid), mid, np.where(last > 0, last, np.nan))
+    t_years = ((pd.to_datetime(df["expiry"]) - pd.to_datetime(df["date"]))
+              .dt.days.to_numpy(dtype=float)) / 365.25
+    df = df.copy()
+    df["iv"] = T.implied_vol(price, df["spot"].to_numpy(dtype=float),
+                             df["strike"].to_numpy(dtype=float),
+                             t_years, df["right"].to_numpy())
+    return df
+
+
 def load_snapshots(snap_dir):
-    """All daily snapshots concatenated, sorted by date. Empty frame when
-    no capture exists yet (the docs page renders a stub in that case)."""
+    """All daily snapshots concatenated, sorted by date, iv recomputed by
+    our own Black-Scholes solver (recompute_iv). Empty frame when no
+    capture exists yet (the docs page renders a stub in that case)."""
     files = sorted(Path(snap_dir).glob("????-??-??.csv.gz"))
     if not files:
         return pd.DataFrame(columns=["date", "symbol", "expiry", "right",
                                      "strike", "iv", "oi", "volume", "bid",
                                      "ask", "last", "spot"])
     df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
-    return df.sort_values(["date", "symbol", "expiry", "right", "strike"])
+    df = df.sort_values(["date", "symbol", "expiry", "right", "strike"])
+    return recompute_iv(df)
 
 
 def chain_liquidity(day_df, min_oi=LIQ_MIN_OI, max_spread=LIQ_MAX_SPREAD,
@@ -185,11 +212,18 @@ def pressure_index(flows, oi):
     return g
 
 
-def big_oi_map(df, top=TOP_OI):
+def big_oi_map(df, top=TOP_OI, asof=None):
     """Latest snapshot's top-OI strikes per symbol with their IV history:
-    entry (first-seen) IV vs latest, and the local drift if computable."""
+    entry (first-seen) IV vs latest, and the local drift if computable.
+    Strikes whose expiry has already passed `asof` (real calendar time,
+    default now -- NOT just the last snapshot date) are dropped: a stale
+    build (a skipped nightly run, a weekend between builds) would
+    otherwise still show a since-expired contract's last-alive OI as if
+    it were a live position."""
+    asof = pd.Timestamp(asof) if asof is not None else pd.Timestamp.today()
     last_date = df["date"].max()
     latest = df[df["date"] == last_date].dropna(subset=["oi"])
+    latest = latest[pd.to_datetime(latest["expiry"]) >= asof.normalize()]
     out = []
     for sym, g in latest.groupby("symbol"):
         for _, r in g.nlargest(top, "oi").iterrows():

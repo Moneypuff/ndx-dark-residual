@@ -93,6 +93,58 @@ def test_pressure_index_sign():
 
 
 # ---------------------------------------------------------------------------
+# recompute_iv
+# ---------------------------------------------------------------------------
+def _iv_row(bid, ask, last, spot=100.0, strike=100.0, right="C",
+           date="2026-08-10", expiry="2026-11-20"):
+    return {"date": date, "symbol": "GDX", "expiry": expiry, "right": right,
+            "strike": strike, "iv": 0.999, "oi": 1, "volume": 0,
+            "bid": bid, "ask": ask, "last": last, "spot": spot}
+
+
+def test_recompute_iv_prefers_tight_bid_ask_mid():
+    import trade_structures as T
+    t = (pd.Timestamp("2026-11-20") - pd.Timestamp("2026-08-10")).days / 365.25
+    theo = T.bs_price(100.0, 100.0, t, 0.35, "C")
+    # bid/ask straddle theo tightly; a very different `last` must be ignored
+    row = _iv_row(bid=round(theo - 0.05, 2), ask=round(theo + 0.05, 2), last=999.0)
+    out = V.recompute_iv(pd.DataFrame([row]))
+    assert out["iv"].iloc[0] == pytest.approx(0.35, abs=0.01)
+
+
+def test_recompute_iv_falls_back_to_last_without_two_sided_quote():
+    t = (pd.Timestamp("2026-11-20") - pd.Timestamp("2026-08-10")).days / 365.25
+    import trade_structures as T
+    theo = T.bs_price(100.0, 100.0, t, 0.50, "C")
+    row = _iv_row(bid=0.0, ask=0.0, last=theo)
+    out = V.recompute_iv(pd.DataFrame([row]))
+    assert out["iv"].iloc[0] == pytest.approx(0.50, abs=0.01)
+
+
+def test_recompute_iv_nan_without_any_usable_price():
+    row = _iv_row(bid=0.0, ask=0.0, last=0.0)
+    out = V.recompute_iv(pd.DataFrame([row]))
+    assert np.isnan(out["iv"].iloc[0])
+
+
+def test_recompute_iv_ignores_the_original_vendor_iv():
+    # the stored `iv` (0.999, deliberately absurd) must be fully replaced
+    t = (pd.Timestamp("2026-11-20") - pd.Timestamp("2026-08-10")).days / 365.25
+    import trade_structures as T
+    theo = T.bs_price(100.0, 100.0, t, 0.20, "C")
+    row = _iv_row(bid=round(theo - 0.02, 2), ask=round(theo + 0.02, 2), last=theo)
+    out = V.recompute_iv(pd.DataFrame([row]))
+    assert out["iv"].iloc[0] < 0.99
+
+
+def test_recompute_iv_empty_frame_is_a_noop():
+    empty = pd.DataFrame(columns=["date", "symbol", "expiry", "right",
+                                  "strike", "iv", "oi", "volume", "bid",
+                                  "ask", "last", "spot"])
+    assert V.recompute_iv(empty) is empty
+
+
+# ---------------------------------------------------------------------------
 # big_oi_map / resolve_leg
 # ---------------------------------------------------------------------------
 def test_big_oi_map_first_vs_latest():
@@ -102,6 +154,24 @@ def test_big_oi_map_first_vs_latest():
     assert r["oi"] == 2500 and r["oi_first"] == 2000
     assert r["iv"] == pytest.approx(0.40) and r["iv_first"] == pytest.approx(0.30)
     assert r["days_seen"] == 3
+
+
+def test_big_oi_map_drops_expired_strikes():
+    days = ["2026-08-10", "2026-08-11", "2026-08-12"]
+    rows = []
+    for d in days:
+        rows += _rows(d, "GDX", "2026-08-11", 100.0,           # expires mid-panel
+                      [("C", 100.0, 0.30, 5000)])
+        rows += _rows(d, "GDX", "2027-01-15", 100.0,           # still alive
+                      [("C", 110.0, 0.30, 1000)])
+    df = pd.DataFrame(rows)
+    # as of the last snapshot date itself, the 08-11 expiry is still live (0DTE)
+    still_live = V.big_oi_map(df, top=5, asof="2026-08-11")
+    assert {"2026-08-11", "2027-01-15"} <= set(still_live["expiry"])
+    # a week later (stale build over a weekend), the 08-11 line is gone
+    later = V.big_oi_map(df, top=5, asof="2026-08-18")
+    assert "2026-08-11" not in set(later["expiry"])
+    assert "2027-01-15" in set(later["expiry"])
 
 
 def test_chain_liquidity_gate():
