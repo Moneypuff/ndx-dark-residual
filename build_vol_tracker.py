@@ -148,7 +148,12 @@ def atm_iv(day_rows):
 RR_TENORS = (30, 90)       # constant-maturity tenors, calendar days
 RR_PILLARS = ("iv10p", "iv25p", "iv50", "iv25c", "iv10c")
 RR_MIN_SIDE = 3            # live OTM points a side needs after despiking
-RR_MIN_DTE = 5             # expiration-week pillars are pin noise -- skip
+RR_MIN_DTE = 2             # 0-1 DTE pillars are pin noise -- skip. Kept low
+                           # because the snapshot capture holds no 7-28 DTE
+                           # weeklies: when the front monthly slips under ~5
+                           # DTE it is often the ONLY below-30d bracket
+                           # anchor, and its interpolation weight at 30d is
+                           # small (~25% at 4 DTE vs a 39-DTE far anchor)
 RR_MAX_DTE = 400           # nothing past this can bracket a 90d tenor usefully
 RR_DAILY_YEARS = 2         # payload: daily resolution this far back, W-FRI before
 
