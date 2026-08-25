@@ -134,6 +134,27 @@ def _bs_price_vec(spot, strike, t_years, iv, is_call):
     return np.where(is_call, call, call - spot + strike)
 
 
+def bs_delta(spot, strike, t_years, iv, right):
+    """Vectorized Black-Scholes (r=0, q=0) delta: N(d1) for calls,
+    N(d1) - 1 for puts -- computed from OUR OWN iv (implied_vol), never a
+    vendor greek, so an ORATS-backfilled day and a live-captured day
+    carry the same delta convention. NaN wherever iv/t/spot/strike can't
+    support a d1 (non-positive, or NaN in)."""
+    spot = np.asarray(spot, dtype=float)
+    strike = np.asarray(strike, dtype=float)
+    t_years = np.asarray(t_years, dtype=float)
+    iv = np.asarray(iv, dtype=float)
+    is_call = np.asarray(right) == "C"
+
+    ok = (np.isfinite(iv) & (iv > 0) & (t_years > 0) & (spot > 0) & (strike > 0))
+    s = np.where(ok, spot, 1.0)
+    k = np.where(ok, strike, 1.0)
+    v = np.where(ok, iv, 1.0) * np.sqrt(np.where(ok, t_years, 1.0))
+    d1 = (np.log(s / k) + 0.5 * v * v) / v
+    delta = np.where(is_call, _norm_cdf(d1), _norm_cdf(d1) - 1.0)
+    return np.where(ok, delta, np.nan)
+
+
 IV_LO, IV_HI, IV_ITERS = 1e-4, 5.0, 60   # solver bracket: 0.01%-500% vol
 
 

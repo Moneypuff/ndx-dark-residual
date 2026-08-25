@@ -6,6 +6,7 @@
   --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
   --pos:#46b39a; --pos-ink:#7fe0c8;
   --neg:#d4635f; --neg-ink:#f0938f;
+  --pos-rgb:70,179,154; --neg-rgb:212,99,95; --acc-rgb:227,179,65;
   --shadow:0 1px 0 rgba(255,255,255,.03), 0 18px 40px -24px rgba(0,0,0,.8);
 }
 @media (prefers-color-scheme: light){
@@ -15,6 +16,7 @@
     --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
     --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
     --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+    --pos-rgb:31,143,121; --neg-rgb:192,65,60; --acc-rgb:154,108,18;
     --shadow:0 1px 0 rgba(255,255,255,.6), 0 16px 34px -26px rgba(20,40,60,.4);
   }
 }
@@ -24,6 +26,7 @@
   --ink:#e9eef3; --ink-dim:#96a4b3; --ink-faint:#5d6b7a;
   --accent:#e3b341; --accent-soft:rgba(227,179,65,.14); --accent-line:rgba(227,179,65,.45);
   --pos:#46b39a; --pos-ink:#7fe0c8; --neg:#d4635f; --neg-ink:#f0938f;
+  --pos-rgb:70,179,154; --neg-rgb:212,99,95; --acc-rgb:227,179,65;
 }
 :root[data-theme="light"]{
   --ground:#e8ecf1; --grad:#eef1f5; --surface:#ffffff; --surface-2:#f3f6f9;
@@ -31,7 +34,15 @@
   --ink:#16202b; --ink-dim:#54626f; --ink-faint:#8794a1;
   --accent:#9a6c12; --accent-soft:rgba(154,108,18,.10); --accent-line:rgba(154,108,18,.4);
   --pos:#1f8f79; --pos-ink:#0e6f5c; --neg:#c0413c; --neg-ink:#a02e2a;
+  --pos-rgb:31,143,121; --neg-rgb:192,65,60; --acc-rgb:154,108,18;
 }
+
+/* series colors: primary (blue) vs secondary (neutral) -- same pair the
+   gex dispersion chart uses */
+:root{ --sOur:#6ea8fe; --sRef:#cfd8e2; }
+@media (prefers-color-scheme: light){ :root{ --sOur:#2f6bd8; --sRef:#51606d; } }
+:root[data-theme="dark"]{ --sOur:#6ea8fe; --sRef:#cfd8e2; }
+:root[data-theme="light"]{ --sOur:#2f6bd8; --sRef:#51606d; }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0}
@@ -76,6 +87,43 @@ td.l{text-align:left}
   padding:10px 14px; color:var(--ink-dim); font-size:13px; margin:0 0 22px}
 .foot{color:var(--ink-faint); font-size:12px; padding:8px 0 40px}
 .why{color:var(--ink-faint); font-family:var(--sans); font-size:11.5px; white-space:normal}
+
+/* ---- charts (idiom shared with gex_dispersion / comovement) ---- */
+.controls{display:flex; flex-wrap:wrap; gap:14px 20px; align-items:center; margin-bottom:14px}
+.controls select{font-family:var(--mono); font-size:12.5px; color:var(--ink);
+  background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:8px 10px}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden;
+  background:var(--surface)}
+.seg button{
+  font-family:var(--mono); font-size:12.5px; letter-spacing:.03em; color:var(--ink-dim);
+  background:transparent; border:0; padding:8px 14px; cursor:pointer; transition:.15s;
+}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft); color:var(--accent)}
+.seg button:hover{color:var(--ink)}
+.chart-legend{display:flex; flex-wrap:wrap; gap:8px 20px; margin-bottom:12px; font-family:var(--mono);
+  font-size:12px; color:var(--ink-dim)}
+.chart-legend .lg{display:flex; align-items:center; gap:8px}
+.chart-legend .lg i{width:16px; height:3px; border-radius:2px; display:inline-block}
+.chart-wrap{position:relative; border:1px solid var(--line); border-radius:14px;
+  background:var(--surface); box-shadow:var(--shadow); padding:14px 10px 10px}
+#rrCanvas{display:block; width:100%; height:340px; touch-action:none}
+#skewCanvas{display:block; width:100%; height:280px; touch-action:none}
+.ptip{position:absolute; pointer-events:none; opacity:0; transition:opacity .12s;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:10px 12px;
+  font-family:var(--mono); font-size:11.5px; box-shadow:var(--shadow); z-index:5; min-width:160px}
+.ptip .d{color:var(--ink); font-size:12px; margin-bottom:6px}
+.ptip .rw{display:flex; align-items:center; justify-content:space-between; gap:16px; color:var(--ink-dim)}
+.ptip .rw i{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:6px}
+.ptip .rw b{color:var(--ink); font-variant-numeric:tabular-nums}
+.chart-cap{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin:12px 2px 0;
+  display:flex; gap:8px; align-items:baseline; flex-wrap:wrap}
+.chart-cap b{color:var(--ink-dim); font-weight:500}
+.zoom-reset{position:absolute; top:10px; right:10px; z-index:4;
+  font-family:var(--mono); font-size:11.5px; color:var(--ink-dim);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:8px;
+  padding:6px 12px; cursor:pointer; transition:.15s}
+.zoom-reset:hover{color:var(--ink); border-color:var(--accent-line)}
 </style>
 
 <div class="page"><div class="wrap">
@@ -104,6 +152,42 @@ td.l{text-align:left}
     <div class="tblwrap"><table id="log"></table></div>
   </div>
 
+  <div class="card" id="rrCard" style="display:none">
+    <h2>Risk reversals (delta pillars, constant maturity)</h2>
+    <p class="hint">our own Black-Scholes IV and delta at the 10&Delta;/25&Delta;/50&Delta;
+    pillars, interpolated to fixed 30d/90d maturities &middot; RR = call-wing IV &minus;
+    put-wing IV at the same delta, in vol points (negative = puts bid) &middot; deep
+    history from ORATS, extended daily from the live capture</p>
+    <div class="controls">
+      <select id="rrSym"></select>
+      <span class="seg" id="rrTenorSeg"></span>
+      <span class="seg" id="rrPaneSeg">
+        <button data-p="rr" aria-pressed="true">RR</button>
+        <button data-p="atm" aria-pressed="false">ATM IV</button>
+      </span>
+    </div>
+    <div class="chart-legend" id="rrLegend"></div>
+    <div class="chart-wrap">
+      <canvas id="rrCanvas"></canvas>
+      <button class="zoom-reset" id="rrZoomReset" hidden>Reset zoom</button>
+      <div class="ptip" id="rrTip"></div>
+    </div>
+    <p class="chart-cap"><b>Tip:</b> scroll or pinch to zoom, drag to pan, double-click to
+    reset &middot; weekly resolution before <span id="rrCut"></span>, daily after &middot;
+    gaps = a pillar outside the captured smile that day (no extrapolation).</p>
+  </div>
+
+  <div class="card" id="skewCard" style="display:none">
+    <h2>Skew (smile by delta)</h2>
+    <p class="hint">the five delta pillars as a smile &mdash; today against roughly a week
+    and a month ago, same symbol and maturity as above</p>
+    <div class="chart-legend" id="skewLegend"></div>
+    <div class="chart-wrap">
+      <canvas id="skewCanvas"></canvas>
+      <div class="ptip" id="skewTip"></div>
+    </div>
+  </div>
+
   <div class="card">
     <h2>Big open-interest strikes</h2>
     <p class="hint">largest standing OI lines in the latest snapshot (structured-note zone
@@ -129,6 +213,7 @@ const CTX = /*__CTX__*/;
 const LOG = /*__LOG__*/;
 const BIG = /*__BIG__*/;
 const LIQ = /*__LIQ__*/;
+const RR = /*__RR__*/;
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -186,4 +271,357 @@ table("liq", [
   ["med spread %", r => num(r.med_spread, 1)],
   ["gate", r => r.liquid ? '<span class="tag open">LIQUID</span>' : '<span class="tag off">excluded</span>'],
 ], LIQ);
+
+/* ===== risk reversals + skew (chart idiom shared with gex_dispersion) ===== */
+if (RR && RR.dates && RR.dates.length && Object.keys(RR.symbols || {}).length) {
+  document.getElementById("rrCard").style.display = "";
+  document.getElementById("skewCard").style.display = "";
+  document.getElementById("rrCut").textContent = RR.cut || "—";
+
+  const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+  const N = RR.dates.length;
+  let RSYM = Object.keys(RR.symbols).includes("SPY") ? "SPY" : Object.keys(RR.symbols).sort()[0];
+  let RTEN = RR.tenors[0], PANE = "rr", VIEW = null, TPLOT = null, rrHover = -1;
+
+  const symSel = document.getElementById("rrSym");
+  symSel.innerHTML = Object.keys(RR.symbols).sort().map(s =>
+    `<option${s === RSYM ? " selected" : ""}>${esc(s)}</option>`).join("");
+  const tenorSeg = document.getElementById("rrTenorSeg");
+  tenorSeg.innerHTML = RR.tenors.map(t =>
+    `<button data-t="${t}" aria-pressed="${t === RTEN}">${t}d</button>`).join("");
+
+  const PANES = {
+    rr:  {lines: [{k: "rr25", tok: "--sOur", lab: "25Δ risk reversal"},
+                  {k: "rr10", tok: "--sRef", lab: "10Δ risk reversal"}],
+          fmt: v => (v > 0 ? "+" : "") + v.toFixed(2)},
+    atm: {lines: [{k: "atm", tok: "--accent", lab: "ATM (50Δ) IV"}],
+          fmt: v => v.toFixed(1)},
+  };
+  const series = () => (RR.symbols[RSYM] || {})["t" + RTEN] || {rr10: [], rr25: [], atm: []};
+
+  function rrLegend() {
+    document.getElementById("rrLegend").innerHTML = PANES[PANE].lines.map(l =>
+      `<span class="lg"><i style="background:${css(l.tok)}"></i>${l.lab} · vol pts</span>`).join("");
+  }
+
+  function sizeCanvas(cv, ctx) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return {w, h};
+  }
+  function niceTicks(min, max, n) {
+    const span = max - min, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    const norm = step0 / mag, step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+    const out = []; for (let t = Math.ceil(min / step) * step; t <= max + 1e-9; t += step) out.push(t);
+    return out;
+  }
+
+  const rrCv = document.getElementById("rrCanvas");
+  const rrCtx = rrCv.getContext("2d");
+  const rrTip = document.getElementById("rrTip");
+
+  function setView(i0, i1) {
+    const maxI = N - 1, minSpan = Math.min(15, maxI);
+    let span = Math.max(minSpan, Math.min(maxI, i1 - i0));
+    if (i1 - i0 !== span) { const c = (i0 + i1) / 2; i0 = c - span / 2; i1 = c + span / 2; }
+    if (i0 < 0) { i1 -= i0; i0 = 0; }
+    if (i1 > maxI) { i0 -= (i1 - maxI); i1 = maxI; }
+    i0 = Math.max(0, i0); i1 = Math.min(maxI, i1);
+    VIEW = (i0 <= 0.001 && i1 >= maxI - 0.001) ? null : {i0, i1};
+    document.getElementById("rrZoomReset").hidden = !VIEW;
+    drawRR();
+  }
+
+  function drawRR() {
+    const {w, h} = sizeCanvas(rrCv, rrCtx);
+    const ctx = rrCtx;
+    const soft = css("--line-soft"), faint = css("--ink-faint"), dim = css("--ink-dim");
+    ctx.clearRect(0, 0, w, h);
+    const pad = {l: 52, r: 14, t: 12, b: 26};
+    const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+    const v0 = VIEW ? VIEW.i0 : 0, v1 = VIEW ? VIEW.i1 : N - 1;
+    const lo = Math.max(0, Math.floor(v0)), hi = Math.min(N - 1, Math.ceil(v1));
+    const S = series(), lines = PANES[PANE].lines;
+    let mn = Infinity, mx = -Infinity;
+    for (const l of lines) { const a = S[l.k] || [];
+      for (let i = lo; i <= hi; i++) { const v = a[i]; if (v == null) continue; if (v < mn) mn = v; if (v > mx) mx = v; } }
+    if (!isFinite(mn)) { mn = 0; mx = 1; }
+    const padv = (mx - mn) * 0.06 || 1; mn -= padv; mx += padv;
+    const xF = i => pad.l + (v1 <= v0 ? 0 : (i - v0) / (v1 - v0)) * pw;
+    const yF = v => pad.t + (1 - (v - mn) / (mx - mn)) * ph;
+    TPLOT = {pad, pw, ph, xF, yF, v0, v1};
+
+    ctx.font = "11px ui-monospace, Menlo, monospace";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "right";
+    niceTicks(mn, mx, 5).forEach(t => {
+      const y = yF(t);
+      ctx.strokeStyle = soft; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l, y + .5); ctx.lineTo(w - pad.r, y + .5); ctx.stroke();
+      ctx.fillStyle = faint; ctx.fillText(Math.abs(t) < 10 ? t.toFixed(1) : Math.round(t), pad.l - 8, y);
+    });
+    ctx.textAlign = "center";
+    const MONW = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const bounds = []; let prevYM = RR.dates[lo].slice(0, 7);
+    for (let i = lo + 1; i <= hi; i++) {
+      const ym = RR.dates[i].slice(0, 7);
+      if (ym !== prevYM) { prevYM = ym; bounds.push(i); }
+    }
+    let firstLab = true;
+    bounds.forEach(i => {
+      const m = +RR.dates[i].slice(5, 7);
+      if (bounds.length > 26 && m !== 1) return;
+      if (bounds.length > 12 && bounds.length <= 26 && (m - 1) % 3 !== 0) return;
+      const x = xF(i); if (x < pad.l - 1 || x > w - pad.r + 1) return;
+      ctx.strokeStyle = soft; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x + .5, pad.t); ctx.lineTo(x + .5, pad.t + ph); ctx.stroke();
+      ctx.fillStyle = faint;
+      const lab = m === 1 ? RR.dates[i].slice(0, 4)
+                : firstLab ? MONW[m - 1] + " ’" + RR.dates[i].slice(2, 4) : MONW[m - 1];
+      ctx.fillText(lab, x, pad.t + ph + 14);
+      firstLab = false;
+    });
+    ctx.save();
+    ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
+    // zero line for the RR pane (which side of the smile is bid)
+    if (PANE === "rr" && mn < 0 && mx > 0) {
+      ctx.strokeStyle = dim; ctx.globalAlpha = .6; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(pad.l, yF(0) + .5); ctx.lineTo(w - pad.r, yF(0) + .5); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    const a0 = Math.max(0, lo - 1), a1 = Math.min(N - 1, hi + 1);
+    lines.forEach(l => {
+      const arr = S[l.k] || [];
+      ctx.strokeStyle = css(l.tok); ctx.lineWidth = 1.7;
+      ctx.beginPath();
+      let started = false;
+      for (let i = a0; i <= a1; i++) {
+        const v = arr[i];
+        if (v == null) { started = false; continue; }
+        const x = xF(i), y = yF(v);
+        started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true;
+      }
+      ctx.stroke();
+    });
+    if (rrHover >= lo && rrHover <= hi) {
+      const x = xF(rrHover);
+      ctx.strokeStyle = dim; ctx.globalAlpha = .5; ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x + .5, pad.t); ctx.lineTo(x + .5, pad.t + ph); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+      lines.forEach(l => {
+        const v = (S[l.k] || [])[rrHover];
+        if (v == null) return;
+        ctx.fillStyle = css("--surface"); ctx.strokeStyle = css(l.tok); ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, yF(v), 3.6, 0, 7); ctx.fill(); ctx.stroke();
+      });
+    }
+    ctx.restore();
+  }
+
+  function showRRTip(clientX) {
+    if (!TPLOT) return;
+    const rect = rrCv.getBoundingClientRect();
+    const px = clientX - rect.left;
+    let i = Math.round(TPLOT.v0 + (px - TPLOT.pad.l) / TPLOT.pw * (TPLOT.v1 - TPLOT.v0));
+    i = Math.max(0, Math.min(N - 1, i));
+    rrHover = i; drawRR();
+    const S = series(), fmt = PANES[PANE].fmt;
+    rrTip.innerHTML =
+      `<div class="d">${RR.dates[i]} · ${esc(RSYM)} ${RTEN}d</div>` +
+      PANES[PANE].lines.map(l => {
+        const v = (S[l.k] || [])[i];
+        return `<div class="rw"><span><i style="background:${css(l.tok)}"></i>${l.k.toUpperCase()}</span>` +
+               `<b>${v == null ? "—" : fmt(v)}</b></div>`;
+      }).join("");
+    rrTip.style.opacity = 1;
+    const wrap = rrCv.parentElement.getBoundingClientRect();
+    let tx = TPLOT.xF(i) + 14; if (tx > wrap.width - 180) tx = TPLOT.xF(i) - rrTip.offsetWidth - 14;
+    rrTip.style.left = Math.max(6, tx) + "px";
+    rrTip.style.top = "18px";
+  }
+
+  const ptrs = new Map();
+  let panLast = null, pinch0 = null;
+  rrCv.addEventListener("pointerdown", e => {
+    ptrs.set(e.pointerId, e.clientX);
+    rrCv.setPointerCapture(e.pointerId);
+    if (ptrs.size === 1) { panLast = e.clientX; }
+    else if (ptrs.size === 2 && TPLOT) {
+      panLast = null; rrHover = -1; rrTip.style.opacity = 0;
+      const xs = [...ptrs.values()];
+      pinch0 = {d: Math.max(12, Math.abs(xs[0] - xs[1])), v0: TPLOT.v0, v1: TPLOT.v1,
+                cx: (xs[0] + xs[1]) / 2};
+    }
+  });
+  rrCv.addEventListener("pointermove", e => {
+    if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, e.clientX);
+    if (ptrs.size === 2 && pinch0 && TPLOT) {
+      const xs = [...ptrs.values()];
+      const span0 = pinch0.v1 - pinch0.v0;
+      const span = span0 * pinch0.d / Math.max(12, Math.abs(xs[0] - xs[1]));
+      const rect = rrCv.getBoundingClientRect();
+      const f = Math.max(0, Math.min(1, (pinch0.cx - rect.left - TPLOT.pad.l) / TPLOT.pw));
+      const anchor = pinch0.v0 + f * span0;
+      setView(anchor - f * span, anchor + (1 - f) * span);
+      return;
+    }
+    if (panLast != null && VIEW && TPLOT) {
+      const di = (e.clientX - panLast) / TPLOT.pw * (TPLOT.v1 - TPLOT.v0);
+      panLast = e.clientX;
+      if (di) { rrHover = -1; rrTip.style.opacity = 0; setView(TPLOT.v0 - di, TPLOT.v1 - di); return; }
+    }
+    showRRTip(e.clientX);
+  });
+  function endPtr(e) {
+    ptrs.delete(e.pointerId);
+    if (ptrs.size < 2) pinch0 = null;
+    if (ptrs.size === 0) panLast = null;
+    else if (ptrs.size === 1) panLast = [...ptrs.values()][0];
+  }
+  rrCv.addEventListener("pointerup", endPtr);
+  rrCv.addEventListener("pointercancel", endPtr);
+  rrCv.addEventListener("pointerleave", () => { if (!ptrs.size) { rrHover = -1; rrTip.style.opacity = 0; drawRR(); } });
+  rrCv.addEventListener("wheel", e => {
+    if (!TPLOT) return;
+    e.preventDefault();
+    const rect = rrCv.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (e.clientX - rect.left - TPLOT.pad.l) / TPLOT.pw));
+    const span = TPLOT.v1 - TPLOT.v0;
+    const ns = span * Math.exp(Math.max(-0.4, Math.min(0.4, e.deltaY * 0.002)));
+    const anchor = TPLOT.v0 + f * span;
+    setView(anchor - f * ns, anchor + (1 - f) * ns);
+  }, {passive: false});
+  rrCv.addEventListener("dblclick", () => setView(0, N - 1));
+  document.getElementById("rrZoomReset").addEventListener("click", () => setView(0, N - 1));
+
+  /* ---- skew card: the five pillars as a smile, three reference dates ---- */
+  const skCv = document.getElementById("skewCanvas");
+  const skCtx = skCv.getContext("2d");
+  const skTip = document.getElementById("skewTip");
+  const PILL_LABS = ["10ΔP", "25ΔP", "ATM", "25ΔC", "10ΔC"];
+  const PILL_KEYS = ["p10", "p25", "atm", "c25", "c10"];
+  const CURVES = [{j: 0, tok: "--accent", w: 2.2, a: 1},
+                  {j: 1, tok: "--sOur", w: 1.6, a: .8},
+                  {j: 2, tok: "--sRef", w: 1.6, a: .65}];
+  let skHover = -1, SKPLOT = null;
+
+  const skewSlice = () => (RR.skew[RSYM] || {})["t" + RTEN];
+
+  function skewLegend() {
+    const sk = skewSlice();
+    document.getElementById("skewLegend").innerHTML = !sk ? "" :
+      CURVES.map(c => `<span class="lg"><i style="background:${css(c.tok)}"></i>${esc(sk.dates[c.j] || "—")}</span>`).join("");
+  }
+
+  function drawSkew() {
+    const {w, h} = sizeCanvas(skCv, skCtx);
+    const ctx = skCtx;
+    const soft = css("--line-soft"), faint = css("--ink-faint");
+    ctx.clearRect(0, 0, w, h);
+    const sk = skewSlice();
+    if (!sk) { SKPLOT = null; return; }
+    const pad = {l: 52, r: 20, t: 14, b: 28};
+    const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+    let mn = Infinity, mx = -Infinity;
+    PILL_KEYS.forEach(k => (sk[k] || []).forEach(v => {
+      if (v == null) return; if (v < mn) mn = v; if (v > mx) mx = v; }));
+    if (!isFinite(mn)) { SKPLOT = null; return; }
+    const padv = (mx - mn) * 0.10 || 1; mn -= padv; mx += padv;
+    const xF = p => pad.l + p / (PILL_KEYS.length - 1) * pw;
+    const yF = v => pad.t + (1 - (v - mn) / (mx - mn)) * ph;
+    SKPLOT = {pad, pw, ph, xF, yF};
+
+    ctx.font = "11px ui-monospace, Menlo, monospace";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "right";
+    niceTicks(mn, mx, 4).forEach(t => {
+      const y = yF(t);
+      ctx.strokeStyle = soft; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l, y + .5); ctx.lineTo(w - pad.r, y + .5); ctx.stroke();
+      ctx.fillStyle = faint; ctx.fillText(t.toFixed(0), pad.l - 8, y);
+    });
+    ctx.textAlign = "center";
+    PILL_LABS.forEach((lab, p) => {
+      const x = xF(p);
+      ctx.strokeStyle = soft; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x + .5, pad.t); ctx.lineTo(x + .5, pad.t + ph); ctx.stroke();
+      ctx.fillStyle = faint; ctx.fillText(lab, x, pad.t + ph + 15);
+    });
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    CURVES.forEach(c => {
+      ctx.strokeStyle = css(c.tok); ctx.lineWidth = c.w; ctx.globalAlpha = c.a;
+      ctx.beginPath();
+      let started = false;
+      PILL_KEYS.forEach((k, p) => {
+        const v = (sk[k] || [])[c.j];
+        if (v == null) { started = false; return; }
+        const x = xF(p), y = yF(v);
+        started ? ctx.lineTo(x, y) : ctx.moveTo(x, y); started = true;
+      });
+      ctx.stroke();
+      PILL_KEYS.forEach((k, p) => {
+        const v = (sk[k] || [])[c.j];
+        if (v == null) return;
+        ctx.fillStyle = css(c.tok);
+        ctx.beginPath(); ctx.arc(xF(p), yF(v), c.j === 0 ? 3.4 : 2.6, 0, 7); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    });
+    if (skHover >= 0) {
+      const x = xF(skHover);
+      ctx.strokeStyle = css("--ink-dim"); ctx.globalAlpha = .5; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x + .5, pad.t); ctx.lineTo(x + .5, pad.t + ph); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+  }
+
+  skCv.addEventListener("pointermove", e => {
+    if (!SKPLOT) return;
+    const rect = skCv.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    let p = Math.round((px - SKPLOT.pad.l) / SKPLOT.pw * (PILL_KEYS.length - 1));
+    p = Math.max(0, Math.min(PILL_KEYS.length - 1, p));
+    skHover = p; drawSkew();
+    const sk = skewSlice();
+    if (!sk) return;
+    skTip.innerHTML =
+      `<div class="d">${PILL_LABS[p]} · ${esc(RSYM)} ${RTEN}d</div>` +
+      CURVES.map(c => {
+        const v = (sk[PILL_KEYS[p]] || [])[c.j];
+        return `<div class="rw"><span><i style="background:${css(c.tok)}"></i>${esc(sk.dates[c.j] || "—")}</span>` +
+               `<b>${v == null ? "—" : v.toFixed(1)}</b></div>`;
+      }).join("");
+    skTip.style.opacity = 1;
+    const wrap = skCv.parentElement.getBoundingClientRect();
+    let tx = SKPLOT.xF(p) + 14; if (tx > wrap.width - 180) tx = SKPLOT.xF(p) - skTip.offsetWidth - 14;
+    skTip.style.left = Math.max(6, tx) + "px";
+    skTip.style.top = "18px";
+  });
+  skCv.addEventListener("pointerleave", () => { skHover = -1; skTip.style.opacity = 0; drawSkew(); });
+
+  /* ---- wiring ---- */
+  function redrawAll() { rrLegend(); drawRR(); skewLegend(); drawSkew(); }
+  symSel.addEventListener("change", () => { RSYM = symSel.value; VIEW = null;
+    document.getElementById("rrZoomReset").hidden = true; redrawAll(); });
+  tenorSeg.querySelectorAll("button").forEach(b => {
+    b.addEventListener("click", () => {
+      RTEN = +b.dataset.t;
+      tenorSeg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+      redrawAll();
+    });
+  });
+  document.querySelectorAll("#rrPaneSeg button").forEach(b => {
+    b.addEventListener("click", () => {
+      PANE = b.dataset.p;
+      document.querySelectorAll("#rrPaneSeg button").forEach(x => x.setAttribute("aria-pressed", x === b));
+      rrLegend(); drawRR();
+    });
+  });
+  window.addEventListener("resize", redrawAll);
+  redrawAll();
+}
 </script>
