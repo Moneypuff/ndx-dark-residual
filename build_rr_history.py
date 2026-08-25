@@ -29,12 +29,14 @@ rows to a solvable few million per symbol.
 import argparse
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import pandas as pd
 
 import build_vol_tracker as V
 import trade_structures as T
+# duckdb is imported lazily in main() -- it is a LOCAL-ONLY dependency
+# (not in requirements) and the CI runners import this module's pure
+# functions through the test suite without ever touching the database.
 
 DEFAULT_DB = "E:/selected-full-history-dump/orats.duckdb"
 DEFAULT_UNIVERSE = Path(__file__).resolve().parent / "data" / "optsnap_universe.csv"
@@ -148,6 +150,7 @@ def main():
     else:
         symbols = list(pd.read_csv(args.universe)["symbol"].str.upper())
 
+    import duckdb
     partials = Path(args.partials_dir)
     partials.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(args.db, read_only=True)

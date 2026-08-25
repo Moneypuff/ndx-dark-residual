@@ -32,11 +32,13 @@ same as a null.
 import argparse
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import pandas as pd
 
 import snapshot_option_chains as S
+# duckdb is imported lazily in backfill() -- it is a LOCAL-ONLY dependency
+# (not in requirements) and the CI runners import this module's pure
+# functions through the test suite without ever touching the database.
 
 DEFAULT_DB = "E:/selected-full-history-dump/orats.duckdb"
 DEFAULT_UNIVERSE = Path(__file__).resolve().parent / "data" / "optsnap_universe.csv"
@@ -134,6 +136,7 @@ def backfill_day(con, symbols, trade_date):
 
 
 def backfill(db_path, symbols, start, end, out_dir, skip_existing=True):
+    import duckdb
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(db_path, read_only=True)
