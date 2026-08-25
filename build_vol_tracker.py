@@ -144,6 +144,207 @@ def atm_iv(day_rows):
     return float(np.interp(spot, ks, vs))
 
 
+# --- delta-pillar risk reversals (VOL_TRACKER.md "Risk reversals & skew") ---
+RR_TENORS = (30, 90)       # constant-maturity tenors, calendar days
+RR_PILLARS = ("iv10p", "iv25p", "iv50", "iv25c", "iv10c")
+RR_MIN_SIDE = 3            # live OTM points a side needs after despiking
+RR_MIN_DTE = 5             # expiration-week pillars are pin noise -- skip
+RR_MAX_DTE = 400           # nothing past this can bracket a 90d tenor usefully
+RR_DAILY_YEARS = 2         # payload: daily resolution this far back, W-FRI before
+
+
+def side_smile(expiry_rows, spot, right):
+    """(strikes, ivs) of ONE live, despiked OTM side of an expiry group --
+    puts strictly below spot or calls at/above (smile_points' convention,
+    single-sided so the two sides can be pillared in delta space
+    separately)."""
+    r = expiry_rows
+    if right == "P":
+        otm = r[(r["right"] == "P") & (r["strike"] < spot)]
+    else:
+        otm = r[(r["right"] == "C") & (r["strike"] >= spot)]
+    otm = otm[(otm["bid"].fillna(0) > 0) | (otm["oi"].fillna(0) > 0)]
+    otm = otm.dropna(subset=["iv"]).sort_values("strike")
+    return T.despike_smile(otm["strike"].to_numpy(dtype=float),
+                           otm["iv"].to_numpy(dtype=float))
+
+
+def delta_pillars(expiry_rows, spot, t_years, min_side=RR_MIN_SIDE):
+    """The five delta-pillar IVs for one (date, symbol, expiry) group:
+    each row's own iv -> our own BS delta (trade_structures.bs_delta) ->
+    linear interpolation in delta space. The wings are single-sided (call
+    side at delta 0.25/0.10 -> iv25c/iv10c, put side |delta| 0.25/0.10 ->
+    iv25p/iv10p); the ATM pillar (iv50) interpolates the parity-COMBINED
+    OTM smile on a call-delta axis (a put's call-equivalent delta is
+    1 + delta_put), because both OTM sides individually approach 0.50
+    only from below -- whenever spot sits between two strikes neither
+    side alone spans it. This is the delta-space analogue of what atm_iv
+    does in strike space. A pillar is NaN when its side is thin
+    (< min_side points) or the target falls outside the observed span --
+    no extrapolation."""
+    out = dict.fromkeys(RR_PILLARS, np.nan)
+    sides = {}
+    for right, targets in (("C", {"iv25c": 0.25, "iv10c": 0.10}),
+                           ("P", {"iv25p": 0.25, "iv10p": 0.10})):
+        ks, vs = side_smile(expiry_rows, spot, right)
+        d = np.abs(T.bs_delta(spot, ks, t_years, vs, right))
+        keep = np.isfinite(d)
+        d, vs_k = d[keep], vs[keep]
+        sides[right] = (d, vs_k)
+        if len(d) < min_side:
+            continue
+        order = np.argsort(d)
+        d, vs_k = d[order], vs_k[order]
+        for name, tgt in targets.items():
+            if d[0] <= tgt <= d[-1]:
+                out[name] = float(np.interp(tgt, d, vs_k))
+    dc, vc = sides["C"]
+    dp, vp = sides["P"]
+    comb_d = np.concatenate([dc, 1.0 - dp])     # put -> call-equivalent delta
+    comb_v = np.concatenate([vc, vp])
+    if len(comb_d) >= min_side:
+        order = np.argsort(comb_d)
+        comb_d, comb_v = comb_d[order], comb_v[order]
+        if comb_d[0] <= 0.50 <= comb_d[-1]:
+            out["iv50"] = float(np.interp(0.50, comb_d, comb_v))
+    return out
+
+
+def cm_pillars(by_expiry, tenor_days):
+    """Constant-maturity pillars: linear-in-IV interpolation, per pillar,
+    across the two DTEs bracketing `tenor_days`. (Linear in IV vs linear
+    in total variance differ by well under 0.1 vol pt at monthly expiry
+    spacing -- the simple form matches the repo's np.interp-everywhere
+    convention.) `by_expiry`: [(dte, pillar-dict)] sorted or not. NaN per
+    pillar when no bracket exists or a bracket side is NaN."""
+    if not by_expiry:
+        return dict.fromkeys(RR_PILLARS, np.nan)
+    by_expiry = sorted(by_expiry, key=lambda p: p[0])
+    out = {}
+    for name in RR_PILLARS:
+        pts = [(dte, p[name]) for dte, p in by_expiry if np.isfinite(p[name])]
+        lo = [(d, v) for d, v in pts if d <= tenor_days]
+        hi = [(d, v) for d, v in pts if d >= tenor_days]
+        if not lo or not hi:
+            out[name] = np.nan
+            continue
+        d0, v0 = lo[-1]
+        d1, v1 = hi[0]
+        out[name] = v0 if d0 == d1 else \
+            v0 + (v1 - v0) * (tenor_days - d0) / (d1 - d0)
+    return out
+
+
+def rr_day_rows(day_df, tenors=RR_TENORS):
+    """Long RR rows [{date, symbol, tenor, iv10p..iv10c}] for every
+    (date, symbol) in the frame, via delta_pillars per captured expiry
+    (RR_MIN_DTE <= dte <= RR_MAX_DTE) then cm_pillars per tenor."""
+    rows = []
+    for (date, sym), g in day_df.groupby(["date", "symbol"]):
+        spot = float(g["spot"].iloc[0])
+        if not spot > 0:
+            continue
+        by_expiry = []
+        for exp, ge in g.groupby("expiry"):
+            dte = (pd.Timestamp(exp) - pd.Timestamp(date)).days
+            if not RR_MIN_DTE <= dte <= RR_MAX_DTE:
+                continue
+            by_expiry.append((dte, delta_pillars(ge, spot, dte / 365.25)))
+        for tenor in tenors:
+            cm = cm_pillars(by_expiry, tenor)
+            if any(np.isfinite(v) for v in cm.values()):
+                rows.append({"date": date, "symbol": sym, "tenor": tenor, **cm})
+    return rows
+
+
+def rr_frame(df, tenors=RR_TENORS):
+    """rr_day_rows over the whole snapshot frame -> long frame [date,
+    symbol, tenor, iv10p, iv25p, iv50, iv25c, iv10c], date-sorted."""
+    cols = ["date", "symbol", "tenor", *RR_PILLARS]
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+    return (pd.DataFrame(rr_day_rows(df, tenors), columns=cols)
+              .sort_values(["date", "symbol", "tenor"], ignore_index=True))
+
+
+def load_rr_backfill(snap_dir):
+    """optsnap/rr_history.csv.gz -- the one-time ORATS-derived deep
+    history (build_rr_history.py), pushed to the optsnap-data branch and
+    fetched alongside the snapshots. Empty frame when absent."""
+    p = Path(snap_dir) / "rr_history.csv.gz"
+    if not p.exists():
+        return pd.DataFrame(columns=["date", "symbol", "tenor", *RR_PILLARS])
+    return pd.read_csv(p)
+
+
+def merge_rr(backfill, live):
+    """Backfill rows strictly BEFORE the first live (snapshot-derived)
+    date, live rows from there on -- at the seam the live pipeline wins."""
+    if live.empty:
+        return backfill.copy()
+    first_live = live["date"].min()
+    old = backfill[backfill["date"] < first_live]
+    return (pd.concat([old, live], ignore_index=True)
+              .sort_values(["symbol", "tenor", "date"], ignore_index=True))
+
+
+def rr_payload(rr, daily_years=RR_DAILY_YEARS):
+    """The /*__RR__*/ template payload. One shared date axis -- W-FRI
+    weekly before (last date - daily_years), daily after -- keeps the
+    full 2007+ history chartable at ~1.4k points instead of ~5k. The
+    history chart ships only the derived series (rr10/rr25/atm, 2dp vol
+    points, NaN -> None); the five raw pillars ship only in the skew
+    slice (latest day, ~1 week back, ~1 month back), taken at full
+    resolution before the downsampling."""
+    empty = {"tenors": list(RR_TENORS), "dates": [], "cut": None,
+             "symbols": {}, "skew": {}}
+    if rr.empty:
+        return empty
+    rr = rr.copy()
+    rr["rr10"] = (rr["iv10c"] - rr["iv10p"]) * 100
+    rr["rr25"] = (rr["iv25c"] - rr["iv25p"]) * 100
+    rr["atm"] = rr["iv50"] * 100
+
+    all_dates = pd.to_datetime(sorted(rr["date"].unique()))
+    cut = all_dates[-1] - pd.DateOffset(years=daily_years)
+    old = all_dates[all_dates < cut]
+    weekly = set(pd.Series(old, index=old).resample("W-FRI").last().dropna())
+    axis = [d for d in all_dates if d >= cut or d in weekly]
+    axis_str = [str(d.date()) for d in axis]
+
+    def rnd(v):
+        return None if not np.isfinite(v) else round(float(v), 2)
+
+    tenors = sorted(rr["tenor"].unique())
+    symbols, skew = {}, {}
+    for sym, gs in rr.groupby("symbol"):
+        symbols[sym], skew[sym] = {}, {}
+        for tenor, gt in gs.groupby("tenor"):
+            by_date = gt.set_index("date")
+            aligned = by_date.reindex(axis_str)
+            symbols[sym][f"t{tenor}"] = {
+                k: [rnd(v) for v in aligned[k]] for k in ("rr10", "rr25", "atm")}
+            # skew slice: latest finite day, then nearest to -7 and -30
+            finite = by_date[by_date[list(RR_PILLARS)].notna().any(axis=1)]
+            if finite.empty:
+                continue
+            idx = pd.to_datetime(finite.index)
+            last = idx[-1]
+            picks = [last]
+            for back in (7, 30):
+                near = idx[np.argmin(np.abs(idx - (last - pd.Timedelta(days=back))))]
+                picks.append(near)
+            skew[sym][f"t{tenor}"] = {
+                "dates": [str(p.date()) for p in picks],
+                **{name: [rnd(finite.loc[str(p.date()), pil] * 100)
+                          for p in picks]
+                   for name, pil in (("p10", "iv10p"), ("p25", "iv25p"),
+                                     ("atm", "iv50"), ("c25", "iv25c"),
+                                     ("c10", "iv10c"))}}
+    return {"tenors": [int(t) for t in tenors], "dates": axis_str,
+            "cut": str(cut.date()), "symbols": symbols, "skew": skew}
+
+
 def contract_panel(df):
     """(iv, oi, atm) wide frames -- rows keyed (symbol, expiry, strike,
     right) for iv/oi and (symbol, expiry) for atm; columns = snapshot
@@ -459,7 +660,7 @@ def trade_log(df, signals, liquid=None):
 
 
 # ----------------------------------------------------------------------------
-def render_page(template, docs_out, ctx, log, bigmap, liq):
+def render_page(template, docs_out, ctx, log, bigmap, liq, rr):
     """docs/vol_tracker.html -- payloads injected into the template the
     same way the other pages do it."""
     def records(frame):
@@ -469,7 +670,8 @@ def render_page(template, docs_out, ctx, log, bigmap, liq):
             .replace("/*__CTX__*/", json.dumps(ctx, separators=(",", ":")))
             .replace("/*__LOG__*/", json.dumps(records(log), separators=(",", ":")))
             .replace("/*__BIG__*/", json.dumps(records(bigmap), separators=(",", ":")))
-            .replace("/*__LIQ__*/", json.dumps(records(liq), separators=(",", ":"))))
+            .replace("/*__LIQ__*/", json.dumps(records(liq), separators=(",", ":")))
+            .replace("/*__RR__*/", json.dumps(rr, separators=(",", ":"))))
     doc = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
            '<meta name="viewport" content="width=device-width,initial-scale=1">'
            '<title>Vol Tracker</title></head>'
@@ -496,13 +698,15 @@ def main():
     df = load_snapshots(args.snap_dir)
     days = sorted(df["date"].unique())
     if not days:
+        # the RR backfill can chart on its own even before any capture
+        rr = merge_rr(load_rr_backfill(args.snap_dir), rr_frame(df))
         print(f"no snapshots under {args.snap_dir}")
         if args.docs_out:
             render_page(args.template, args.docs_out, {
                 "built": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                 "days": 0, "note": "No chain capture yet -- the optsnap "
                 "workflow appends the first snapshot after the next close."},
-                pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
+                pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), rr_payload(rr))
         return
     print(f"{len(days)} snapshot day(s): {days[0]} .. {days[-1]}  "
           f"({len(df)} rows, {df['symbol'].nunique()} symbols)")
@@ -516,6 +720,14 @@ def main():
     flows = flow_table(iv, oi, atm) if len(days) >= 3 else pd.DataFrame()
     press = pressure_index(flows, oi)
     bigmap = big_oi_map(df)
+
+    rr_bf = load_rr_backfill(args.snap_dir)
+    rr = merge_rr(rr_bf, rr_frame(df))
+    if len(rr):
+        print(f"\n== rr history: {len(rr)} sym-tenor-days, "
+              f"{rr['date'].min()} .. {rr['date'].max()} "
+              f"(backfill {len(rr) - len(rr[rr['date'] >= days[0]])}, "
+              f"live {len(rr[rr['date'] >= days[0]])}) ==")
 
     if len(days) < 2:
         print("\n[deltas] single snapshot -- IV/OI changes start with day 2, "
@@ -572,6 +784,8 @@ def main():
         if not flows.empty:
             flows.round(4).to_csv(out / "flows.csv", index=False)
             press.round(4).to_csv(out / "pressure.csv", index=False)
+        if not rr.empty:
+            rr.round(4).to_csv(out / "rr.csv", index=False)
         print(f"\nwrote {out}/")
 
     if args.docs_out:
@@ -584,7 +798,7 @@ def main():
             "note": None if len(days) >= 3 else (
                 "IV deltas need 2 snapshots and aggressor reads 3 -- "
                 f"{len(days)} captured so far; columns fill in as history accrues."),
-        }, log, bigmap2, liq)
+        }, log, bigmap2, liq, rr_payload(rr))
 
 
 if __name__ == "__main__":

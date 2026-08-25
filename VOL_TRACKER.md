@@ -72,6 +72,32 @@ date scrubber over the last 10 snapshot days. No extrapolation — a grid
 cell outside a smile's own strike range ships as a hole, not a
 flat-carried edge.
 
+## Risk reversals & skew (delta pillars)
+
+The vol tracker page also charts per-symbol **delta-pillar skew history**:
+IVs at the 10Δ put / 25Δ put / 50Δ (ATM) / 25Δ call / 10Δ call pillars,
+interpolated to fixed **30d and 90d** constant maturities. Derived series:
+RR25 = 25Δ call IV − 25Δ put IV, RR10 likewise, ATM = the 50Δ level (all
+in vol points; negative RR = the put wing is bid). The skew card draws the
+five pillars as a smile — today vs ~1 week and ~1 month ago.
+
+Method is the same end to end regardless of data source: our own
+Black-Scholes implied vol from the quoted mid → our own BS delta
+(`trade_structures.bs_delta`) → linear interpolation **in delta space**
+per OTM side (put side below spot, call side at/above, live + despiked) →
+linear-in-IV interpolation across the two expiries bracketing the tenor.
+A pillar whose target delta falls outside the side's observed span is
+NaN — no extrapolation, gaps are honest.
+
+Data channel: `build_rr_history.py` (LOCAL-ONLY, needs the ORATS duckdb)
+computed the deep history once — 2007+ for the whole universe — and its
+output lives as `optsnap/rr_history.csv.gz` on the **optsnap-data**
+branch, fetched by the nightly build alongside the snapshots. The build
+recomputes the same pillars from each live snapshot day and splices the
+two series at the first snapshot date (the live pipeline wins). The page
+payload keeps daily resolution for the last 2 years and W-FRI weekly
+before that.
+
 ## Signal linkage (phase 3 — CODE LIVE)
 
 Same script: for each live regime-log signal (≤63 sessions), the playbook
@@ -134,7 +160,14 @@ guide backtests everything else.
 - History starts the day capture starts, with one exception:
   `backfill_optsnap_from_orats.py` can extend it backward from a local
   ORATS options-history duckdb when one is available (not part of the
-  CI pipeline — a local, one-off tool).
+  CI pipeline — a local, one-off tool). `build_rr_history.py` is the
+  same idea for the delta-pillar RR/skew series (full 2007+ history,
+  pushed as `optsnap/rr_history.csv.gz` on the data branch).
+- The live snapshots cap strikes at ±25% moneyness, so on high-vol
+  names the 10Δ (especially 90d) pillar can sit outside the captured
+  smile — the RR10 series gaps honestly from the first live date on
+  those names while the ORATS-derived history (full strike range)
+  fills it before that.
 - Every `iv` in a loaded snapshot is OUR OWN Black-Scholes (r=0) implied
   vol (`load_snapshots` → `recompute_iv` → `trade_structures.implied_vol`),
   inverted from the quoted price (mid bid/ask, or last trade when the

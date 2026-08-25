@@ -93,6 +93,129 @@ def test_pressure_index_sign():
 
 
 # ---------------------------------------------------------------------------
+# delta pillars / constant maturity / rr frame / payload
+# ---------------------------------------------------------------------------
+# spot 100, flat 25-vol, T=30d: call deltas at 100/105/110/115 span
+# ~0.51..0.03 (0.50, 0.25, 0.10 all inside); put |deltas| at 90/95/97
+# span ~0.07..0.32 (0.25 and 0.10 inside).
+FLAT_QUOTES = [("P", 90.0, 0.25, 100), ("P", 95.0, 0.25, 100),
+               ("P", 97.0, 0.25, 100), ("C", 100.0, 0.25, 100),
+               ("C", 105.0, 0.25, 100), ("C", 110.0, 0.25, 100),
+               ("C", 115.0, 0.25, 100)]
+
+
+def test_delta_pillars_flat_smile():
+    rows = pd.DataFrame(_rows("2026-08-10", "GDX", "2026-09-09", 100.0,
+                              FLAT_QUOTES))
+    p = V.delta_pillars(rows, 100.0, 30 / 365.25)
+    for name in V.RR_PILLARS:
+        assert p[name] == pytest.approx(0.25, abs=1e-6), name
+
+
+def test_delta_pillars_guards():
+    # thin put side (2 points) -> put pillars NaN, call side still fills
+    thin = [q for q in FLAT_QUOTES if not (q[0] == "P" and q[1] == 90.0)]
+    thin = [q for q in thin if not (q[0] == "P" and q[1] == 95.0)]
+    rows = pd.DataFrame(_rows("2026-08-10", "GDX", "2026-09-09", 100.0, thin))
+    p = V.delta_pillars(rows, 100.0, 30 / 365.25)
+    assert np.isnan(p["iv25p"]) and np.isnan(p["iv10p"])
+    assert np.isfinite(p["iv50"])
+    # calls capped below delta 0.50: parity-combined smile still spans it
+    # (the put just below spot has call-equivalent delta just above 0.50)
+    deep = [("P", 90.0, 0.25, 100), ("P", 95.0, 0.25, 100),
+            ("P", 97.0, 0.25, 100), ("C", 105.0, 0.25, 100),
+            ("C", 110.0, 0.25, 100), ("C", 115.0, 0.25, 100)]
+    rows2 = pd.DataFrame(_rows("2026-08-10", "GDX", "2026-09-09", 100.0, deep))
+    p2 = V.delta_pillars(rows2, 100.0, 30 / 365.25)
+    assert p2["iv50"] == pytest.approx(0.25, abs=1e-6)
+    assert np.isfinite(p2["iv25c"]) and np.isfinite(p2["iv10c"])
+    # no put side at all: nothing reaches call-delta 0.50 -> iv50 NaN
+    calls_only = [q for q in deep if q[0] == "C"]
+    rows3 = pd.DataFrame(_rows("2026-08-10", "GDX", "2026-09-09", 100.0,
+                               calls_only))
+    p3 = V.delta_pillars(rows3, 100.0, 30 / 365.25)
+    assert np.isnan(p3["iv50"])
+
+
+def test_cm_pillars_interpolation():
+    lo = dict.fromkeys(V.RR_PILLARS, 0.20)
+    hi = dict.fromkeys(V.RR_PILLARS, 0.30)
+    # midpoint of 20d and 40d brackets at tenor 30
+    cm = V.cm_pillars([(20, lo), (40, hi)], 30)
+    assert cm["iv50"] == pytest.approx(0.25)
+    # exact-DTE match uses that expiry directly
+    cm2 = V.cm_pillars([(30, lo), (60, hi)], 30)
+    assert cm2["iv50"] == pytest.approx(0.20)
+    # unbracketed (all expiries beyond the tenor) -> NaN
+    cm3 = V.cm_pillars([(40, lo), (60, hi)], 30)
+    assert np.isnan(cm3["iv50"])
+    # NaN on one bracket side -> NaN for that pillar only
+    lo_nan = dict(lo, iv10p=np.nan)
+    cm4 = V.cm_pillars([(20, lo_nan), (40, hi)], 30)
+    assert np.isnan(cm4["iv10p"]) and cm4["iv50"] == pytest.approx(0.25)
+
+
+def test_rr_frame_end_to_end():
+    rows = (_rows("2026-08-10", "GDX", "2026-08-30", 100.0, FLAT_QUOTES) +
+            _rows("2026-08-10", "GDX", "2026-09-19", 100.0, FLAT_QUOTES))
+    rr = V.rr_frame(pd.DataFrame(rows))
+    t30 = rr[rr["tenor"] == 30]
+    assert len(t30) == 1
+    assert t30["iv50"].iloc[0] == pytest.approx(0.25, abs=1e-6)
+    assert (rr["tenor"] == 90).sum() == 0        # 20d/40d can't bracket 90d
+
+
+def test_merge_rr_seam():
+    cols = ["date", "symbol", "tenor", *V.RR_PILLARS]
+    bf = pd.DataFrame([{"date": d, "symbol": "GDX", "tenor": 30,
+                        **dict.fromkeys(V.RR_PILLARS, 0.2)}
+                       for d in ["2026-08-08", "2026-08-10", "2026-08-11"]],
+                      columns=cols)
+    live = pd.DataFrame([{"date": d, "symbol": "GDX", "tenor": 30,
+                          **dict.fromkeys(V.RR_PILLARS, 0.3)}
+                         for d in ["2026-08-10", "2026-08-12"]], columns=cols)
+    m = V.merge_rr(bf, live)
+    assert list(m["date"]) == ["2026-08-08", "2026-08-10", "2026-08-12"]
+    assert m[m["date"] == "2026-08-10"]["iv50"].iloc[0] == 0.3   # live wins
+    assert V.merge_rr(bf, live.iloc[0:0])["iv50"].eq(0.2).all()  # no live
+
+
+def test_rr_payload_shape_and_hygiene():
+    import json
+    dates = [str(d.date()) for d in
+             pd.bdate_range("2023-01-02", "2026-08-21")]
+    rows = [{"date": d, "symbol": "GDX", "tenor": t,
+             "iv10p": 0.30, "iv25p": 0.27, "iv50": 0.2512345,
+             "iv25c": 0.23, "iv10c": np.nan}
+            for d in dates for t in (30, 90)]
+    pay = V.rr_payload(pd.DataFrame(rows))
+    assert pay["tenors"] == [30, 90]
+    assert "GDX" in pay["symbols"] and "t30" in pay["symbols"]["GDX"]
+    # weekly axis before the cutoff: strictly fewer points than raw days
+    assert len(pay["dates"]) < len(dates)
+    # daily after the cutoff: the last 10 business days all present
+    assert set(dates[-10:]) <= set(pay["dates"])
+    # 2dp rounding, NaN -> None, and no NaN token leaks into the JSON
+    s = pay["symbols"]["GDX"]["t30"]
+    assert s["atm"][-1] == pytest.approx(25.12)
+    assert all(v is None for v in s["rr10"])     # iv10c was NaN throughout
+    assert "NaN" not in json.dumps(pay)
+    # skew slice: 3 dates -- latest, ~1w back, ~1m back
+    sk = pay["skew"]["GDX"]["t30"]
+    assert sk["dates"][0] == dates[-1]
+    d0 = pd.Timestamp(sk["dates"][0])
+    assert abs((d0 - pd.Timestamp(sk["dates"][1])).days - 7) <= 3
+    assert abs((d0 - pd.Timestamp(sk["dates"][2])).days - 30) <= 4
+    assert sk["atm"][0] == pytest.approx(25.12)
+
+
+def test_rr_payload_empty():
+    empty = pd.DataFrame(columns=["date", "symbol", "tenor", *V.RR_PILLARS])
+    pay = V.rr_payload(empty)
+    assert pay["dates"] == [] and pay["symbols"] == {}
+
+
+# ---------------------------------------------------------------------------
 # recompute_iv
 # ---------------------------------------------------------------------------
 def _iv_row(bid, ask, last, spot=100.0, strike=100.0, right="C",

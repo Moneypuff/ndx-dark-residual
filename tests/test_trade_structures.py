@@ -78,6 +78,37 @@ def test_bs_parity_and_limits():
 
 
 # ---------------------------------------------------------------------------
+# bs_delta
+# ---------------------------------------------------------------------------
+def test_bs_delta_parity_and_atm():
+    dc = T.bs_delta(100.0, 100.0, 0.5, 0.30, "C")
+    dp = T.bs_delta(100.0, 100.0, 0.5, 0.30, "P")
+    assert float(dc) - float(dp) == pytest.approx(1.0)     # dc - dp = 1
+    # ATM (r=0): d1 = sigma*sqrt(T)/2 -> N(0.10607) ~ 0.5422
+    assert float(dc) == pytest.approx(0.5422, abs=1e-3)
+    assert np.isnan(T.bs_delta(100.0, 100.0, 0.5, np.nan, "C"))
+    assert np.isnan(T.bs_delta(100.0, 100.0, 0.0, 0.30, "C"))
+
+
+def test_bs_delta_matches_price_bump():
+    # finite difference of bs_price vs the closed-form delta
+    for strike, right in [(90.0, "C"), (110.0, "C"), (90.0, "P"), (110.0, "P")]:
+        h = 0.01
+        fd = (T.bs_price(100.0 + h, strike, 0.5, 0.30, right) -
+              T.bs_price(100.0 - h, strike, 0.5, 0.30, right)) / (2 * h)
+        assert float(T.bs_delta(100.0, strike, 0.5, 0.30, right)) == \
+            pytest.approx(fd, abs=1e-4)
+
+
+def test_bs_delta_vectorized_shapes():
+    d = T.bs_delta(np.array([100.0, 100.0]), np.array([90.0, 110.0]),
+                   np.array([0.5, 0.5]), np.array([0.3, 0.3]),
+                   np.array(["P", "C"]))
+    assert d.shape == (2,)
+    assert -1 < d[0] < 0 < d[1] < 1
+
+
+# ---------------------------------------------------------------------------
 # implied_vol
 # ---------------------------------------------------------------------------
 def test_implied_vol_round_trips_bs_price():
