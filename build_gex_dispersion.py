@@ -24,10 +24,13 @@ Two dials, one tape:
     analog of Cboe's VIXEQ constituent-vol index (VIXEQ^2 ~ VIX^2 + DSPX^2) --
     then lay all three against Cboe's published gauges (COR1M implied
     correlation, DSPX implied dispersion, VIXEQ implied constituent vol) as an
-    external cross-check. A realized "dispersion triangle" (hypotenuse cvol,
-    adjacent leg VIX) yields tricor = 100 (VIX/cvol)^2 -- the correlation the
-    options market is paying for -- whose gap over realized correlation
-    conditions a forward-return scoreboard.
+    external cross-check. A hybrid "dispersion triangle" (hypotenuse cvol,
+    adjacent leg VIX) yields tricor = 100 (VIX/cvol)^2 -- an implied-over-
+    realized comovement ratio, charted against realized correlation -- and the
+    implied triangle (VIXEQ, VIX) is laid against the realized one (cvol,
+    basket vol) leg by leg, giving three implied-minus-realized premiums
+    (single-name vol, index vol, correlation) whose expanding-percentile
+    quintiles condition a forward-return scoreboard.
 
 Crossing the two dials at their midpoints gives four regimes ("quadrants"),
 each scored by the SPX return AND realized volatility over the following 21
@@ -216,6 +219,8 @@ def realized_cor_disp(returns, w, window=WINDOW, min_names=MIN_NAMES):
         disp  -- sqrt(sum(w sigma_i^2) - sigma_P^2), annualized vol points
         cvol  -- sqrt(sum(w sigma_i^2)), annualized vol points -- the realized
                  analog of Cboe's VIXEQ constituent-vol index
+        bvol  -- basket (index-proxy) vol sigma_P, annualized vol points --
+                 the realized analog of VIX
         n     -- names contributing that day (NaN rows where n < min_names)
     """
     cols = [c for c in w.index if c in returns.columns]
@@ -243,10 +248,11 @@ def realized_cor_disp(returns, w, window=WINDOW, min_names=MIN_NAMES):
     cor = 100.0 * (sp ** 2 - s2) / den.where(den > 0)
     disp = 100.0 * np.sqrt((wv2 - sp ** 2).clip(lower=0.0))
     cvol = 100.0 * np.sqrt(wv2)   # already annualized: v carries the ANN factor
+    bvol = 100.0 * sp
 
     out = pd.DataFrame({"cor": cor.clip(0.0, 100.0), "disp": disp, "cvol": cvol,
-                        "n": have.sum(axis=1)})
-    out.loc[out["n"] < min_names, ["cor", "disp", "cvol"]] = np.nan
+                        "bvol": bvol, "n": have.sum(axis=1)})
+    out.loc[out["n"] < min_names, ["cor", "disp", "cvol", "bvol"]] = np.nan
     return out
 
 
@@ -281,57 +287,74 @@ def forward_vol(price, horizon=WINDOW):
 
 
 def triangle_series(cvol, vix, cor):
-    """Realized dispersion-triangle series. Hypotenuse: `cvol` (our realized
+    """Hybrid dispersion-triangle series. Hypotenuse: `cvol` (our realized
     component vol); adjacent leg: `vix` (Cboe VIX, implied index vol); the base
-    angle then implies its own correlation, cos^2(theta):
+    angle is then an implied-over-realized comovement ratio -- how much
+    comovement VIX prices relative to the single-name movement being realized
+    (NOT the correlation the option market pays: the denominator is realized):
 
         tricor = 100 * (VIX / cvol)^2    (0-100 scale, like cor)
         gap    = tricor - cor            (implied-minus-realized premium)
 
-    VIX above cvol degenerates the triangle; tricor is clipped at 100 so those
-    max-fear days saturate instead of dropping out. The triangle is a hybrid
-    (implied VIX over realized cvol), so the gap embeds the index vol risk
-    premium as well as the correlation premium. Returns a DataFrame on cvol's
-    index with columns vix, tricor, gap."""
+    VIX above cvol degenerates the triangle; tricor is clipped at 100 there,
+    so those max-fear days (a handful of crash onsets) saturate rather than
+    drop out -- the gap's upper tail is censored at 100 - cor. The hybrid
+    construction means the gap embeds the index vol risk premium as well as
+    the correlation premium (empirically it is ~0.9-correlated with plain
+    VIX - realized basket vol). Both inputs are aligned onto cvol's index; the
+    result has exactly cvol's index, with columns vix, tricor, gap."""
     v = vix.reindex(cvol.index)
+    c = cor.reindex(cvol.index)
     tricor = (100.0 * (v / cvol.where(cvol > 0)) ** 2).clip(upper=100.0)
-    return pd.DataFrame({"vix": v, "tricor": tricor, "gap": tricor - cor})
+    return pd.DataFrame({"vix": v, "tricor": tricor, "gap": tricor - c})
 
 
-def tri_quintile_stats(gap, r21, fvol, n_bins=5):
-    """Scoreboard for the triangle gap, bucketed into `n_bins` full-sample
-    quantile bins (Q1 = lowest gap). Returns (rows, edges, today):
-        rows  -- [label, lo, hi, days, mean r21, median r21, hit%, mean fvol]
-        edges -- the n_bins+1 quantile cut points
-        today -- 1-based bin of the most recent defined gap (None if none)
-    Full-sample edges carry the same mild look-ahead as corp's full_pct --
-    kept deliberately so every gauge on the page ranks the same way. Days with
-    a defined gap but an unrealized r21 (the last month) count toward `days`
-    but not the stats."""
-    g = gap.dropna()
-    if g.empty:
-        return [], [], None
-    edges = np.quantile(g.values, np.linspace(0.0, 1.0, n_bins + 1))
-    bins = np.clip(np.searchsorted(edges[1:-1], g.values, side="right"),
-                   0, n_bins - 1)
+def expanding_pct(s, min_obs=252):
+    """Percentile (0-100, mid-rank) of each value within ALL of its own
+    history up to and including that day -- the expanding-window twin of
+    rolling_pct. No look-ahead, and a secular basis drift re-centers itself
+    as the history accrues. NaN until `min_obs` observations exist."""
+    def _pct(a):
+        x = a[-1]
+        if not np.isfinite(x):
+            return np.nan
+        h = a[np.isfinite(a)]
+        return 100.0 * ((h < x).mean() + 0.5 * (h == x).mean())
+    return s.expanding(min_periods=min_obs).apply(_pct, raw=True)
+
+
+def leg_quintile_stats(sig, r21, fvol, min_obs=252, n_bins=5):
+    """Forward-outcome scoreboard for a premium signal `sig`, bucketed by its
+    expanding-percentile rank (Q1 = lowest fifth of history-to-date). Unlike
+    full-sample quantile edges this has no look-ahead. Returns
+    (rows, today, asof):
+        rows  -- [label, days, ~independent months (days/WINDOW), mean r21,
+                  median r21, hit%, mean fvol]
+        today -- 1-based bin of the most recent defined signal (None if none)
+        asof  -- date string of that observation (None if none)
+    Days with a defined signal but an unrealized r21 (the last month) count
+    toward `days` but not the stats. A flat, information-free signal mid-ranks
+    at 50 and parks in Q3 rather than faking an extreme."""
+    p = expanding_pct(sig, min_obs=min_obs).dropna()
+    if p.empty:
+        return [], None, None
+    bins = np.minimum((p.values / (100.0 / n_bins)).astype(int), n_bins - 1)
     d = pd.DataFrame({"bin": bins,
-                      "r21": r21.reindex(g.index).values,
-                      "fvol": fvol.reindex(g.index).values})
+                      "r21": r21.reindex(p.index).values,
+                      "fvol": fvol.reindex(p.index).values})
     rows = []
     for b in range(n_bins):
         sub = d[d["bin"] == b]
         r = sub["r21"].dropna()
         fv = sub["fvol"].dropna()
         rows.append([
-            f"Q{b + 1}",
-            round(float(edges[b]), 1), round(float(edges[b + 1]), 1),
-            int(len(sub)),
+            f"Q{b + 1}", int(len(sub)), int(round(len(sub) / WINDOW)),
             round(float(r.mean()), 2) if len(r) else None,
             round(float(r.median()), 2) if len(r) else None,
             round(float((r > 0).mean() * 100)) if len(r) else None,
             round(float(fv.mean()), 1) if len(fv) else None,
         ])
-    return rows, [round(float(e), 2) for e in edges], int(bins[-1]) + 1
+    return rows, int(bins[-1]) + 1, p.index[-1].strftime("%Y-%m-%d")
 
 
 def quad_code(gex_pct, cor_pct, mid=50.0):
@@ -382,9 +405,9 @@ def rnd(s, nd=2):
 
 def build_payloads(F, cor1m, dspx, vixeq, meta_extra):
     """SER / QUAD / META payload dicts from the aligned daily frame `F`
-    (index: dates; columns gex, gexp, cor, corp, disp, cvol, vix, tricor,
-    trigap, spx, r21, fvol, tvol, quad) plus the full Cboe series for the
-    overlay panes."""
+    (index: dates; columns gex, gexp, cor, corp, disp, cvol, bvol, vix,
+    tricor, trigap, spx, r21, fvol, tvol, quad) plus the full Cboe series for
+    the overlay panes."""
     ser = {
         "dates": [d.strftime("%Y-%m-%d") for d in F.index],
         "gex": rnd(F["gex"] / 1e9, 3),          # $bn
@@ -396,9 +419,7 @@ def build_payloads(F, cor1m, dspx, vixeq, meta_extra):
         "dspx": rnd(dspx.reindex(F.index), 2),
         "cvol": rnd(F["cvol"], 2),
         "vixeq": rnd(vixeq.reindex(F.index), 2),
-        "vix": rnd(F["vix"], 2),
         "tricor": rnd(F["tricor"], 2),
-        "trigap": rnd(F["trigap"], 2),
         "spx": rnd(F["spx"], 2),
         "r21": rnd(F["r21"], 2),
         "quad": list(F["quad"]),
@@ -446,9 +467,24 @@ def build_payloads(F, cor1m, dspx, vixeq, meta_extra):
                 "dsp_r": d_lvl, "dsp_dr": d_chg, "dsp_n": d_n,
                 "cv_r": v_lvl, "cv_dr": v_chg, "cv_n": v_n},
     }
-    tri_rows, tri_edges, tri_today = tri_quintile_stats(F["trigap"], F["r21"],
-                                                        F["fvol"])
-    meta["tri"] = {"rows": tri_rows, "edges": tri_edges, "today": tri_today}
+    # implied triangle (VIXEQ, VIX) vs realized triangle (cvol, bvol),
+    # leg by leg: three implied-minus-realized premiums
+    vq = vixeq.reindex(F.index)
+    ang_impl = (100.0 * (F["vix"] / vq.where(vq > 0)) ** 2).clip(upper=100.0)
+    legs = [
+        ("Hypotenuse · VIXEQ − cvol", "single-name vol premium",
+         vq - F["cvol"]),
+        ("Adjacent · VIX − realized index vol", "index vol premium",
+         F["vix"] - F["bvol"]),
+        ("Angle · implied − realized correlation",
+         "correlation premium · 100·(VIX/VIXEQ)² − cor",
+         ang_impl - F["cor"]),
+    ]
+    meta["tri"] = {"legs": []}
+    for label, sub, sig in legs:
+        rows, today_bin, asof = leg_quintile_stats(sig, F["r21"], F["fvol"])
+        meta["tri"]["legs"].append({"label": label, "sub": sub, "rows": rows,
+                                    "today": today_bin, "asof": asof})
     meta.update(meta_extra)
 
     # findings figures, all derived from the table so the prose never drifts
@@ -575,7 +611,7 @@ def main():
     print(f"Realized gauges: {RC['cor'].notna().sum()} defined days", file=sys.stderr)
 
     # ---- aligned frame, dials, outcomes -------------------------------------
-    F = G.join(RC[["cor", "disp", "cvol"]], how="left").rename(columns={"price": "spx"})
+    F = G.join(RC[["cor", "disp", "cvol", "bvol"]], how="left").rename(columns={"price": "spx"})
     F["gexp"] = rolling_pct(F["gex"])
     F["corp"] = full_pct(F["cor"])
     T = triangle_series(F["cvol"], vix, F["cor"])

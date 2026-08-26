@@ -63,14 +63,21 @@ deliberately blunt about that.
    gap is the single-stock vol risk premium — watch the comovement, not the
    level. Implied climbing while realized sleeps says the street is paying up
    for single-name vol before it shows in the tape.
-5. **The triangle gap.** Rebuild the dispersion triangle with realized parts:
-   hypotenuse = our component vol, adjacent leg = VIX, so the base angle
-   implies `tricor = 100·(VIX/cvol)²` — the correlation the options market is
-   paying for. The gap over our realized correlation is the signal (quintile
-   scoreboard on the page): strongly positive = VIX pricing far more
-   comovement than the tape delivers (fear/hedging), strongly negative =
-   complacency. Hybrid caveat: implied VIX over realized cvol means the gap
-   bundles the index vol premium with the correlation premium.
+5. **The two triangles.** Cboe's implied triangle (VIXEQ² = VIX² + DSPX²)
+   laid over our realized one (cvol² = index vol² + dispersion², which closes
+   by construction) gives three implied-minus-realized premiums, scored on
+   the page's leg-by-leg quintile tables (expanding-percentile ranks — no
+   look-ahead): the hypotenuse spread `VIXEQ − cvol` (single-name vol
+   premium, the most independent of the three), the adjacent spread
+   `VIX − realized index vol` (the classic index vol premium), and the angle
+   spread (implied − realized correlation). Q5 = premium rich vs its own
+   history (fear) has historically been the friendliest forward month, Q1 =
+   premium cheap (complacency) the shakiest — but the spreads sit within
+   about one standard error, so treat them as description, not proof. The
+   chart pane's hybrid `tricor = 100·(VIX/cvol)²` is an implied-over-realized
+   comovement ratio, ~0.9-correlated with the plain index vol premium and
+   clipped at 100 on crash onsets where VIX exceeds cvol — it is *not* the
+   correlation the option market is paying; that is `100·(VIX/VIXEQ)²`.
 6. **COR1M.** Quiet (single digits/low teens) = whatever is happening is
    rotation, not crisis. A 21d-change z ≥ +2 spike = systemic unwind in
    progress; switch to the §5 shock rules.

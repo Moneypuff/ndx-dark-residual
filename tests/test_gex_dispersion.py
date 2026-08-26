@@ -162,7 +162,7 @@ def test_realized_disp_matches_direct_covariance_identity():
     assert out["disp"].iloc[p] == pytest.approx(expected, rel=1e-9)
 
 
-def test_realized_cvol_matches_direct_covariance_identity():
+def test_realized_cvol_and_bvol_match_direct_covariance_identity():
     R = _panel(seed=11)
     w = pd.Series(0.25, index=R.columns)
     out = B.realized_cor_disp(R, w, window=21, min_names=3)
@@ -172,6 +172,11 @@ def test_realized_cvol_matches_direct_covariance_identity():
     wv = np.full(4, 0.25)
     expected = 100 * np.sqrt(252 * np.sum(wv * np.diag(C)))
     assert out["cvol"].iloc[p] == pytest.approx(expected, rel=1e-9)
+    expected_b = 100 * np.sqrt(252 * (wv @ C @ wv))
+    assert out["bvol"].iloc[p] == pytest.approx(expected_b, rel=1e-9)
+    # the realized triangle closes: cvol^2 = bvol^2 + disp^2
+    assert (out["cvol"].iloc[p] ** 2 ==
+            pytest.approx(out["bvol"].iloc[p] ** 2 + out["disp"].iloc[p] ** 2))
 
 
 def test_realized_cor_recovers_factor_correlation_roughly():
@@ -190,6 +195,7 @@ def test_realized_cor_undefined_before_window_and_masked_below_min_names():
     out = B.realized_cor_disp(R, w, window=21, min_names=3)
     assert out["cor"].isna().all()            # 2 < min_names everywhere
     assert out["cvol"].isna().all()
+    assert out["bvol"].isna().all()
     out2 = B.realized_cor_disp(_panel(), w, window=21, min_names=3)
     assert out2["cor"].iloc[:20].isna().all()  # vol window not yet full
     assert out2["cor"].iloc[20:].notna().all()
@@ -291,38 +297,55 @@ def test_triangle_series_reindexes_vix_onto_cvol():
     assert np.isnan(T["tricor"].iloc[1])                # missing VIX day -> NaN
 
 
-def test_tri_quintile_stats_buckets_and_stats():
-    idx = pd.bdate_range("2024-01-01", periods=10)
-    gap = pd.Series(np.arange(1.0, 11.0), index=idx)
-    r21 = pd.Series([1.0, -1.0, 2.0, 2.0, 3.0, 3.0, -2.0, -2.0, 5.0, 1.0],
-                    index=idx)
-    fvol = pd.Series(10.0, index=idx)
-    rows, edges, today = B.tri_quintile_stats(gap, r21, fvol, n_bins=5)
-    assert [r[0] for r in rows] == ["Q1", "Q2", "Q3", "Q4", "Q5"]
-    assert [r[3] for r in rows] == [2, 2, 2, 2, 2]      # even quantile bins
-    assert edges[0] == pytest.approx(1.0) and edges[-1] == pytest.approx(10.0)
-    assert rows[0][4] == pytest.approx(0.0)             # mean of 1, -1
-    assert rows[0][6] == 50                             # hit: 1 of 2 positive
-    assert rows[3][4] == pytest.approx(-2.0)            # mean of -2, -2
-    assert rows[3][6] == 0
-    assert rows[4][5] == pytest.approx(3.0)             # median of 5, 1
-    assert all(r[7] == pytest.approx(10.0) for r in rows)
-    assert today == 5                                   # last gap is the max
+def test_triangle_series_result_has_cvol_index_exactly():
+    idx = pd.bdate_range("2024-01-01", periods=3)
+    wide = pd.bdate_range("2023-12-25", periods=10)     # strict superset of idx
+    cvol = pd.Series(40.0, index=idx)
+    T = B.triangle_series(cvol, pd.Series(20.0, index=wide),
+                          pd.Series(10.0, index=wide))
+    assert list(T.index) == list(idx)                   # never the union index
+    assert (T["gap"] == 15.0).all()
 
 
-def test_tri_quintile_stats_today_and_nan_safety():
-    idx = pd.bdate_range("2024-01-01", periods=10)
-    gap = pd.Series(np.arange(1.0, 11.0), index=idx)
-    gap.iloc[-1] = 1.5                                  # today falls in Q1
+def test_expanding_pct_no_lookahead_and_rank_semantics():
+    s = pd.Series(np.arange(30, dtype=float))
+    p = B.expanding_pct(s, min_obs=10)
+    assert p.iloc[:9].isna().all()
+    k = 19    # strictly increasing: day k is the max of its (k+1)-day history
+    assert p.iloc[k] == pytest.approx(100 * (k + 0.5) / (k + 1))
+
+
+def test_leg_quintile_stats_extremes_and_flat():
+    idx = pd.bdate_range("2024-01-01", periods=40)
     r21 = pd.Series(1.0, index=idx)
+    fvol = pd.Series(10.0, index=idx)
+    up = pd.Series(np.arange(40, dtype=float), index=idx)
+    rows, today, asof = B.leg_quintile_stats(up, r21, fvol, min_obs=10)
+    # each post-burn-in day is its own history's max -> everything in Q5
+    assert [r[1] for r in rows] == [0, 0, 0, 0, 31]
+    assert today == 5 and asof == idx[-1].strftime("%Y-%m-%d")
+    down = pd.Series(-np.arange(40, dtype=float), index=idx)
+    rows, today, _ = B.leg_quintile_stats(down, r21, fvol, min_obs=10)
+    assert [r[1] for r in rows] == [31, 0, 0, 0, 0] and today == 1
+    flat = pd.Series(7.0, index=idx)    # information-free -> mid-rank 50 -> Q3
+    rows, today, _ = B.leg_quintile_stats(flat, r21, fvol, min_obs=10)
+    assert [r[1] for r in rows] == [0, 0, 31, 0, 0] and today == 3
+
+
+def test_leg_quintile_stats_counts_days_but_not_unrealized_r21():
+    idx = pd.bdate_range("2024-01-01", periods=30)
+    sig = pd.Series(np.arange(30, dtype=float), index=idx)
+    r21 = pd.Series(2.0, index=idx)
     r21.iloc[-1] = np.nan                               # unrealized future
     fvol = pd.Series(10.0, index=idx)
-    rows, _, today = B.tri_quintile_stats(gap, r21, fvol, n_bins=5)
-    assert today == 1
-    assert rows[0][3] == 2                              # 1.0 and today's 1.5
-    assert sum(r[3] for r in rows) == 10                # every defined-gap day counted
+    rows, today, _ = B.leg_quintile_stats(sig, r21, fvol, min_obs=5)
+    q5 = rows[4]
+    assert q5[1] == 26                                  # 30 - 4 burn-in days
+    assert q5[2] == round(26 / B.WINDOW)                # ~independent months
+    assert q5[3] == pytest.approx(2.0)                  # NaN day out of stats
+    assert today == 5
     empty = pd.Series(np.nan, index=idx)
-    assert B.tri_quintile_stats(empty, r21, fvol) == ([], [], None)
+    assert B.leg_quintile_stats(empty, r21, fvol) == ([], None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -378,3 +401,37 @@ def test_series_corr_insufficient_overlap():
     a = pd.Series(range(10), index=idx, dtype=float)
     r, n = B.series_corr(a, a)
     assert r is None and n == 10
+
+
+# ---------------------------------------------------------------------------
+# build_payloads -- smoke test for the wiring (keys shipped, no dead weight)
+# ---------------------------------------------------------------------------
+def test_build_payloads_smoke_wiring():
+    idx = pd.bdate_range("2015-01-01", periods=60)
+    rng = np.random.default_rng(0)
+    F = pd.DataFrame({
+        "gex": 1e9 + np.arange(60.0) * 1e7,
+        "gexp": np.linspace(0, 100, 60),
+        "cor": np.linspace(10, 60, 60),
+        "corp": np.linspace(0, 100, 60),
+        "disp": np.linspace(18, 25, 60), "cvol": np.linspace(28, 40, 60),
+        "bvol": np.linspace(12, 20, 60), "vix": np.linspace(14, 22, 60),
+        "tricor": np.linspace(25, 45, 60), "trigap": np.linspace(-5, 8, 60),
+        "spx": 100 * np.cumprod(1 + rng.normal(0, 0.01, 60)),
+    }, index=idx)
+    F["r21"] = B.forward_return(F["spx"])
+    F["fvol"] = B.forward_vol(F["spx"])
+    F["tvol"] = 12.0
+    F["quad"] = ["HL", "HH"] * 30
+    cboe = pd.Series(np.linspace(15, 25, 60), index=idx)
+    ser, quad, meta = B.build_payloads(F, cboe, cboe, cboe, {"basket": "x"})
+    assert set(ser) == {"dates", "gex", "gexp", "cor", "corp", "cor1m", "disp",
+                        "dspx", "cvol", "vixeq", "tricor", "spx", "r21", "quad"}
+    assert set(meta["cmp"]) == {"cor_r", "cor_dr", "cor_n", "dsp_r", "dsp_dr",
+                                "dsp_n", "cv_r", "cv_dr", "cv_n"}
+    for k in ("vix", "tricor", "trigap", "cvol", "vixeq", "dspx", "cor1m"):
+        assert k in meta["today"]
+    legs = meta["tri"]["legs"]
+    assert len(legs) == 3
+    for leg in legs:
+        assert set(leg) == {"label", "sub", "rows", "today", "asof"}

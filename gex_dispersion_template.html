@@ -233,6 +233,9 @@ table.hm tbody tr:hover td{background:rgba(var(--acc-rgb),.045)}
 .retc .x{font-size:10.5px; color:var(--ink-faint); margin-top:2px; letter-spacing:.02em}
 tr.feat td{background:rgba(var(--acc-rgb),.07)!important}
 tr.feat .reg-cell::before{content:"◆"; color:var(--accent); font-size:10px; margin-right:-3px}
+.trileg{margin-top:16px}
+.trileg-h{margin:0 2px 7px; font-size:13.5px}
+.trileg-h .px{color:var(--ink-faint); font-size:12px}
 .hm-note{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin:14px 2px 0;
   display:flex; gap:8px; align-items:baseline}
 .hm-note b{color:var(--ink-dim); font-weight:500}
@@ -403,9 +406,9 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
           <code>√(Σwσ²_i − σ²_P)</code>, annualized vol points — how much single-stock movement the index
           <b>didn't</b> inherit. The realized cousin of Cboe's DSPX.</dd></div>
         <div class="row"><dt>Component vol</dt><dd>The gross single-stock term alone,
-          <code>√(Σwσ²_i)</code>, annualized vol points — the weighted average constituent vol before the
-          index nets any of it out. The realized cousin of Cboe's VIXEQ
-          (VIXEQ² ≈ VIX² + DSPX²).</dd></div>
+          <code>√(Σwσ²_i)</code>, annualized vol points — the square root of the weighted average
+          constituent <i>variance</i> (≥ the average vol), before the index nets any of it out. The
+          realized cousin of Cboe's VIXEQ (VIXEQ² ≈ VIX² + DSPX²).</dd></div>
         <div class="row"><dt>Quadrant</dt><dd>Gamma dial High/Low at its rolling-year 50th percentile ×
           correlation dial High/Low at its full-sample median. Four regimes; the hero card scores
           today's.</dd></div>
@@ -498,6 +501,8 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
         <div class="v" id="cmpCorV">—</div><div class="m" id="cmpCorM">—</div></div>
       <div class="cell"><div class="lab">Realized dispersion vs Cboe DSPX</div>
         <div class="v" id="cmpDspV">—</div><div class="m" id="cmpDspM">—</div></div>
+      <div class="cell"><div class="lab">Realized component vol vs Cboe VIXEQ</div>
+        <div class="v" id="cmpVixV">—</div><div class="m" id="cmpVixM">—</div></div>
     </div>
   </section>
 
@@ -505,36 +510,30 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     <div class="sec-h">
       <span class="n">06</span>
       <div>
-        <h2>The realized dispersion triangle</h2>
-        <p class="h-sub">Cboe's triangle is VIXEQ² = VIX² + DSPX², with implied correlation as the base
-          angle. Rebuilt with <b>our realized component vol as the hypotenuse</b> and VIX as the adjacent
-          leg, the angle implies <code>tricor = 100·(VIX/cvol)²</code> — the correlation the options
-          market is <i>paying for</i>. Its gap over the correlation the tape actually <i>delivered</i>
-          conditions the forward month below: Q1 = options pricing far less comovement than realized
-          (complacency), Q5 = far more (fear). The ◆ row is today.</p>
+        <h2>Two triangles, leg by leg</h2>
+        <p class="h-sub">Cboe's implied triangle is VIXEQ² = VIX² + DSPX²; our realized one,
+          cvol² = index&nbsp;vol² + dispersion², closes by construction. A triangle built entirely in one
+          layer says nothing — the information is in laying the implied triangle over the realized one and
+          reading each pair of legs as an implied-minus-realized <b>premium</b>: single-name vol
+          (hypotenuses), index vol (adjacent legs), and correlation (the angles — here
+          <code>100·(VIX/VIXEQ)²</code>, which tracks Cboe's COR1M at r ≈ 0.9 but isn't identical: COR1M
+          uses the exact basket identity). Each premium is ranked against its own history to date
+          (expanding percentile — no look-ahead, and any slow basis drift re-centers itself) and bucketed
+          into quintiles: Q1 = cheapest fifth so far, Q5 = richest (fear). The ◆ row is today. The chart
+          pane's <code>tricor = 100·(VIX/cvol)²</code> is a hybrid cousin of the adjacent-leg premium — an
+          implied-over-realized comovement ratio, <i>not</i> the correlation the option market pays — and
+          is clipped at 100 on the handful of crash onsets where VIX exceeds cvol.</p>
       </div>
     </div>
     <div class="controls">
       <div class="legend"><span>−3%</span><span class="scale"></span><span>+3%</span></div>
     </div>
-    <div class="tscroll">
-      <table class="hm">
-        <thead>
-          <tr>
-            <th class="lft">Gap quintile <span class="px">· range · days</span></th>
-            <th class="grp-ret">Mean <span class="px">1-mo</span></th>
-            <th>Median</th>
-            <th>Hit</th>
-            <th class="grp-vol">Fwd vol <span class="px">ann.</span></th>
-          </tr>
-        </thead>
-        <tbody id="triBody"></tbody>
-      </table>
-    </div>
-    <p class="hm-note"><b>Mind the construction:</b> the triangle is a hybrid — implied VIX over realized
-      cvol — so the gap carries the index vol risk premium alongside the correlation premium. Quintile
-      edges are full-sample (the same mild look-ahead as the correlation dial), and this is descriptive
-      conditioning, not a tradeable backtest.</p>
+    <div id="triLegs"></div>
+    <p class="hm-note"><b>Statistics, honestly:</b> 21-day outcomes overlap, so each bin's days collapse
+      to the ~months shown; a quintile's mean then carries a standard error of roughly
+      4.5&nbsp;/&nbsp;√months ≈ 0.7pp, and most spreads in these tables sit within one standard error of
+      each other — read them as description, not proof. Levels also embed a permanent basis (top-50 vs
+      full index, 21 trading vs 30 calendar days); the percentile ranking absorbs it.</p>
   </section>
 
   <section>
@@ -607,7 +606,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
   <footer>
     <div class="repro"><span class="p">python</span> build_gex_dispersion.py --docs-out docs/gex_dispersion.html</div>
     <div class="foot-meta">
-      <span>SqueezeMetrics <span class="gexTerm">GEX</span> · Cboe COR1M/DSPX · Yahoo prices</span>
+      <span>SqueezeMetrics <span class="gexTerm">GEX</span> · Cboe COR1M/DSPX/VIXEQ/VIX · Yahoo prices</span>
       <span id="mBasket">—</span>
       <span><span id="mNdays">—</span> sessions</span>
       <span id="mBuilt">—</span>
@@ -1095,35 +1094,56 @@ function renderQuad(){
     body.appendChild(tr);
   });
 }
-/* ===== 06: triangle-gap quintile scoreboard ===== */
+/* ===== 06: implied-vs-realized triangle, leg-premium scoreboards ===== */
 function renderTri(){
-  const body = document.getElementById("triBody");
-  if(!body || !META.tri) return;
-  body.innerHTML = "";
-  ((META.tri.rows)||[]).forEach((row, i)=>{
-    const [label, lo, hi, days, mean, med, hit, fvol] = row;
-    const tr = document.createElement("tr");
-    if(META.tri.today === i+1) tr.className = "feat";
-    const tdReg = document.createElement("td");
-    tdReg.innerHTML = `<div class="reg-cell">
-      <span class="nm">${label}</span>
-      <span class="px">${lo.toFixed(1)} → ${hi.toFixed(1)}</span>
-      <span class="days">${days}d</span>
-    </div>`;
-    tr.appendChild(tdReg);
-    const mk = (v, txt, cls, style) => {
-      const td=document.createElement("td");
-      if(cls) td.className=cls;
-      td.innerHTML=`<div class="retc"${style?` style="background:${style.bg}"`:""}>
-        <div class="v"${style?` style="color:${style.ink}"`:""}>${txt}</div></div>`;
-      tr.appendChild(td);
-    };
-    mk(mean, mean==null?"—":pc(mean), "grp-ret", mean==null?null:retStyle(mean,3));
-    mk(med, med==null?"—":pc(med), "", med==null?null:retStyle(med,3));
-    mk(hit, hit==null?"—":Math.round(hit)+"%", "", hit==null?null:retStyle(hit-50,30));
-    mk(fvol, fvol==null?"—":fvol.toFixed(1), "grp-vol",
-       fvol==null?null:retStyle(META.baseline.fvol-fvol, META.baseline.fvol*0.5));
-    body.appendChild(tr);
+  const wrap = document.getElementById("triLegs");
+  if(!wrap || !META.tri || !META.tri.legs) return;
+  wrap.innerHTML = "";
+  META.tri.legs.forEach(leg=>{
+    const blk = document.createElement("div");
+    blk.className = "trileg";
+    const stale = (leg.asof && META.today && leg.asof !== META.today.date)
+      ? ` · as of ${leg.asof}` : "";
+    blk.innerHTML = `<div class="trileg-h"><b>${leg.label}</b>
+      <span class="px">${leg.sub}${stale}</span></div>`;
+    const tbl = document.createElement("table");
+    tbl.className = "hm";
+    tbl.innerHTML = `<thead><tr>
+      <th class="lft">Quintile <span class="px">· days · ≈months</span></th>
+      <th class="grp-ret">Mean <span class="px">1-mo</span></th>
+      <th>Median</th><th>Hit</th>
+      <th class="grp-vol">Fwd vol <span class="px">ann.</span></th></tr></thead>`;
+    const body = document.createElement("tbody");
+    (leg.rows||[]).forEach((row, i)=>{
+      const [label, days, mos, mean, med, hit, fvol] = row;
+      const tr = document.createElement("tr");
+      if(leg.today === i+1) tr.className = "feat";
+      const tdReg = document.createElement("td");
+      tdReg.innerHTML = `<div class="reg-cell">
+        <span class="nm">${label}</span>
+        <span class="days">${days}d · ~${mos}mo</span>
+      </div>`;
+      tr.appendChild(tdReg);
+      const mk = (v, txt, cls, style) => {
+        const td=document.createElement("td");
+        if(cls) td.className=cls;
+        td.innerHTML=`<div class="retc"${style?` style="background:${style.bg}"`:""}>
+          <div class="v"${style?` style="color:${style.ink}"`:""}>${txt}</div></div>`;
+        tr.appendChild(td);
+      };
+      mk(mean, mean==null?"—":pc(mean), "grp-ret", mean==null?null:retStyle(mean,3));
+      mk(med, med==null?"—":pc(med), "", med==null?null:retStyle(med,3));
+      mk(hit, hit==null?"—":Math.round(hit)+"%", "", hit==null?null:retStyle(hit-50,30));
+      mk(fvol, fvol==null?"—":fvol.toFixed(1), "grp-vol",
+         fvol==null?null:retStyle(META.baseline.fvol-fvol, META.baseline.fvol*0.5));
+      body.appendChild(tr);
+    });
+    tbl.appendChild(body);
+    const sc = document.createElement("div");
+    sc.className = "tscroll";
+    sc.appendChild(tbl);
+    blk.appendChild(sc);
+    wrap.appendChild(blk);
   });
 }
 
@@ -1134,7 +1154,7 @@ document.getElementById("hmBody").addEventListener("click", e=>{
     .scrollIntoView({behavior:"smooth", block:"center"});
 });
 
-/* ===== 05 + 06 + 07: bound figures ===== */
+/* ===== 05 + 07 + 08: bound figures ===== */
 function applyMeta(){
   const set = (id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
   const c = META.cmp;
@@ -1144,6 +1164,9 @@ function applyMeta(){
   set("cmpDspV", c.dsp_r==null ? "—" : "r = "+c.dsp_r.toFixed(2));
   set("cmpDspM", c.dsp_r==null ? "insufficient overlap" :
       `21-day changes r = ${c.dsp_dr==null?"—":c.dsp_dr.toFixed(2)} · ${c.dsp_n.toLocaleString()} common days`);
+  set("cmpVixV", c.cv_r==null ? "—" : "r = "+c.cv_r.toFixed(2));
+  set("cmpVixM", c.cv_r==null ? "insufficient overlap" :
+      `21-day changes r = ${c.cv_dr==null?"—":c.cv_dr.toFixed(2)} · ${c.cv_n.toLocaleString()} common days`);
   const f = META.find||{};
   set("fVolSpread", f.volSpread==null?"—":f.volSpread.toFixed(1));
   set("fDangerRet", f.dangerRet||"—"); set("fDangerHit", f.dangerHit==null?"—":Math.round(f.dangerHit));
