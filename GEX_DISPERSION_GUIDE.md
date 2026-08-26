@@ -56,7 +56,14 @@ deliberately blunt about that.
    * DSPX falling hard (21d change z ≤ −1.5) while realized stays high → the
      dispersion trade is being *taken down*. Crowded relative-value themes are
      being unwound — check your pair exposures.
-4. **COR1M.** Quiet (single digits/low teens) = whatever is happening is
+4. **VIXEQ vs our realized component vol.** The same implied-vs-realized
+   pairing one level up: VIXEQ is Cboe's cap-weighted implied 30-day vol of
+   the S&P 500's constituents (VIXEQ² ≈ VIX² + DSPX²); ours is its realized
+   cousin `√(Σwσ²ᵢ)` off the top-50 basket over 21 sessions. The persistent
+   gap is the single-stock vol risk premium — watch the comovement, not the
+   level. Implied climbing while realized sleeps says the street is paying up
+   for single-name vol before it shows in the tape.
+5. **COR1M.** Quiet (single digits/low teens) = whatever is happening is
    rotation, not crisis. A 21d-change z ≥ +2 spike = systemic unwind in
    progress; switch to the §5 shock rules.
 

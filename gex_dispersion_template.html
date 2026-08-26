@@ -321,6 +321,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
           <span class="dialchip">Corr 1M <span class="lvl" id="chCor">—</span><span class="px" id="chCorP"></span></span>
           <span class="dialchip">COR1M <span class="lvl" id="chCor1m">—</span></span>
           <span class="dialchip">DSPX <span class="lvl" id="chDspx">—</span></span>
+          <span class="dialchip">VIXEQ <span class="lvl" id="chVixeq">—</span></span>
         </div>
       </div>
       <div class="stat-grid">
@@ -399,6 +400,10 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
         <div class="row"><dt>Dispersion</dt><dd>The same inputs recombined as
           <code>√(Σwσ²_i − σ²_P)</code>, annualized vol points — how much single-stock movement the index
           <b>didn't</b> inherit. The realized cousin of Cboe's DSPX.</dd></div>
+        <div class="row"><dt>Component vol</dt><dd>The gross single-stock term alone,
+          <code>√(Σwσ²_i)</code>, annualized vol points — the weighted average constituent vol before the
+          index nets any of it out. The realized cousin of Cboe's VIXEQ
+          (VIXEQ² ≈ VIX² + DSPX²).</dd></div>
         <div class="row"><dt>Quadrant</dt><dd>Gamma dial High/Low at its rolling-year 50th percentile ×
           correlation dial High/Low at its full-sample median. Four regimes; the hero card scores
           today's.</dd></div>
@@ -422,6 +427,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
       <div class="seg" id="paneSeg" role="group" aria-label="series pane">
         <button data-p="cor" aria-pressed="true">Correlation · ours vs COR1M</button>
         <button data-p="disp" aria-pressed="false">Dispersion · ours vs DSPX</button>
+        <button data-p="cvol" aria-pressed="false">Component vol · ours vs VIXEQ</button>
         <button data-p="gex" aria-pressed="false"><span class="gexTerm">GEX</span> · $bn</button>
       </div>
       <div class="seg" id="quadSeg" role="group" aria-label="quadrant filter">
@@ -591,6 +597,7 @@ function applyHero(){
   set("chCor", t.cor==null?"—":t.cor.toFixed(0)); set("chCorP", t.corp==null?"":" · p"+Math.round(t.corp));
   set("chCor1m", t.cor1m==null?"—":t.cor1m.toFixed(1));
   set("chDspx", t.dspx==null?"—":t.dspx.toFixed(1));
+  set("chVixeq", t.vixeq==null?"—":t.vixeq.toFixed(1));
   const row = QUAD.find(q=>q[0]===t.quad);
   if(!row) return;
   const [,,days,mean,med,hit,fvol,dvol] = row;
@@ -787,6 +794,8 @@ const PANES = {
                {k:"cor1m", tok:"--sRef", lab:"Cboe COR1M (implied)"}], fmt:v=>v.toFixed(1)},
   disp: {lines:[{k:"disp", tok:"--sOur", lab:"realized dispersion (ours)"},
                {k:"dspx", tok:"--sRef", lab:"Cboe DSPX (implied)"}], fmt:v=>v.toFixed(1)},
+  cvol: {lines:[{k:"cvol", tok:"--sOur", lab:"realized component vol (ours)"},
+               {k:"vixeq", tok:"--sRef", lab:"Cboe VIXEQ (implied)"}], fmt:v=>v.toFixed(1)},
   gex:  {lines:[{k:"gex", tok:"--accent", lab:(META.gexLabel||"GEX")+" · $bn"}], fmt:v=>v.toFixed(2)},
 };
 function tsLegend(){

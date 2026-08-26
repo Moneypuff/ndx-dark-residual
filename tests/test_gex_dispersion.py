@@ -162,6 +162,18 @@ def test_realized_disp_matches_direct_covariance_identity():
     assert out["disp"].iloc[p] == pytest.approx(expected, rel=1e-9)
 
 
+def test_realized_cvol_matches_direct_covariance_identity():
+    R = _panel(seed=11)
+    w = pd.Series(0.25, index=R.columns)
+    out = B.realized_cor_disp(R, w, window=21, min_names=3)
+    p = 55
+    win = R.iloc[p - 20:p + 1]
+    C = np.cov(win.to_numpy().T, ddof=1)
+    wv = np.full(4, 0.25)
+    expected = 100 * np.sqrt(252 * np.sum(wv * np.diag(C)))
+    assert out["cvol"].iloc[p] == pytest.approx(expected, rel=1e-9)
+
+
 def test_realized_cor_recovers_factor_correlation_roughly():
     # long sample, strong common factor -> the estimate should sit near truth
     R = _panel(n_days=600, n_names=8, seed=7, rho=0.6)
@@ -177,9 +189,12 @@ def test_realized_cor_undefined_before_window_and_masked_below_min_names():
     w = pd.Series(0.25, index=R.columns)
     out = B.realized_cor_disp(R, w, window=21, min_names=3)
     assert out["cor"].isna().all()            # 2 < min_names everywhere
+    assert out["cvol"].isna().all()
     out2 = B.realized_cor_disp(_panel(), w, window=21, min_names=3)
     assert out2["cor"].iloc[:20].isna().all()  # vol window not yet full
     assert out2["cor"].iloc[20:].notna().all()
+    assert out2["cvol"].iloc[:20].isna().all()
+    assert out2["cvol"].iloc[20:].notna().all()
 
 
 def test_realized_cor_ignores_weight_names_missing_from_panel():

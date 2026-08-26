@@ -20,8 +20,11 @@ Two dials, one tape:
               / ((sum(w_i sigma_i))^2 - sum(w_i^2 sigma_i^2))
 
     and a realized dispersion analog  sqrt(sum(w_i sigma_i^2) - sigma_P^2),
-    then lay both against Cboe's published gauges (COR1M implied correlation,
-    DSPX implied dispersion) as an external cross-check.
+    plus the weighted component vol  sqrt(sum(w_i sigma_i^2))  -- the realized
+    analog of Cboe's VIXEQ constituent-vol index (VIXEQ^2 ~ VIX^2 + DSPX^2) --
+    then lay all three against Cboe's published gauges (COR1M implied
+    correlation, DSPX implied dispersion, VIXEQ implied constituent vol) as an
+    external cross-check.
 
 Crossing the two dials at their midpoints gives four regimes ("quadrants"),
 each scored by the SPX return AND realized volatility over the following 21
@@ -32,6 +35,7 @@ Data sources (all fetched with a day-stamped cache):
   * https://squeezemetrics.com/monitor/static/DIX.csv      (SPX close, DIX, GEX; 2011->)
   * https://cdn.cboe.com/api/global/us_indices/daily_prices/COR1M_History.csv  (2006->)
   * https://cdn.cboe.com/api/global/us_indices/daily_prices/DSPX_History.csv   (2014->)
+  * https://cdn.cboe.com/api/global/us_indices/daily_prices/VIXEQ_History.csv  (2014->)
   * iShares IVV holdings (constituents + weights) and Yahoo daily adjusted
     closes via the repo's own loaders in ndx_dark_residual.py.
 
@@ -206,6 +210,8 @@ def realized_cor_disp(returns, w, window=WINDOW, min_names=MIN_NAMES):
     DataFrame with columns:
         cor   -- basket-identity average pairwise correlation, in % (0-100 scale)
         disp  -- sqrt(sum(w sigma_i^2) - sigma_P^2), annualized vol points
+        cvol  -- sqrt(sum(w sigma_i^2)), annualized vol points -- the realized
+                 analog of Cboe's VIXEQ constituent-vol index
         n     -- names contributing that day (NaN rows where n < min_names)
     """
     cols = [c for c in w.index if c in returns.columns]
@@ -232,10 +238,11 @@ def realized_cor_disp(returns, w, window=WINDOW, min_names=MIN_NAMES):
     den = s1 ** 2 - s2
     cor = 100.0 * (sp ** 2 - s2) / den.where(den > 0)
     disp = 100.0 * np.sqrt((wv2 - sp ** 2).clip(lower=0.0))
+    cvol = 100.0 * np.sqrt(wv2)   # already annualized: v carries the ANN factor
 
-    out = pd.DataFrame({"cor": cor.clip(0.0, 100.0), "disp": disp,
+    out = pd.DataFrame({"cor": cor.clip(0.0, 100.0), "disp": disp, "cvol": cvol,
                         "n": have.sum(axis=1)})
-    out.loc[out["n"] < min_names, ["cor", "disp"]] = np.nan
+    out.loc[out["n"] < min_names, ["cor", "disp", "cvol"]] = np.nan
     return out
 
 
@@ -315,10 +322,10 @@ def rnd(s, nd=2):
     return [None if pd.isna(x) else round(float(x), nd) for x in s.values]
 
 
-def build_payloads(F, cor1m, dspx, meta_extra):
+def build_payloads(F, cor1m, dspx, vixeq, meta_extra):
     """SER / QUAD / META payload dicts from the aligned daily frame `F`
-    (index: dates; columns gex, gexp, cor, corp, disp, spx, r21, fvol, tvol,
-    quad) plus the full Cboe series for the overlay panes."""
+    (index: dates; columns gex, gexp, cor, corp, disp, cvol, spx, r21, fvol,
+    tvol, quad) plus the full Cboe series for the overlay panes."""
     ser = {
         "dates": [d.strftime("%Y-%m-%d") for d in F.index],
         "gex": rnd(F["gex"] / 1e9, 3),          # $bn
@@ -328,6 +335,8 @@ def build_payloads(F, cor1m, dspx, meta_extra):
         "cor1m": rnd(cor1m.reindex(F.index), 2),
         "disp": rnd(F["disp"], 2),
         "dspx": rnd(dspx.reindex(F.index), 2),
+        "cvol": rnd(F["cvol"], 2),
+        "vixeq": rnd(vixeq.reindex(F.index), 2),
         "spx": rnd(F["spx"], 2),
         "r21": rnd(F["r21"], 2),
         "quad": list(F["quad"]),
@@ -342,6 +351,8 @@ def build_payloads(F, cor1m, dspx, meta_extra):
     c_chg, _ = series_corr(F["cor"], cor1m, diff=WINDOW)
     d_lvl, d_n = series_corr(F["disp"], dspx)
     d_chg, _ = series_corr(F["disp"], dspx, diff=WINDOW)
+    v_lvl, v_n = series_corr(F["cvol"], vixeq)
+    v_chg, _ = series_corr(F["cvol"], vixeq, diff=WINDOW)
 
     meta = {
         "range": f"{F.index[0].strftime('%Y-%m-%d')} → {last.strftime('%Y-%m-%d')}",
@@ -362,10 +373,13 @@ def build_payloads(F, cor1m, dspx, meta_extra):
             "cor1m": (round(float(cor1m.loc[:last].iloc[-1]), 2) if len(cor1m.loc[:last]) else None),
             "dspx": (round(float(dspx.loc[:last].iloc[-1]), 2) if len(dspx.loc[:last]) else None),
             "disp": round(float(cur["disp"]), 1) if pd.notna(cur["disp"]) else None,
+            "vixeq": (round(float(vixeq.loc[:last].iloc[-1]), 2) if len(vixeq.loc[:last]) else None),
+            "cvol": round(float(cur["cvol"]), 1) if pd.notna(cur["cvol"]) else None,
             "quad": cur["quad"], "quadLabel": QUAD_LABEL.get(cur["quad"], "—"),
         },
         "cmp": {"cor_r": c_lvl, "cor_dr": c_chg, "cor_n": c_n,
-                "dsp_r": d_lvl, "dsp_dr": d_chg, "dsp_n": d_n},
+                "dsp_r": d_lvl, "dsp_dr": d_chg, "dsp_n": d_n,
+                "cv_r": v_lvl, "cv_dr": v_chg, "cv_n": v_n},
     }
     meta.update(meta_extra)
 
@@ -441,7 +455,11 @@ def main():
     dspx = parse_cboe_csv(fetch_text_cached(
         CBOE_HISTORY_TMPL.format(sym="DSPX"), cpath("gexdisp_dspx.csv"),
         refresh=args.refresh, label="Cboe DSPX", session=session) or "")
-    print(f"COR1M: {len(cor1m)} days   DSPX: {len(dspx)} days", file=sys.stderr)
+    vixeq = parse_cboe_csv(fetch_text_cached(
+        CBOE_HISTORY_TMPL.format(sym="VIXEQ"), cpath("gexdisp_vixeq.csv"),
+        refresh=args.refresh, label="Cboe VIXEQ", session=session) or "")
+    print(f"COR1M: {len(cor1m)} days   DSPX: {len(dspx)} days   "
+          f"VIXEQ: {len(vixeq)} days", file=sys.stderr)
 
     # ---- top-50 basket: holdings + weights (with stale-cache fallback) ------
     wcache = cpath("gexdisp_weights.json")
@@ -486,7 +504,7 @@ def main():
     print(f"Realized gauges: {RC['cor'].notna().sum()} defined days", file=sys.stderr)
 
     # ---- aligned frame, dials, outcomes -------------------------------------
-    F = G.join(RC[["cor", "disp"]], how="left").rename(columns={"price": "spx"})
+    F = G.join(RC[["cor", "disp", "cvol"]], how="left").rename(columns={"price": "spx"})
     F["gexp"] = rolling_pct(F["gex"])
     F["corp"] = full_pct(F["cor"])
     # outcomes computed on the full series BEFORE trimming, so late rows still
@@ -501,7 +519,7 @@ def main():
     F["quad"] = [quad_code(g, c) for g, c in zip(F["gexp"], F["corp"])]
 
     ser, quad, meta = build_payloads(
-        F, cor1m, dspx,
+        F, cor1m, dspx, vixeq,
         {"basket": f"top {len(w)} IVV names · {coverage:.0f}% of index weight",
          "top_n": int(len(w)),
          "gexSrc": gex_src, "gexLabel": gex_label})
