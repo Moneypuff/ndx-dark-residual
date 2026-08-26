@@ -252,6 +252,80 @@ def test_forward_vol_uses_only_future_returns():
 
 
 # ---------------------------------------------------------------------------
+# dispersion triangle -- tricor = 100 (VIX/cvol)^2, gap vs realized cor
+# ---------------------------------------------------------------------------
+def test_triangle_series_pin():
+    idx = pd.bdate_range("2024-01-01", periods=3)
+    cvol = pd.Series([40.0, 40.0, 50.0], index=idx)
+    vix = pd.Series([20.0, 10.0, 25.0], index=idx)
+    cor = pd.Series([10.0, 5.0, 30.0], index=idx)
+    T = B.triangle_series(cvol, vix, cor)
+    assert list(T.columns) == ["vix", "tricor", "gap"]
+    assert T["tricor"].iloc[0] == pytest.approx(25.0)   # (20/40)^2 * 100
+    assert T["gap"].iloc[0] == pytest.approx(15.0)
+    assert T["tricor"].iloc[1] == pytest.approx(6.25)
+    assert T["tricor"].iloc[2] == pytest.approx(25.0)
+
+
+def test_triangle_series_clips_and_nans():
+    idx = pd.bdate_range("2024-01-01", periods=4)
+    cvol = pd.Series([40.0, 0.0, np.nan, 40.0], index=idx)
+    vix = pd.Series([50.0, 20.0, 20.0, np.nan], index=idx)
+    cor = pd.Series([10.0, 10.0, 10.0, np.nan], index=idx)
+    T = B.triangle_series(cvol, vix, cor)
+    assert T["tricor"].iloc[0] == pytest.approx(100.0)  # degenerate: clipped
+    assert T["gap"].iloc[0] == pytest.approx(90.0)
+    assert T["tricor"].iloc[1:].isna().all()            # cvol 0 / NaN / VIX NaN
+    assert T["gap"].iloc[1:].isna().all()
+
+
+def test_triangle_series_reindexes_vix_onto_cvol():
+    idx = pd.bdate_range("2024-01-01", periods=3)
+    cvol = pd.Series(40.0, index=idx)
+    cor = pd.Series(10.0, index=idx)
+    vix = pd.Series(20.0, index=pd.bdate_range("2023-12-25", periods=8))
+    vix_gappy = vix.drop(idx[1])                        # superset minus one day
+    T = B.triangle_series(cvol, vix_gappy, cor)
+    assert list(T.index) == list(idx)
+    assert T["tricor"].iloc[0] == pytest.approx(25.0)
+    assert np.isnan(T["tricor"].iloc[1])                # missing VIX day -> NaN
+
+
+def test_tri_quintile_stats_buckets_and_stats():
+    idx = pd.bdate_range("2024-01-01", periods=10)
+    gap = pd.Series(np.arange(1.0, 11.0), index=idx)
+    r21 = pd.Series([1.0, -1.0, 2.0, 2.0, 3.0, 3.0, -2.0, -2.0, 5.0, 1.0],
+                    index=idx)
+    fvol = pd.Series(10.0, index=idx)
+    rows, edges, today = B.tri_quintile_stats(gap, r21, fvol, n_bins=5)
+    assert [r[0] for r in rows] == ["Q1", "Q2", "Q3", "Q4", "Q5"]
+    assert [r[3] for r in rows] == [2, 2, 2, 2, 2]      # even quantile bins
+    assert edges[0] == pytest.approx(1.0) and edges[-1] == pytest.approx(10.0)
+    assert rows[0][4] == pytest.approx(0.0)             # mean of 1, -1
+    assert rows[0][6] == 50                             # hit: 1 of 2 positive
+    assert rows[3][4] == pytest.approx(-2.0)            # mean of -2, -2
+    assert rows[3][6] == 0
+    assert rows[4][5] == pytest.approx(3.0)             # median of 5, 1
+    assert all(r[7] == pytest.approx(10.0) for r in rows)
+    assert today == 5                                   # last gap is the max
+
+
+def test_tri_quintile_stats_today_and_nan_safety():
+    idx = pd.bdate_range("2024-01-01", periods=10)
+    gap = pd.Series(np.arange(1.0, 11.0), index=idx)
+    gap.iloc[-1] = 1.5                                  # today falls in Q1
+    r21 = pd.Series(1.0, index=idx)
+    r21.iloc[-1] = np.nan                               # unrealized future
+    fvol = pd.Series(10.0, index=idx)
+    rows, _, today = B.tri_quintile_stats(gap, r21, fvol, n_bins=5)
+    assert today == 1
+    assert rows[0][3] == 2                              # 1.0 and today's 1.5
+    assert sum(r[3] for r in rows) == 10                # every defined-gap day counted
+    empty = pd.Series(np.nan, index=idx)
+    assert B.tri_quintile_stats(empty, r21, fvol) == ([], [], None)
+
+
+# ---------------------------------------------------------------------------
 # quadrants
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("g,c,expected", [

@@ -63,7 +63,15 @@ deliberately blunt about that.
    gap is the single-stock vol risk premium — watch the comovement, not the
    level. Implied climbing while realized sleeps says the street is paying up
    for single-name vol before it shows in the tape.
-5. **COR1M.** Quiet (single digits/low teens) = whatever is happening is
+5. **The triangle gap.** Rebuild the dispersion triangle with realized parts:
+   hypotenuse = our component vol, adjacent leg = VIX, so the base angle
+   implies `tricor = 100·(VIX/cvol)²` — the correlation the options market is
+   paying for. The gap over our realized correlation is the signal (quintile
+   scoreboard on the page): strongly positive = VIX pricing far more
+   comovement than the tape delivers (fear/hedging), strongly negative =
+   complacency. Hybrid caveat: implied VIX over realized cvol means the gap
+   bundles the index vol premium with the correlation premium.
+6. **COR1M.** Quiet (single digits/low teens) = whatever is happening is
    rotation, not crisis. A 21d-change z ≥ +2 spike = systemic unwind in
    progress; switch to the §5 shock rules.
 

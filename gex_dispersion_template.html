@@ -322,6 +322,8 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
           <span class="dialchip">COR1M <span class="lvl" id="chCor1m">—</span></span>
           <span class="dialchip">DSPX <span class="lvl" id="chDspx">—</span></span>
           <span class="dialchip">VIXEQ <span class="lvl" id="chVixeq">—</span></span>
+          <span class="dialchip">VIX <span class="lvl" id="chVix">—</span></span>
+          <span class="dialchip">Tri gap <span class="lvl" id="chTrigap">—</span></span>
         </div>
       </div>
       <div class="stat-grid">
@@ -428,6 +430,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
         <button data-p="cor" aria-pressed="true">Correlation · ours vs COR1M</button>
         <button data-p="disp" aria-pressed="false">Dispersion · ours vs DSPX</button>
         <button data-p="cvol" aria-pressed="false">Component vol · ours vs VIXEQ</button>
+        <button data-p="tri" aria-pressed="false">Triangle · VIX²/cvol² vs realized</button>
         <button data-p="gex" aria-pressed="false"><span class="gexTerm">GEX</span> · $bn</button>
       </div>
       <div class="seg" id="quadSeg" role="group" aria-label="quadrant filter">
@@ -502,6 +505,42 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     <div class="sec-h">
       <span class="n">06</span>
       <div>
+        <h2>The realized dispersion triangle</h2>
+        <p class="h-sub">Cboe's triangle is VIXEQ² = VIX² + DSPX², with implied correlation as the base
+          angle. Rebuilt with <b>our realized component vol as the hypotenuse</b> and VIX as the adjacent
+          leg, the angle implies <code>tricor = 100·(VIX/cvol)²</code> — the correlation the options
+          market is <i>paying for</i>. Its gap over the correlation the tape actually <i>delivered</i>
+          conditions the forward month below: Q1 = options pricing far less comovement than realized
+          (complacency), Q5 = far more (fear). The ◆ row is today.</p>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="legend"><span>−3%</span><span class="scale"></span><span>+3%</span></div>
+    </div>
+    <div class="tscroll">
+      <table class="hm">
+        <thead>
+          <tr>
+            <th class="lft">Gap quintile <span class="px">· range · days</span></th>
+            <th class="grp-ret">Mean <span class="px">1-mo</span></th>
+            <th>Median</th>
+            <th>Hit</th>
+            <th class="grp-vol">Fwd vol <span class="px">ann.</span></th>
+          </tr>
+        </thead>
+        <tbody id="triBody"></tbody>
+      </table>
+    </div>
+    <p class="hm-note"><b>Mind the construction:</b> the triangle is a hybrid — implied VIX over realized
+      cvol — so the gap carries the index vol risk premium alongside the correlation premium. Quintile
+      edges are full-sample (the same mild look-ahead as the correlation dial), and this is descriptive
+      conditioning, not a tradeable backtest.</p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">07</span>
+      <div>
         <h2>What the pattern says</h2>
         <p class="h-sub">Reads that hold across the scoreboard.</p>
       </div>
@@ -534,7 +573,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
 
   <section>
     <div class="sec-h">
-      <span class="n">07</span>
+      <span class="n">08</span>
       <div><h2>Read with these in mind</h2></div>
     </div>
     <div class="cav">
@@ -551,6 +590,9 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
       <div class="c"><b>Implied ≠ realized.</b> COR1M and DSPX price the <i>coming</i> month with a risk
         premium; our gauges measure the month just <i>passed</i>. Levels differ by construction — judge the
         comovement, not the gap.</div>
+      <div class="c"><b>The triangle mixes clocks.</b> tricor divides a forward implied vol (VIX) by a
+        trailing realized one (cvol), so its gap over realized correlation bundles the correlation
+        premium with the index vol premium — a fear gauge, not a pure correlation forecast.</div>
       <div class="c"><b>Overlapping windows.</b> 21-day outcomes overlap heavily; <span id="cvDays">—</span>
         sessions is only ~<span id="cvIndep">—</span> independent months. Medians and hit-rates over
         means.</div>
@@ -598,6 +640,8 @@ function applyHero(){
   set("chCor1m", t.cor1m==null?"—":t.cor1m.toFixed(1));
   set("chDspx", t.dspx==null?"—":t.dspx.toFixed(1));
   set("chVixeq", t.vixeq==null?"—":t.vixeq.toFixed(1));
+  set("chVix", t.vix==null?"—":t.vix.toFixed(1));
+  set("chTrigap", t.trigap==null?"—":(t.trigap>=0?"+":"")+t.trigap.toFixed(1));
   const row = QUAD.find(q=>q[0]===t.quad);
   if(!row) return;
   const [,,days,mean,med,hit,fvol,dvol] = row;
@@ -796,6 +840,8 @@ const PANES = {
                {k:"dspx", tok:"--sRef", lab:"Cboe DSPX (implied)"}], fmt:v=>v.toFixed(1)},
   cvol: {lines:[{k:"cvol", tok:"--sOur", lab:"realized component vol (ours)"},
                {k:"vixeq", tok:"--sRef", lab:"Cboe VIXEQ (implied)"}], fmt:v=>v.toFixed(1)},
+  tri:  {lines:[{k:"cor", tok:"--sOur", lab:"realized corr (ours)"},
+               {k:"tricor", tok:"--sRef", lab:"triangle corr (VIX²/cvol²)"}], fmt:v=>v.toFixed(1)},
   gex:  {lines:[{k:"gex", tok:"--accent", lab:(META.gexLabel||"GEX")+" · $bn"}], fmt:v=>v.toFixed(2)},
 };
 function tsLegend(){
@@ -1049,6 +1095,38 @@ function renderQuad(){
     body.appendChild(tr);
   });
 }
+/* ===== 06: triangle-gap quintile scoreboard ===== */
+function renderTri(){
+  const body = document.getElementById("triBody");
+  if(!body || !META.tri) return;
+  body.innerHTML = "";
+  ((META.tri.rows)||[]).forEach((row, i)=>{
+    const [label, lo, hi, days, mean, med, hit, fvol] = row;
+    const tr = document.createElement("tr");
+    if(META.tri.today === i+1) tr.className = "feat";
+    const tdReg = document.createElement("td");
+    tdReg.innerHTML = `<div class="reg-cell">
+      <span class="nm">${label}</span>
+      <span class="px">${lo.toFixed(1)} → ${hi.toFixed(1)}</span>
+      <span class="days">${days}d</span>
+    </div>`;
+    tr.appendChild(tdReg);
+    const mk = (v, txt, cls, style) => {
+      const td=document.createElement("td");
+      if(cls) td.className=cls;
+      td.innerHTML=`<div class="retc"${style?` style="background:${style.bg}"`:""}>
+        <div class="v"${style?` style="color:${style.ink}"`:""}>${txt}</div></div>`;
+      tr.appendChild(td);
+    };
+    mk(mean, mean==null?"—":pc(mean), "grp-ret", mean==null?null:retStyle(mean,3));
+    mk(med, med==null?"—":pc(med), "", med==null?null:retStyle(med,3));
+    mk(hit, hit==null?"—":Math.round(hit)+"%", "", hit==null?null:retStyle(hit-50,30));
+    mk(fvol, fvol==null?"—":fvol.toFixed(1), "grp-vol",
+       fvol==null?null:retStyle(META.baseline.fvol-fvol, META.baseline.fvol*0.5));
+    body.appendChild(tr);
+  });
+}
+
 document.getElementById("hmBody").addEventListener("click", e=>{
   const tr=e.target.closest("tr[data-q]"); if(!tr) return;
   setQuadFilter(tr.dataset.q);
@@ -1086,7 +1164,7 @@ document.querySelectorAll(META.gexSrc==="gexplus" ? ".src-classic" : ".src-gexpl
   .forEach(e=>e.remove());
 
 /* ===== boot + theme/resize re-renders ===== */
-function redrawAll(){ drawMap(); tsLegend(); drawTS(); renderQuad(); }
+function redrawAll(){ drawMap(); tsLegend(); drawTS(); renderQuad(); renderTri(); }
 applyHero(); applyMeta(); redrawAll();
 setQuadFilter(META.today.quad || "");
 
