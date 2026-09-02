@@ -2,3 +2,8 @@ numpy
 pandas
 requests
 openpyxl
+
+# Durable equity-price store (equity_store.py / fetch_equity_prices.py). Read/write-through in
+# load_yahoo_panels is guarded, so the dashboard still builds without it; installed so the
+# nightly refresh persists Yahoo prices and stops re-querying (rate-limit) on every run.
+duckdb>=0.9

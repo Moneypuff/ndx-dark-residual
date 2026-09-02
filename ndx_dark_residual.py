@@ -6067,7 +6067,12 @@ def _unix(ts):
     return int(pd.Timestamp(ts).timestamp())
 
 
-def fetch_yahoo_one(sym, start, end, session=None, retries=3, pause=0.5):
+class YahooRateLimited(Exception):
+    """Raised by fetch_yahoo_one(raise_on_ratelimit=True) when every attempt hit HTTP 429,
+    so a resumable caller can back off and retry later instead of recording a false empty."""
+
+
+def fetch_yahoo_one(sym, start, end, session=None, retries=3, pause=0.5, raise_on_ratelimit=False):
     """(close, adjclose, volume) DataFrame indexed by date for one symbol, or empty."""
     if requests is None:
         raise RuntimeError("The 'requests' package is required for live fetching.")
@@ -6103,6 +6108,8 @@ def fetch_yahoo_one(sym, start, end, session=None, retries=3, pause=0.5):
             return df[~df.index.duplicated(keep="last")].dropna(how="all")
         except Exception as e:  # noqa: BLE001
             last = str(e); time.sleep(pause * (a + 1))
+    if raise_on_ratelimit and last == "429":
+        raise YahooRateLimited(sym)
     print(f"  ! yahoo {sym}: failed ({last})", file=sys.stderr)
     return pd.DataFrame(columns=["close", "adjclose", "volume"])
 
@@ -6132,6 +6139,21 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
             cached = {}
     fields = ("close", "adjclose", "volume")
     base = {f: cached.get(f, pd.DataFrame()) for f in fields}
+    # Read-through the durable equity store (separate from the ORATS options duckdb): seed any
+    # symbols/dates the day-cache lacks so they count as already-held and are not re-queried
+    # from Yahoo. Guarded -- if duckdb/the store is absent this is a silent no-op. See
+    # equity_store.py.
+    try:
+        import equity_store as _eqs
+        _stored = _eqs.load_panels(symbols, cache_dir=cache_dir) if cache_dir else None
+        if _stored:
+            for f in fields:
+                sdf = _stored.get(f)
+                if sdf is None or sdf.empty:
+                    continue
+                base[f] = sdf if base[f].empty else base[f].combine_first(sdf)
+    except Exception as _e:  # noqa: BLE001
+        pass
     end_n = pd.Timestamp(end).normalize()
     # The session we should already hold once the day's bars are published: today if a weekday,
     # else the prior business day. A same-day cache is trusted only when its freshest close
@@ -6249,6 +6271,14 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
             tmp.replace(cache)
         except Exception as e:  # noqa: BLE001
             print(f"  ! could not write yahoo cache ({e})", file=sys.stderr)
+    # Write-through to the durable equity store so this history is reused next time and never
+    # re-queried from Yahoo (guarded; no-op without duckdb/the store).
+    if cache_dir and not out["close"].empty:
+        try:
+            import equity_store as _eqs
+            _eqs.upsert_panels({f: out[f] for f in fields}, cache_dir=cache_dir)
+        except Exception as _e:  # noqa: BLE001
+            print(f"  ! equity store write-through skipped ({_e})", file=sys.stderr)
     return _window(out)
 
 

@@ -141,6 +141,35 @@ only; and because Yahoo cannot resolve every exited ticker, coverage will remain
 partial. Both directions of the residual gap only *lower* the baseline (exits
 skew to laggards), so the corrected edges stay **conservative**.
 
+### Durable equity-price store (so the fetch isn't re-run / re-rate-limited)
+
+The exited-name prices (and, going forward, the whole Yahoo equity pull) are
+persisted in a dedicated store, **kept separate from the ORATS options duckdb**:
+
+- `equity_store.py` — a duckdb table `equity_eod(ticker, date, close, adj_close,
+  volume)` (default `~/.ndx_dark_cache/equity_prices.duckdb`) with a committed
+  columnar mirror **`data/equity_prices.parquet`** so it survives ephemeral
+  sessions and imports into any database with one `read_parquet(...)`. A guard
+  refuses to open anything named like `orats.duckdb`.
+- `load_yahoo_panels` now reads through this store and writes fresh pulls back
+  (both guarded — no duckdb ⇒ silent no-op), so once a symbol's history is on
+  disk it is **never re-queried from Yahoo**, which is what triggered the 429s.
+- `fetch_equity_prices.py` — resumable fetch (default target = the exited
+  members). It skips symbols already stored, upserts incrementally, and on a
+  hard 429 writes a resume-state file and exits 75 so it can be re-run
+  (`--resume`) once the limit clears. A membership-window overlap check drops
+  recycled/renamed tickers that return wrong-era data (e.g. a reused `FB`),
+  never fabricating.
+
+**Current state:** the fetch has run — **58 exited names stored** with real
+history (delisted/renamed/recycled tickers such as ATVI, CELG, XLNX, SGEN, FB
+correctly skipped). Measured effect of adding them to the point-in-time
+baseline: **63d baseline +0.18 → −1.15** (the true equal-weight member basket
+*underperformed* cap-weighted QQQ), so the honest edges move a further ~1.3pp in
+the favourable direction. The dashboard picks this up on the next refresh, when
+`fetch_exited_price_panels` reads the now-populated store instead of hitting the
+Yahoo rate limit.
+
 ## Remaining
 
 - **DIX aggregate & cross-sectional L/S ranking.** The reconstructed dollar-DIX
