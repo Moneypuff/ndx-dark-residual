@@ -114,17 +114,40 @@ an honest universe. The raw-signal high-D episode instead shows a small
 clustered inference before it is called real). The shipped JS reproduces these
 numbers exactly (verified end-to-end in a browser against the live payload).
 
+## Exited-name backfill — wired (populates on the next live refresh)
+
+The **80 names that left** the index in-window (≈30% of all member-days: BIIB,
+ANSS, ATVI, SPLK, FISV, …) are now fetched as **price-only** columns and merged
+into the baseline:
+
+- `ndx_exited_members()` derives them from this file (ever-a-member, not a
+  current constituent); `fetch_exited_price_panels()` pulls their Yahoo close /
+  adjusted close best-effort and merges them into the return panels *only* —
+  the DIX aggregate, contributors and small-multiples grids keep reading the
+  untouched live-constituent panels. On (default; `--no-exited-baseline` skips).
+- These names carry **no dark series**, so their all-NaN `d` column drops out of
+  `rel["d"]`: they enter the study **solely as baseline peers**, never as
+  event/episode subjects, and are gated by their membership ranges like everyone
+  else.
+- **Safety:** `TICKER_VALID_FROM` masking is applied so a recycled symbol can't
+  splice a predecessor, and any name whose Yahoo history doesn't overlap its own
+  membership window is dropped rather than trusted. Delisted / renamed / acquired
+  tickers that Yahoo can no longer resolve (e.g. ATVI, CELG, SGEN, XLNX, FB→META)
+  simply return nothing and are skipped — **never fabricated**. The build logs
+  the resolved-vs-dropped count.
+
+Until the next refresh runs the fetch, the baseline still spans surviving names
+only; and because Yahoo cannot resolve every exited ticker, coverage will remain
+partial. Both directions of the residual gap only *lower* the baseline (exits
+skew to laggards), so the corrected edges stay **conservative**.
+
 ## Remaining
 
-- **Exited-name backfill.** The point-in-time baseline currently spans only the
-  ~102 surviving names we hold data for; the **80 names that left** the index
-  in-window (≈30% of all member-days: BIIB, ANSS, ATVI, SPLK, FISV, …) have no
-  FINRA/price panels. Because exits skew toward laggards, adding them can only
-  *lower* the baseline further, so the corrected edges above are **conservative
-  (upward-biased baseline ⇒ understated edge)**. Backfilling needs a Yahoo
-  price fetch (rate-limited in this session); wiring those tickers into
-  `build_universe_panels`' fetch list is the next step.
 - **DIX aggregate & cross-sectional L/S ranking.** The reconstructed dollar-DIX
   and the *Cross-sectional L/S* decile ranking still use the full name set each
   day; restricting *those* to point-in-time members (a ranking change, not a
   baseline de-bias) is a separate follow-up.
+- **Dark series for exited names.** Only price is backfilled, which is all the
+  matched baseline needs. Adding their FINRA dark history (so they could also be
+  event/episode subjects, not just peers) would require extending the recycled-
+  ticker alias map and is out of scope here.

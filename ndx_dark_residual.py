@@ -1461,13 +1461,75 @@ def load_ndx_membership_ranges(index, columns, csv_path=None):
     return out
 
 
+def ndx_exited_members(current, csv_path=None):
+    """Tickers that were NDX-100 members somewhere in the window but are NOT in `current`
+    (the live constituent set). These left the index; without them the matched baseline is
+    survivor-biased (it averages only today's winners). Returns {ticker: [(added, removed), ...]}
+    from the membership file, restricted to stints overlapping the window."""
+    import csv as _csv
+    if csv_path is None:
+        csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "data", "ndx_historical_membership.csv")
+    if not os.path.exists(csv_path):
+        return {}
+    cur = set(current)
+    out = {}
+    with open(csv_path, newline="") as fh:
+        for row in _csv.DictReader(fh):
+            t = row["ticker"]
+            if t in cur or t == BENCH or not row.get("added"):
+                continue
+            a = pd.Timestamp(row["added"]); r = pd.Timestamp(row["removed"]) if row.get("removed") else None
+            out.setdefault(t, []).append((a, r))
+    return out
+
+
+def fetch_exited_price_panels(exited, start, end, cache_dir=None, workers=8, refresh=False):
+    """Best-effort Yahoo adjusted/raw close for exited members, for the point-in-time baseline.
+
+    Fetched under each ticker's point-in-time symbol; delisted/renamed symbols that Yahoo can no
+    longer resolve simply return nothing and are dropped (never fabricated). TICKER_VALID_FROM is
+    applied so a recycled symbol can't splice a predecessor, and any name whose returned history
+    does not overlap its own membership window is dropped as a safety net against wrong-era data.
+    Returns (close_df, adjclose_df, kept) -- price only; these names never get a dark series, so
+    they enter the study solely as baseline peers, never as event/episode subjects."""
+    if not exited:
+        return None, None, []
+    syms = sorted(exited)
+    yp = load_yahoo_panels(syms, start, end, workers=workers, cache_dir=cache_dir,
+                           refresh=refresh, label="NDX-exited")
+    close, adj = yp["close"], yp["adjclose"]
+    for sym, valid_from in TICKER_VALID_FROM.items():
+        for df in (close, adj):
+            if sym in df.columns:
+                df.loc[df.index < valid_from, sym] = np.nan
+    kept = []
+    for t, spans in exited.items():
+        if t not in adj.columns:
+            continue
+        col = adj[t]
+        overlap = False
+        for a, r in spans:
+            win = col.loc[(col.index >= a) & ((col.index < r) if r is not None else True)]
+            if win.notna().sum() >= 5:
+                overlap = True; break
+        if overlap:
+            kept.append(t)
+    drop = [c for c in adj.columns if c not in kept]
+    close = close.drop(columns=[c for c in drop if c in close.columns])
+    adj = adj.drop(columns=[c for c in drop if c in adj.columns])
+    print(f"  exited-member baseline: {len(kept)}/{len(exited)} names resolved on Yahoo "
+          f"(dropped {len(exited)-len(kept)}: delisted/renamed/no-overlap)", file=sys.stderr)
+    return close, adj, kept
+
+
 def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dark_panel,
                ndx_agg=None, ndx_dix=None, spx=None, iwm=None, bench_label=None,
                spx_res=None, spx_rel=None, spx_weight_map=None, spx_weight_order=None,
                wl_res=None, wl_rel=None, wl_sectors=None,
                breadth_px=None, sector_data=None, contrib=None, spx_keep_days=378,
                plot_days=378, plot_start=None,
-               title=None, window=126, demo=False, adjclose_panel=None):
+               title=None, window=126, demo=False, adjclose_panel=None, extra_rel_cols=()):
     # `bench_label` is what the residuals are actually taken against (e.g. the
     # reconstructed "NDX-DIX"); `bench` remains the ticker used for forward returns.
     bench_label = bench_label or bench
@@ -1558,6 +1620,12 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
     rel_src = list(data["raw"])
     if "GOOGL" in rel_src and "GOOG" in raw_dark_panel.columns and "GOOG" not in rel_src:
         rel_src.append("GOOG")
+    # exited index members carry price (close/adj) but no dark series -- add them so they feed
+    # the point-in-time matched baseline (their all-NaN dark column drops out of rel["d"], so
+    # they never become event/episode subjects, only peers). See NDX_HISTORICAL_MEMBERSHIP.md.
+    for c in extra_rel_cols:
+        if c not in rel_src and (c in close_panel.columns or (adjclose_panel is not None and c in adjclose_panel.columns)):
+            rel_src.append(c)
     dark = raw_dark_panel.reindex(columns=rel_src)
     # Alphabet trades as two near-identical share classes whose dark ratios move in
     # tandem, so the raw-D studies would double-count the same flow signal (and its
@@ -6504,6 +6572,9 @@ def main():
     ap.add_argument("--no-spx", dest="spx", action="store_false", default=True,
                     help="skip the 'SPX D vs Return' tab (skips the ~500 S&P 500 / IVV "
                          "constituent fetch)")
+    ap.add_argument("--no-exited-baseline", dest="exited_baseline", action="store_false", default=True,
+                    help="skip fetching prices for exited NDX-100 members (used to de-survivor-bias "
+                         "the point-in-time matched baseline; see NDX_HISTORICAL_MEMBERSHIP.md)")
     ap.add_argument("--iwm-holdings", dest="iwm_holdings", default="",
                     help="OPTIONAL: local IWM holdings file (SpreadsheetML/Excel-XML, CSV or a "
                          "plain ticker list) for the Russell 2000 universe. Auto-fetched from "
@@ -6527,6 +6598,7 @@ def main():
               f"({', '.join(wl_tickers[:6])}{'...' if len(wl_tickers) > 6 else ''})",
               file=sys.stderr)
 
+    exited_rel_cols = []
     if args.demo:
         print("DEMO mode: synthetic data (no network)...", file=sys.stderr)
         data = demo_panel(NDX100, BENCH, start=args.plot_start or "2020-01-01")
@@ -6573,9 +6645,20 @@ def main():
         panel = NDX["d"]
         close_panel, raw_dark_panel = NDX["close"], NDX["dpi"]
         adjclose_panel = NDX["adjclose"]
-        r21_panel = compute_forward_return(NDX["adjclose"], 21)
-        r42_panel = compute_forward_return(NDX["adjclose"], 42)
-        r63_panel = compute_forward_return(NDX["adjclose"], 63)
+        # Exited members: price-only columns merged into the return panels so the
+        # point-in-time matched baseline averages the real historical universe, not just
+        # today's survivors. Merged ONLY here (rel/baseline); the DIX aggregate, contributors
+        # and small-multiples grids keep reading the untouched NDX panels above.
+        if args.exited_baseline:
+            exited = ndx_exited_members(NDX["close"].columns)
+            ex_close, ex_adj, exited_rel_cols = fetch_exited_price_panels(
+                exited, start, end, cache_dir=cache_dir, workers=args.workers, refresh=args.refresh)
+            if exited_rel_cols:
+                close_panel = pd.concat([close_panel, ex_close[exited_rel_cols]], axis=1).sort_index()
+                adjclose_panel = pd.concat([adjclose_panel, ex_adj[exited_rel_cols]], axis=1).sort_index()
+        r21_panel = compute_forward_return(adjclose_panel, 21)
+        r42_panel = compute_forward_return(adjclose_panel, 42)
+        r63_panel = compute_forward_return(adjclose_panel, 63)
         ndx_dix = compute_dollar_dix(NDX["short"], NDX["total"], NDX["close"], exclude=(BENCH,))
         ndx_contrib = build_contributors_payload(NDX["short"], NDX["total"], NDX["close"],
                                                  exclude=(BENCH,), weight_map=NDX100_WEIGHT)
@@ -6775,7 +6858,7 @@ def main():
                        spx_weight_map=spx_weight_map, spx_weight_order=spx_weight_order,
                        wl_res=wl_res, wl_rel=wl_rel, wl_sectors=wl_sectors,
                        breadth_px=breadth_px, sector_data=sector_data, contrib=contrib,
-                       adjclose_panel=adjclose_panel,
+                       adjclose_panel=adjclose_panel, extra_rel_cols=exited_rel_cols,
                        plot_days=args.plot_days, plot_start=plot_start, window=args.window,
                        demo=args.demo)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
