@@ -1414,6 +1414,53 @@ def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, wee
     return {"d": pk(dpi), "r21": pk(r21), "r42": pk(r42), "r63": pk(r63)}
 
 
+def load_ndx_membership_ranges(index, columns, csv_path=None):
+    """Point-in-time NDX-100 membership packed to integer position ranges into `index`.
+
+    Reads data/ndx_historical_membership.csv (ticker,added,removed; added inclusive,
+    removed exclusive, empty removed = still a member) and returns {ticker: [[i0,i1], ...]}
+    for tickers in `columns`, where each [i0,i1) is a half-open run of positions in `index`
+    on which the ticker was an index member. A ticker absent from the file is omitted
+    entirely, which the client reads as "always a member" (never wrongly excluded). Used to
+    de-survivor-bias the matched cross-sectional baselines (a name feeds a peer window only
+    while it was actually in the index -- see NDX_HISTORICAL_MEMBERSHIP.md)."""
+    import csv as _csv
+    if csv_path is None:
+        csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "data", "ndx_historical_membership.csv")
+    if not os.path.exists(csv_path):
+        return None
+    stints = {}
+    with open(csv_path, newline="") as fh:
+        for row in _csv.DictReader(fh):
+            a = pd.Timestamp(row["added"]) if row.get("added") else None
+            r = pd.Timestamp(row["removed"]) if row.get("removed") else None
+            if a is None:
+                continue
+            stints.setdefault(row["ticker"], []).append((a, r))
+    idx = pd.DatetimeIndex(index)
+    out = {}
+    for tkr in columns:
+        spans = stints.get(tkr)
+        if not spans:
+            continue
+        member = np.zeros(len(idx), dtype=bool)
+        for a, r in spans:
+            m = (idx >= a) & ((idx < r) if r is not None else True)
+            member |= m.values if hasattr(m, "values") else m
+        ranges, start = [], None
+        for i, on in enumerate(member):
+            if on and start is None:
+                start = i
+            elif not on and start is not None:
+                ranges.append([start, i]); start = None
+        if start is not None:
+            ranges.append([start, len(idx)])
+        if ranges:
+            out[tkr] = ranges
+    return out
+
+
 def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dark_panel,
                ndx_agg=None, ndx_dix=None, spx=None, iwm=None, bench_label=None,
                spx_res=None, spx_rel=None, spx_weight_map=None, spx_weight_order=None,
@@ -1532,6 +1579,10 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         # breaks a return measured across a split); absent in payloads built without them
         "adj": (pack(adjclose_panel.reindex(index=dark.index, columns=rel_cols), None)
                 if adjclose_panel is not None else None),
+        # point-in-time NDX-100 membership as position ranges into `dates` -- lets the
+        # client restrict the matched cross-sectional baselines to real index members
+        # (removes the survivor/look-ahead bias in the always-all-names peer average)
+        "member": load_ndx_membership_ranges(dark.index, rel_cols),
         # index-level aggregate dark ratio: sum(off-exch vol)/sum(total vol) per day
         "ndx_agg": ([None if pd.isna(x) else round(float(x), 4)
                      for x in ndx_agg.reindex(dark.index).values]
@@ -1894,6 +1945,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button data-b="pool" title="one global distribution pooled across names -- absolute dark levels">Pooled (global)</button>
     </div>
     <label class="chk" title="measure forward return in excess of QQQ over the same window"><input type="checkbox" id="evExcess"/> excess vs QQQ</label>
+    <label class="chk" title="restrict the matched cross-sectional baseline to names that were ACTUAL NDX-100 members on each day -- removes the survivor/look-ahead bias (today's constituents projected backward beat QQQ by ~1.5pp/63d out of hindsight). Only the baseline/edge move."><input type="checkbox" id="evPit" checked/> point-in-time universe</label>
     <label class="chk" title="one-way transaction cost per trade side, in basis points (backtest only)">cost bps/side
       <input type="number" id="evCost" min="0" max="100" value="5" style="width:52px;background:var(--panel2);border:1px solid var(--grid);color:var(--ink);border-radius:6px;padding:5px 6px;font-size:12px;margin-left:4px"/>
     </label>
@@ -1939,6 +1991,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button data-h="63">3mo</button>
     </div>
     <label class="chk" title="measure every return in excess of QQQ over the identical window"><input type="checkbox" id="epExcess" checked/> excess vs QQQ</label>
+    <label class="chk" title="restrict the matched cross-sectional baseline to names that were ACTUAL NDX-100 members on each day -- removes the survivor/look-ahead bias (today's constituents projected backward beat QQQ by ~1.5pp/63d out of hindsight). Only the baseline/edge move."><input type="checkbox" id="epPit" checked/> point-in-time universe</label>
   </div>
   <div class="stats" id="relStats" style="display:none"></div>
 </header>
@@ -4074,8 +4127,44 @@ function bandReturns(decs, lo, hi, run, h, excess){
 // DATE-MATCHED baseline: an event is compared against how the whole universe did
 // from that same day, so "events happened in good months" can't masquerade as edge.
 const xsMeanCache = {};
+// -------------------------------------------------------------------------
+// Point-in-time index membership. P.rel.member = {ticker: [[i0,i1), ...]} of
+// positions in P.rel.dates on which the name was an NDX-100 member. When ON
+// (default), the matched cross-sectional BASELINES below count a name as a peer
+// only on days it was actually in the index -- otherwise today's survivors are
+// projected backward and the peer average beats QQQ by ~1.5pp/63d out of pure
+// hindsight (see NDX_HISTORICAL_MEMBERSHIP.md). A name absent from the map is
+// treated as always a member (never wrongly excluded); old payloads lacking the
+// map disable the feature. Only the BASELINE/edge move -- single-name event and
+// episode returns are unaffected.
+// -------------------------------------------------------------------------
+let pitUniverse = true;
+function pitOn(){ return pitUniverse && P.rel.member && Object.keys(P.rel.member).length > 0; }
+const _pitMaskCache = {};
+function pitMember(nm, i){
+  const m = P.rel.member; if(!m) return true;
+  const ranges = m[nm]; if(ranges === undefined) return true;   // unlisted -> always a member
+  let mask = _pitMaskCache[nm];
+  if(!mask){
+    const L = P.rel.dates.length; mask = new Uint8Array(L);
+    for(const [a,b] of ranges) for(let k=a;k<b && k<L;k++) mask[k] = 1;
+    _pitMaskCache[nm] = mask;
+  }
+  return mask[i] === 1;
+}
+// keep the two tab checkboxes and both baselines in sync when the toggle flips
+function setPitUniverse(on){
+  pitUniverse = on;
+  const a = document.getElementById('evPit'), b = document.getElementById('epPit');
+  if(a) a.checked = on; if(b) b.checked = on;
+  for(const k in xsMeanCache) delete xsMeanCache[k];
+  const ev = document.querySelector('#tabs button[data-t="ev"]');
+  const ep = document.querySelector('#tabs button[data-t="ep"]');
+  if(ev && ev.classList.contains('on')) renderEvents();
+  else if(ep && ep.classList.contains('on')) renderEpisodes();
+}
 function xsMeanByDay(h, excess){
-  const key = h + '|' + excess;
+  const key = h + '|' + excess + '|' + pitOn();
   if(xsMeanCache[key]) return xsMeanCache[key];
   const rser = P.rel['r' + h], br = rser[P.bench];
   let T = 0; for(const nm in rser){ if(nm !== P.bench && rser[nm]) T = Math.max(T, rser[nm].length); }
@@ -4085,6 +4174,7 @@ function xsMeanByDay(h, excess){
     const r = rser[nm]; if(!r) continue;
     for(let i=0;i<r.length;i++){
       let y = r[i]; if(y==null) continue;
+      if(pitOn() && !pitMember(nm, i)) continue;   // peer only while an index member
       if(excess){ if(br[i]==null) continue; y -= br[i]; }
       sums[i] += y; ns[i]++;
     }
@@ -4110,6 +4200,7 @@ function baselineReturns(h, excess, tkr=null){
     const r = rser[nm]; if(!r) continue;
     for(let i=0;i<r.length;i++){
       let y = r[i]; if(y==null) continue;
+      if(pitOn() && !tkr && !pitMember(nm, i)) continue;
       if(excess){ if(br[i]==null) continue; y -= br[i]; }
       out.push(y);
     }
@@ -4209,6 +4300,7 @@ function matchedDrift(days, excess, maxK=63){
     if(excess && bclose[i]==null) continue;
     for(const nm in close){
       if(nm === P.bench) continue;
+      if(pitOn() && !pitMember(nm, i)) continue;
       const cl = close[nm]; if(!cl || cl[i]==null) continue;
       for(let k=0; k<=maxK && i+k<cl.length; k++){
         const ck = cl[i+k]; if(ck==null) continue;
@@ -4434,7 +4526,7 @@ function renderEvents(){
     `<b>Streaks are computed on the raw (unsmoothed) 1-day FINRA dark ratio</b> -- off-exchange volume / total ` +
     `volume for that single day -- NOT SqueezeMetrics' 5-day-MA D; the footer's "D = 5-day..." wording refers to ` +
     `the Small-multiples tab only. <b>Matched base</b> compares each event against the mean forward return of ` +
-    `ALL names from the event's exact trigger date, so events clustering in months that happened to rally can't ` +
+    `the point-in-time index members (toggle) from the event's exact trigger date, so events clustering in months that happened to rally can't ` +
     `masquerade as edge (the old always-invested baseline had that flaw); the drift curve's dashed control is ` +
     `built the same way. The <b>regime table</b> splits events by sub-period -- an effect that only exists in one ` +
     `half is a regime artifact, not a signal. ` +
@@ -4742,6 +4834,7 @@ document.getElementById('evLo').addEventListener('change', e=>{ evLo=+e.target.v
 document.getElementById('evHi').addEventListener('change', e=>{ evHi=+e.target.value; if(evHi<evLo){ evLo=evHi; document.getElementById('evLo').value=evLo; } renderEvents(); });
 document.getElementById('evBasisSeg').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return; evBasis=b.dataset.b; [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b)); renderEvents(); });
 document.getElementById('evExcess').addEventListener('change', e=>{ evExcess=e.target.checked; renderEvents(); });
+document.getElementById('evPit').addEventListener('change', e=>setPitUniverse(e.target.checked));
 
 // -------------------------------------------------------------------------
 // Tab: Episodes vs streaks -- the same dark-ratio signal studied two ways, side by
@@ -4886,12 +4979,12 @@ function spanRet(nm, i, j, excess){
 // cross-sectional mean of the same span over ALL names (the date-matched control)
 function xsSpanMean(i, j, excess){
   const cl = epClose(); let s=0, c=0;
-  for(const nm in cl){ if(nm === P.bench) continue; const v = spanRet(nm, i, j, excess); if(v!=null){ s+=v; c++; } }
+  for(const nm in cl){ if(nm === P.bench) continue; if(pitOn() && !pitMember(nm, i)) continue; const v = spanRet(nm, i, j, excess); if(v!=null){ s+=v; c++; } }
   return c ? s/c : null;
 }
 const xsSpanCache = {};
 function xsSpanMeanCached(i, j, excess){
-  const k = i+'|'+j+'|'+excess;
+  const k = i+'|'+j+'|'+excess+'|'+pitOn();
   if(!(k in xsSpanCache)) xsSpanCache[k] = xsSpanMean(i, j, excess);
   return xsSpanCache[k];
 }
@@ -5050,6 +5143,7 @@ function matchedDriftFrom(anchors, excess, maxK=EP_MAXK){
     if(excess && bcl[a.i]==null) continue;
     for(const nm in cl){
       if(nm === P.bench) continue;
+      if(pitOn() && !pitMember(nm, a.i)) continue;
       const x = cl[nm]; if(!x || x[a.i]==null) continue;
       for(let k=0;k<=maxK && a.i+k<x.length;k++){
         const xk = x[a.i+k]; if(xk==null) continue;
@@ -5244,7 +5338,7 @@ function renderEpisodes(){
     `nothing in the outcome overlaps the signal period, and the episode's length and intensity are fully known and can be conditioned on (tables below). ` +
     `<b>Row E</b> is diagnostic, not tradeable: negative means dark buying absorbed selling while it lasted; positive means it accompanied the move. ` +
     `<b>Row F</b> is the variable-holding strategy the episode unit implies. Episodes still open at the sample end are shown above but excluded from D, E, F. ` +
-    `<b>matched base</b> = the cross-sectional mean of every name over the identical windows; <b>edge</b> = mean minus that. <b>perm p</b> slides each name's ` +
+    `<b>matched base</b> = the cross-sectional mean over the identical windows of names that were point-in-time NDX-100 members on the window's start day (toggle above; off = all names = survivor-biased); <b>edge</b> = mean minus that. <b>perm p</b> slides each name's ` +
     `entire window pattern by a random offset (count, lengths and spacing preserved) and asks how often the pooled placebo mean is at least as far from its centre ` +
     `as the real one. The ${epDir==='hi'?'':'mirrored '}streak row reproduces the D-streak events tab at band D${epDir==='hi'?epEnter+'&ndash;D10':'1&ndash;D'+(11-epEnter)}, ` +
     `streak length ${epMin}, same basis${epSig==='raw' ? '' : ' (but on the smoothed signal)'}.`;
@@ -5345,6 +5439,7 @@ document.getElementById('epList').addEventListener('click', e=>{
 document.getElementById('epTkr').addEventListener('change', e=>{ epTicker=e.target.value; renderEpisodes(); });
 for(const id of ['epEnter','epExit','epConfirm','epGap','epMin','epLag']) document.getElementById(id).addEventListener('change', renderEpisodes);
 document.getElementById('epExcess').addEventListener('change', e=>{ epExcess=e.target.checked; renderEpisodes(); });
+document.getElementById('epPit').addEventListener('change', e=>setPitUniverse(e.target.checked));
 const segWire = (id, attr, setter) => document.getElementById(id).addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
   setter(b.dataset[attr]); [...e.currentTarget.children].forEach(x=>x.classList.toggle('on', x===b)); renderEpisodes();

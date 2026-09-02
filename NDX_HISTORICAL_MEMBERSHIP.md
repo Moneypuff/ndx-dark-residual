@@ -75,13 +75,56 @@ announcement dates.
   not an exchange-of-record; a licensed constituent history (e.g. from the
   index provider) would supersede this file if one becomes available.
 
-## Next phases (not done here)
+## Phase 2 — wired into the matched baseline (done)
 
-1. Have `build_universe_panels` restrict each date's cross-section to that
-   date's members, so a name contributes to the DIX aggregate and the peer
-   baseline only while it was actually in the index.
-2. Rebuild the matched cross-sectional baseline and the circular-shift placebo
-   off the point-in-time membership, then re-report the single-name event and
-   episode edges. The survivor-biased peer base should collapse toward zero.
-3. Backfill FINRA/price panels for names that **left** the index inside the
-   window (currently absent), so exited members are not silently dropped.
+The membership file is now packed into the dashboard payload
+(`rel.member = {ticker: [[i0,i1), …]}`, position ranges into `rel.dates`;
+built by `load_ndx_membership_ranges` in `build_html`) and consumed by a
+**"point-in-time universe"** toggle (default **ON**) on the *Episodes vs
+streaks* and *D-streak events* tabs. When on, the matched cross-sectional
+baseline counts a name as a peer only on days it was an actual index member
+(gated at the window's start day); a name absent from the file is treated as
+always a member, and a payload without `rel.member` disables the feature.
+Single-name event/episode returns are unchanged — only the baseline and the
+`edge = mean − base` move.
+
+**How large the bias was (live payload, 2018-08 → 2026-09, excess of QQQ):**
+
+| horizon | baseline, all names | baseline, point-in-time | shift |
+|--------:|--------------------:|------------------------:|------:|
+| 21d | +0.52 | +0.08 | −0.45 |
+| 42d | +1.08 | +0.14 | −0.95 |
+| 63d | +1.67 | +0.18 | −1.49 |
+
+The all-names peer average beat QQQ by ~1.5pp/63d out of pure hindsight; the
+point-in-time baseline sits at ~0, which is the efficient-market null. This was
+almost entirely **look-ahead inclusion** — names that had price data but were
+not yet in the index on the early dates.
+
+**What it does to the headline edges** (exit-anchored, 63d, excess of QQQ):
+
+| signal | edge, all-names base | edge, point-in-time base |
+|--------|---------------------:|-------------------------:|
+| 5-day-MA high-D | −1.48 | **−0.00** |
+| raw 1-day high-D | −0.61 | **+0.92** |
+
+The "post-episode short signal" was a **baseline artifact** — it vanishes under
+an honest universe. The raw-signal high-D episode instead shows a small
+*positive* post-exit excess that the biased baseline had masked (still needs
+clustered inference before it is called real). The shipped JS reproduces these
+numbers exactly (verified end-to-end in a browser against the live payload).
+
+## Remaining
+
+- **Exited-name backfill.** The point-in-time baseline currently spans only the
+  ~102 surviving names we hold data for; the **80 names that left** the index
+  in-window (≈30% of all member-days: BIIB, ANSS, ATVI, SPLK, FISV, …) have no
+  FINRA/price panels. Because exits skew toward laggards, adding them can only
+  *lower* the baseline further, so the corrected edges above are **conservative
+  (upward-biased baseline ⇒ understated edge)**. Backfilling needs a Yahoo
+  price fetch (rate-limited in this session); wiring those tickers into
+  `build_universe_panels`' fetch list is the next step.
+- **DIX aggregate & cross-sectional L/S ranking.** The reconstructed dollar-DIX
+  and the *Cross-sectional L/S* decile ranking still use the full name set each
+  day; restricting *those* to point-in-time members (a ranking change, not a
+  baseline de-bias) is a separate follow-up.
