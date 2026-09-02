@@ -22,7 +22,11 @@ across the constituents) two ways:
                               (removes both the common level AND each name's
                               beta to the market dark-flow)
 
-Also includes a "D vs forward return" tab (1mo / 2mo / 3mo horizon toggle), and
+Also includes a "D vs forward return" tab (1mo / 2mo / 3mo horizon toggle), a
+"D-streak events" tab, an "Episodes vs streaks" tab that re-studies the same
+signal with one observation per accumulation EPISODE (hysteresis entry/exit,
+refractory windows, entry- / exit-anchored / during-episode returns) beside the
+streak-trigger method, and
 SPX / IWM tabs that show reconstructed dollar-DIX built the same way over the
 S&P 500 (iShares IVV holdings) and Russell 2000 (iShares IWM holdings) universes.
 
@@ -1416,7 +1420,7 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
                wl_res=None, wl_rel=None, wl_sectors=None,
                breadth_px=None, sector_data=None, contrib=None, spx_keep_days=378,
                plot_days=378, plot_start=None,
-               title=None, window=126, demo=False):
+               title=None, window=126, demo=False, adjclose_panel=None):
     # `bench_label` is what the residuals are actually taken against (e.g. the
     # reconstructed "NDX-DIX"); `bench` remains the ticker used for forward returns.
     bench_label = bench_label or bench
@@ -1524,6 +1528,10 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         "r42": pack(r42_panel.reindex(index=dark.index, columns=rel_cols), None),
         "r63": pack(r63_panel.reindex(index=dark.index, columns=rel_cols), None),
         "close": pack(close_panel.reindex(index=dark.index, columns=rel_cols), None),
+        # split-adjusted closes for the Episodes tab (raw `close` above is as-traded, which
+        # breaks a return measured across a split); absent in payloads built without them
+        "adj": (pack(adjclose_panel.reindex(index=dark.index, columns=rel_cols), None)
+                if adjclose_panel is not None else None),
         # index-level aggregate dark ratio: sum(off-exch vol)/sum(total vol) per day
         "ndx_agg": ([None if pd.isna(x) else round(float(x), 4)
                      for x in ndx_agg.reindex(dark.index).values]
@@ -1780,6 +1788,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <button data-t="contrib">Top DIX contributors</button>
     <button data-t="xs">Cross-sectional L/S</button>
     <button data-t="ev">D-streak events</button>
+    <button data-t="ep" title="the same signal as one row per EPISODE (hysteresis entry/exit, refractory windows, exit-anchored returns) side by side with the streak-trigger method">Episodes vs streaks</button>
     <button data-t="sectors">Sector DIX</button>
     <button data-t="spxtbl">SP500 decile table</button>
     <a class="tablink" href="earnings.html" target="_blank" rel="noopener" title="DPI into earnings vs post-earnings performance -- opens the earnings study in a new tab">Earnings DIX &#8599;</a>
@@ -1888,6 +1897,48 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <label class="chk" title="one-way transaction cost per trade side, in basis points (backtest only)">cost bps/side
       <input type="number" id="evCost" min="0" max="100" value="5" style="width:52px;background:var(--panel2);border:1px solid var(--grid);color:var(--ink);border-radius:6px;padding:5px 6px;font-size:12px;margin-left:4px"/>
     </label>
+  </div>
+  <div class="controls" id="ctl-ep" style="display:none">
+    <label class="chk" title="restrict the study to a single name (episodes, baselines and placebos all scoped to it)">ticker
+      <select id="epTkr" style="margin-left:4px"><option value="__ALL__">All names (pooled)</option></select>
+    </label>
+    <div class="seg" id="epSigSeg" title="which dark-ratio series the deciles are taken on">
+      <button data-sig="raw" class="on" title="off-exchange short / off-exchange total for that single day (what the D-streak events tab uses)">Raw 1-day ratio</button>
+      <button data-sig="ma5" title="5-day moving average of the raw ratio -- SqueezeMetrics' DPI construction">5-day MA (DPI)</button>
+    </div>
+    <div class="seg" id="epBasisSeg" title="which distribution defines the decile cutoffs">
+      <button data-b="trail" class="on">Per-name trailing (no look-ahead)</button>
+      <button data-b="name">Per-name full-sample</button>
+      <button data-b="pool">Pooled (global)</button>
+    </div>
+    <div class="seg" id="epDirSeg" title="study dark accumulation (top deciles) or distribution (bottom deciles; thresholds mirror)">
+      <button data-d="hi" class="on">High D (accumulation)</button>
+      <button data-d="lo">Low D (distribution)</button>
+    </div>
+    <label class="chk" title="an episode starts on the first day the decile reaches this level">enter &ge;D
+      <input type="number" id="epEnter" min="2" max="10" value="9" style="width:52px;background:var(--panel2);border:1px solid var(--grid);color:var(--ink);border-radius:6px;padding:5px 6px;font-size:12px;margin-left:4px"/>
+    </label>
+    <label class="chk" title="the episode continues while the decile stays at or above this level (hysteresis)">stay &ge;D
+      <input type="number" id="epExit" min="1" max="10" value="7" style="width:52px;background:var(--panel2);border:1px solid var(--grid);color:var(--ink);border-radius:6px;padding:5px 6px;font-size:12px;margin-left:4px"/>
+    </label>
+    <label class="chk" title="consecutive days below the stay level needed to confirm the exit">exit confirm
+      <input type="number" id="epConfirm" min="1" max="10" value="2" style="width:52px;background:var(--panel2);border:1px solid var(--grid);color:var(--ink);border-radius:6px;padding:5px 6px;font-size:12px;margin-left:4px"/>
+    </label>
+    <label class="chk" title="episodes separated by this many observed days or fewer are merged into one">merge gap
+      <input type="number" id="epGap" min="0" max="10" value="2" style="width:52px;background:var(--panel2);border:1px solid var(--grid);color:var(--ink);border-radius:6px;padding:5px 6px;font-size:12px;margin-left:4px"/>
+    </label>
+    <label class="chk" title="minimum observed days in state to count as an episode; also the streak length of the comparison row and the day the entry-anchored return starts">min length
+      <input type="number" id="epMin" min="1" max="30" value="3" style="width:52px;background:var(--panel2);border:1px solid var(--grid);color:var(--ink);border-radius:6px;padding:5px 6px;font-size:12px;margin-left:4px"/>
+    </label>
+    <label class="chk" title="trading days between a signal becoming knowable (FINRA posts after the close) and the close the return is measured from; applies to both methods">lag
+      <input type="number" id="epLag" min="0" max="5" value="1" style="width:52px;background:var(--panel2);border:1px solid var(--grid);color:var(--ink);border-radius:6px;padding:5px 6px;font-size:12px;margin-left:4px"/>
+    </label>
+    <div class="seg" id="epHSeg" title="forward-return horizon for the anchored rows">
+      <button data-h="21" class="on">1mo</button>
+      <button data-h="42">2mo</button>
+      <button data-h="63">3mo</button>
+    </div>
+    <label class="chk" title="measure every return in excess of QQQ over the identical window"><input type="checkbox" id="epExcess" checked/> excess vs QQQ</label>
   </div>
   <div class="stats" id="relStats" style="display:none"></div>
 </header>
@@ -2108,6 +2159,37 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div style="overflow-x:auto;max-height:560px;overflow-y:auto"><table id="evTable" class="ev-table"></table></div>
   </div>
   <div class="sub" id="evNote" style="margin:12px 22px 0;font-size:11px;line-height:1.55"></div>
+</div>
+<div class="rel-wrap" id="epWrap" style="display:none">
+  <div class="sub" id="epSub" style="margin:0 22px 4px"></div>
+  <div id="epNow" style="margin:0 22px 10px;padding:8px 12px;border:1px solid var(--grid);border-radius:8px;font-size:12px;line-height:1.9;color:var(--ink)"></div>
+  <div class="rel-card" style="margin:0 22px">
+    <h2>Same signal, two observation units &middot; forward return by method</h2>
+    <div class="sub" id="epCount" style="margin:0 0 8px;font-size:11.5px"></div>
+    <div style="overflow-x:auto"><table id="epTable" class="ev-table" style="min-width:900px"></table></div>
+  </div>
+  <div class="ev-grid" style="margin-top:20px">
+    <div class="rel-card">
+      <h2>Aligned on entry / trigger &middot; cumulative return, day 0 &rarr; +63</h2>
+      <svg id="epDriftEntry" class="scatter" viewBox="0 0 800 300" preserveAspectRatio="none" style="height:300px"></svg>
+      <div class="panel-stats" id="epDriftEntryStats"></div>
+    </div>
+    <div class="rel-card">
+      <h2>Aligned on confirmed exit &middot; cumulative return after the episode ends</h2>
+      <svg id="epDriftExit" class="scatter" viewBox="0 0 800 300" preserveAspectRatio="none" style="height:300px"></svg>
+      <div class="panel-stats" id="epDriftExitStats"></div>
+    </div>
+  </div>
+  <div class="rel-card" style="margin:20px 22px 0">
+    <h2>Does a longer or more intense episode matter? &middot; exit-anchored return by episode length, intensity and path</h2>
+    <div style="overflow-x:auto"><table id="epBuckets" class="ev-table"></table></div>
+    <div class="sub" id="epReg" style="margin-top:10px;font-size:11.5px;line-height:1.6"></div>
+  </div>
+  <div class="rel-card" style="margin:20px 22px 0">
+    <h2>Episode list <span id="epListNote" style="color:var(--mut);font-weight:400;font-size:11px"></span></h2>
+    <div style="overflow-x:auto;max-height:520px;overflow-y:auto"><table id="epList" class="ev-table" style="min-width:860px"></table></div>
+  </div>
+  <div class="sub" id="epNote" style="margin:12px 22px 40px;font-size:11px;line-height:1.55"></div>
 </div>
 <div class="rel-wrap" id="sectorsWrap" style="display:none">
   <div style="margin:0 22px 8px">
@@ -4661,6 +4743,618 @@ document.getElementById('evHi').addEventListener('change', e=>{ evHi=+e.target.v
 document.getElementById('evBasisSeg').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return; evBasis=b.dataset.b; [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b)); renderEvents(); });
 document.getElementById('evExcess').addEventListener('change', e=>{ evExcess=e.target.checked; renderEvents(); });
 
+// -------------------------------------------------------------------------
+// Tab: Episodes vs streaks -- the same dark-ratio signal studied two ways, side by
+// side, so the choice of OBSERVATION UNIT can be judged on its own.
+//
+//   A. Streak trigger (the D-streak events tab's method): N consecutive days inside
+//      the band fires one event on day N; a one-day wobble out of the band and back
+//      fires again, and no refractory period keeps the forward windows apart.
+//   B. Episode: the name ENTERS the dark state when its decile reaches `enter`, STAYS
+//      in it while the decile holds at or above `exit`, and LEAVES only after
+//      `confirm` consecutive days below `exit` (hysteresis, so wobbles don't
+//      fragment one accumulation into several); episodes separated by <= `gap`
+//      days are merged. Each episode is ONE row: entry day t0, last in-state day t1,
+//      observed length L, mean decile (intensity), the day the exit became knowable.
+//
+// Every return is measured from split-adjusted closes (P.rel.adj when packed) with
+// the same execution lag for both methods, so the only thing that differs between
+// the rows of the comparison table is how observations are counted:
+//   entry-anchored  = close[t0 + minLen - 1 + lag] -> +h      (tradeable; L unknown)
+//   exit-anchored   = close[exitKnown + lag]       -> +h      (window starts AFTER the
+//                                                              episode; L, intensity known)
+//   during          = close[t0 - 1] -> close[t1]              (what price did while dark)
+//   hold-while-dark = close[entry + lag] -> close[exitKnown + lag]   (variable hold)
+// A refractory rule drops any anchored observation whose h-day window would overlap
+// the previous kept window in the same name, so within-name observations are
+// non-overlapping in time. Cross-name clustering is handled by the date-matched
+// baseline and the episode-pattern circular-shift placebo.
+// -------------------------------------------------------------------------
+let epTicker = '__ALL__', epSig = 'raw', epBasis = 'trail', epDir = 'hi';
+let epEnter = 9, epExit = 7, epConfirm = 2, epGap = 2, epMin = 3, epLag = 1, epH = '21', epExcess = true;
+let epSort = {key: 't0', dir: -1};
+const EP_MAXK = 63;
+
+function epClose(){ return P.rel.adj || P.rel.close; }
+
+// 5-day moving average of the raw ratio (mean of the last 5 non-null prints, needs all 5)
+function smooth5(d){
+  const out = new Array(d.length).fill(null), buf = [];
+  for(let i=0;i<d.length;i++){
+    const v = d[i];
+    if(v==null){ out[i] = null; continue; }
+    buf.push(v); if(buf.length > 5) buf.shift();
+    out[i] = buf.length === 5 ? buf.reduce((s,c)=>s+c,0)/5 : null;
+  }
+  return out;
+}
+
+// decile series per name for (basis, signal); raw reuses the events tab's cache
+const decsCacheEp = {};
+function decsByNameEp(basis, sig){
+  if(sig === 'raw') return decsByName(basis);
+  const key = basis + '|' + sig;
+  if(decsCacheEp[key]) return decsCacheEp[key];
+  const bench = P.bench, dser = P.rel.d;
+  const names = Object.keys(dser).filter(n => n !== bench && P.rel.r21[n]);
+  const sm = {}; for(const nm of names) if(dser[nm]) sm[nm] = smooth5(dser[nm]);
+  let poolB = null;
+  if(basis === 'pool'){
+    const all = [];
+    for(const nm of names){ const a=sm[nm]; if(a) for(const v of a) if(v!=null) all.push(v); }
+    poolB = decileBoundaries(all);
+  }
+  const out = {};
+  for(const nm of names){
+    const d = sm[nm]; if(!d) continue;
+    if(basis === 'trail'){ out[nm] = trailingDecileSeries(d); }
+    else { const b = basis === 'pool' ? poolB : decileBoundaries(d); if(!b) continue; out[nm] = d.map(v => v==null ? null : decileOf(v, b)); }
+  }
+  decsCacheEp[key] = out;
+  return out;
+}
+
+// Episodes for one name's decile series. `dir`='lo' studies distribution (bottom
+// deciles) by mirroring the scale (d -> 11-d) so enter/exit read the same way.
+// Null deciles are "no observation": they neither extend nor break the state.
+function buildEpisodes(decs, enter, exitBelow, confirm, gap, minLen){
+  const eps = [];
+  let inEp = false, t0 = -1, t1 = -1, below = 0;
+  const T = decs.length;
+  for(let i=0;i<T;i++){
+    const d = decs[i]; if(d==null) continue;
+    if(!inEp){
+      if(d >= enter){ inEp = true; t0 = i; t1 = i; below = 0; }
+      continue;
+    }
+    if(d >= exitBelow){ t1 = i; below = 0; }
+    else {
+      below++;
+      if(below >= confirm){
+        eps.push({t0, t1, exitAt: i, censored: false});
+        inEp = false; below = 0;
+      }
+    }
+  }
+  if(inEp) eps.push({t0, t1, exitAt: null, censored: true});
+  // merge episodes separated by <= gap observed days
+  const merged = [];
+  for(const e of eps){
+    const prev = merged[merged.length-1];
+    if(prev && !prev.censored){
+      let between = 0; for(let i=prev.t1+1;i<e.t0;i++) if(decs[i]!=null) between++;
+      if(between <= gap){
+        prev.t1 = e.t1; prev.exitAt = e.exitAt; prev.censored = e.censored; continue;
+      }
+    }
+    merged.push(e);
+  }
+  // finalize: observed length, intensity (mean decile over t0..t1), the day the episode reached minLen
+  const out = [];
+  for(const e of merged){
+    let L = 0, entryAt = null, s = 0;
+    for(let i=e.t0;i<=e.t1;i++){ const d = decs[i]; if(d==null) continue; L++; s += d; if(L === minLen) entryAt = i; }
+    if(L < minLen) continue;
+    out.push({t0: e.t0, t1: e.t1, exitAt: e.exitAt, censored: e.censored, L, meanDec: s/L, entryAt});
+  }
+  return out;
+}
+
+function mirrorDecs(d){ return d.map(v => v==null ? null : 11 - v); }
+
+// all episodes across the selected names, with a per-name episode-id lookup
+function collectEpisodes(decs, dir){
+  const byName = {}, all = [];
+  for(const nm in decs){
+    const d = dir === 'lo' ? mirrorDecs(decs[nm]) : decs[nm];
+    const eps = buildEpisodes(d, epEnter, epExit, epConfirm, epGap, epMin);
+    byName[nm] = eps;
+    eps.forEach((e, k) => { e.nm = nm; e.id = nm + '#' + k; all.push(e); });
+  }
+  return {byName, all};
+}
+
+// % return close[i] -> close[j] (excess of bench over the identical span when asked)
+function spanRet(nm, i, j, excess){
+  const cl = epClose(), c = cl[nm], bc = cl[P.bench];
+  if(!c || i==null || j==null || i < 0 || j >= c.length || j <= i || c[i]==null || c[j]==null) return null;
+  let v = (c[j]/c[i] - 1) * 100;
+  if(excess){ if(!bc || bc[i]==null || bc[j]==null) return null; v -= (bc[j]/bc[i] - 1) * 100; }
+  return v;
+}
+
+// cross-sectional mean of the same span over ALL names (the date-matched control)
+function xsSpanMean(i, j, excess){
+  const cl = epClose(); let s=0, c=0;
+  for(const nm in cl){ if(nm === P.bench) continue; const v = spanRet(nm, i, j, excess); if(v!=null){ s+=v; c++; } }
+  return c ? s/c : null;
+}
+const xsSpanCache = {};
+function xsSpanMeanCached(i, j, excess){
+  const k = i+'|'+j+'|'+excess;
+  if(!(k in xsSpanCache)) xsSpanCache[k] = xsSpanMean(i, j, excess);
+  return xsSpanCache[k];
+}
+
+// keep only observations whose [i, j] window starts after the previous kept window
+// in the same name has closed (non-overlapping within name)
+function refractory(obs){
+  const last = {}; const out = [];
+  for(const o of [...obs].sort((a,b)=> a.nm === b.nm ? a.i - b.i : (a.nm < b.nm ? -1 : 1))){
+    const l = last[o.nm];
+    if(l != null && o.i < l){ o.dropped = true; continue; }
+    last[o.nm] = o.j; out.push(o);
+  }
+  return out;
+}
+
+// fraction of observations whose window overlaps another observation's window in
+// the same name (the "same episode counted twice" diagnostic)
+function overlapShare(obs){
+  if(obs.length < 2) return 0;
+  const byName = {}; for(const o of obs) (byName[o.nm] = byName[o.nm] || []).push(o);
+  let hit = 0;
+  for(const nm in byName){
+    const a = byName[nm].sort((x,y)=>x.i-y.i);
+    for(let k=0;k<a.length;k++){
+      const o = a[k];
+      const ov = (k > 0 && a[k-1].j > o.i) || (k+1 < a.length && a[k+1].i < o.j);
+      if(ov) hit++;
+    }
+  }
+  return hit/obs.length*100;
+}
+
+// Build the observation set for one method. Each obs: {nm, i, j, ep (episode id)}.
+function methodObs(method, eps, decs, h, lag){
+  const obs = [];
+  const T = P.rel.dates.length;
+  if(method === 'streak'){
+    // the D-streak events tab's rule on the same decile series: band = enter..10 (or
+    // its mirror), run = minLen, one trigger on the Nth day, no refractory
+    for(const nm in decs){
+      const d = epDir === 'lo' ? mirrorDecs(decs[nm]) : decs[nm];
+      const epsN = eps.byName[nm] || [];
+      for(const t of streakEntries(d, epEnter, 10, epMin)){
+        const i = t + lag; if(i + h >= T) continue;
+        const ep = epsN.find(e => t >= e.t0 && t <= e.t1);
+        obs.push({nm, i, j: i + h, ep: ep ? ep.id : nm + '@' + t, t});
+      }
+    }
+    return obs;
+  }
+  for(const e of eps.all){
+    if(method === 'entry' || method === 'entryR'){
+      if(e.entryAt == null) continue;
+      const i = e.entryAt + lag; if(i + h >= T) continue;
+      obs.push({nm: e.nm, i, j: i + h, ep: e.id, t: e.entryAt, e});
+    } else if(method === 'exit'){
+      if(e.censored) continue;
+      const i = e.exitAt + lag; if(i + h >= T) continue;
+      obs.push({nm: e.nm, i, j: i + h, ep: e.id, t: e.exitAt, e});
+    } else if(method === 'during'){
+      if(e.censored || e.t0 < 1) continue;
+      obs.push({nm: e.nm, i: e.t0 - 1, j: e.t1, ep: e.id, t: e.t0, e});
+    } else if(method === 'hold'){
+      if(e.censored || e.entryAt == null) continue;
+      const i = e.entryAt + lag, j = e.exitAt + lag;
+      if(j >= T || j <= i) continue;
+      obs.push({nm: e.nm, i, j, ep: e.id, t: e.entryAt, e});
+    }
+  }
+  return (method === 'entryR' || method === 'exit') ? refractory(obs) : obs;
+}
+
+// realized value per obs (drops those without a realized return)
+function realize(obs, excess){
+  const out = [];
+  for(const o of obs){ const v = spanRet(o.nm, o.i, o.j, excess); if(v!=null){ o.v = v; out.push(o); } }
+  return out;
+}
+
+// Circular-shift placebo on the observation pattern: each name's whole set of
+// (i, j) windows is slid by one random offset per draw (lengths, count and spacing
+// preserved), values recomputed, and the pooled mean compared with the real one.
+function permPValueObs(obs, excess, B=400){
+  if(obs.length < 3) return null;
+  const cl = epClose(), byName = {};
+  for(const o of obs) (byName[o.nm] = byName[o.nm] || []).push(o);
+  const rng = {};
+  for(const nm in byName){
+    const c = cl[nm]; let f=-1, l=-1;
+    for(let i=0;i<c.length;i++) if(c[i]!=null){ if(f<0) f=i; l=i; }
+    rng[nm] = {f, span: l - f + 1};
+  }
+  const realMean = mean(obs.map(o=>o.v));
+  const nulls = [];
+  for(let b=0;b<B;b++){
+    let s=0, n=0;
+    for(const nm in byName){
+      const {f, span} = rng[nm]; if(span < 2) continue;
+      const off = Math.floor(Math.random()*span);
+      for(const o of byName[nm]){
+        const len = o.j - o.i;
+        const i = f + ((o.i - f + off) % span), j = i + len;
+        const v = spanRet(nm, i, j, excess);
+        if(v!=null){ s += v; n++; }
+      }
+    }
+    if(n) nulls.push(s/n);
+  }
+  if(nulls.length < 30) return null;
+  const nm0 = mean(nulls), dev = Math.abs(realMean - nm0);
+  let ge = 0; for(const m of nulls) if(Math.abs(m - nm0) >= dev) ge++;
+  return {p: (ge+1)/(nulls.length+1), B: nulls.length};
+}
+
+// summary stats for one method's realized observations
+function summarize(obs, excess, epsAll){
+  const n = obs.length;
+  if(!n) return {n: 0};
+  const vals = obs.map(o=>o.v), m = mean(vals), sd = stdev(vals, m);
+  const ids = new Set(obs.map(o=>o.ep));
+  let bs=0, bc=0; for(const o of obs){ const b = xsSpanMeanCached(o.i, o.j, excess); if(b!=null){ bs+=b; bc++; } }
+  const base = bc ? bs/bc : null;
+  const holdDays = obs.map(o=>o.j - o.i);
+  return {n, eps: ids.size, m, se: sd==null ? null : sd/Math.sqrt(n), md: medianOf(vals),
+          hit: vals.filter(v=>v>0).length/n*100, base, edge: base==null ? null : m - base,
+          ov: overlapShare(obs), perm: permPValueObs(obs, excess), hold: mean(holdDays)};
+}
+
+// mean cumulative path (+/-1 SE) from each anchor, k = 0..maxK, split-adjusted closes
+function driftFrom(anchors, excess, maxK=EP_MAXK){
+  const cl = epClose(), bcl = cl[P.bench];
+  const sums = new Array(maxK+1).fill(0), sqs = new Array(maxK+1).fill(0), ns = new Array(maxK+1).fill(0);
+  for(const a of anchors){
+    const c = cl[a.nm]; if(!c || c[a.i]==null || (excess && bcl[a.i]==null)) continue;
+    for(let k=0;k<=maxK && a.i+k<c.length;k++){
+      const ck = c[a.i+k]; if(ck==null) continue;
+      let v = (ck/c[a.i]-1)*100;
+      if(excess){ const bk = bcl[a.i+k]; if(bk==null) continue; v -= (bk/bcl[a.i]-1)*100; }
+      sums[k]+=v; sqs[k]+=v*v; ns[k]++;
+    }
+  }
+  const meanP=[], seP=[];
+  for(let k=0;k<=maxK;k++){
+    if(!ns[k]){ meanP.push(null); seP.push(null); continue; }
+    const m = sums[k]/ns[k]; meanP.push(m);
+    seP.push(ns[k]>1 ? Math.sqrt(Math.max(0, sqs[k]/ns[k]-m*m))/Math.sqrt(ns[k]) : 0);
+  }
+  return {mean: meanP, se: seP, n: ns};
+}
+function matchedDriftFrom(anchors, excess, maxK=EP_MAXK){
+  const cl = epClose(), bcl = cl[P.bench];
+  const sums = new Array(maxK+1).fill(0), ns = new Array(maxK+1).fill(0);
+  for(const a of anchors){
+    const s = new Array(maxK+1).fill(0), c = new Array(maxK+1).fill(0);
+    if(excess && bcl[a.i]==null) continue;
+    for(const nm in cl){
+      if(nm === P.bench) continue;
+      const x = cl[nm]; if(!x || x[a.i]==null) continue;
+      for(let k=0;k<=maxK && a.i+k<x.length;k++){
+        const xk = x[a.i+k]; if(xk==null) continue;
+        let v = (xk/x[a.i]-1)*100;
+        if(excess){ const bk = bcl[a.i+k]; if(bk==null) continue; v -= (bk/bcl[a.i]-1)*100; }
+        s[k]+=v; c[k]++;
+      }
+    }
+    for(let k=0;k<=maxK;k++) if(c[k]){ sums[k]+=s[k]/c[k]; ns[k]++; }
+  }
+  return sums.map((s,k)=> ns[k] ? s/ns[k] : null);
+}
+
+// multi-line drift chart: series = [{mean, se?, color, label, dash?}]
+function renderEpDrift(series, maxK=EP_MAXK, hMark){
+  const w=800, H=300, padL=52, padR=16, padT=14, padB=30;
+  let lo=0, hi=0, any=false;
+  for(const s of series) s.mean.forEach((m,k)=>{ if(m==null) return; any=true; const e=(s.se&&s.se[k])||0; lo=Math.min(lo,m-e); hi=Math.max(hi,m+e); });
+  if(!any) return `<text x="400" y="150" font-size="12" fill="var(--mut)" text-anchor="middle">no observations for these settings</text>`;
+  const pad=(hi-lo)*0.12||1; lo-=pad; hi+=pad;
+  const X = k => padL + (w-padL-padR)*k/maxK;
+  const Y = v => (H-padB) - (H-padT-padB)*((v-lo)/(hi-lo));
+  let grid='';
+  for(const t of niceTicks(lo, hi, 5)){
+    const y=Y(t), zero=Math.abs(t)<1e-9;
+    grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w-padR}" y2="${y.toFixed(1)}" stroke="${zero?'var(--zero)':'var(--grid)'}" stroke-width="1"${zero?'':' stroke-dasharray="2,3"'}/>`
+          + `<text x="${padL-6}" y="${(y+3).toFixed(1)}" font-size="9.5" fill="var(--mut)" text-anchor="end">${fmtPct(t)}</text>`;
+  }
+  for(const k of [0,21,42,63]){
+    const x=X(k), isH = hMark != null && k === hMark;
+    grid += `<line x1="${x.toFixed(1)}" y1="${padT}" x2="${x.toFixed(1)}" y2="${(H-padB).toFixed(1)}" stroke="${isH?'var(--accent)':'var(--grid)'}" stroke-width="${isH?1:0.5}" stroke-dasharray="2,3"/>`
+          + `<text x="${x.toFixed(1)}" y="${(H-padB+13).toFixed(1)}" font-size="9.5" fill="var(--mut)" text-anchor="middle">${k===0?'day 0':'+'+k}</text>`;
+  }
+  const line = (pts, color, dash, width) => {
+    let d='', started=false;
+    pts.forEach((v,k)=>{ if(v==null){ started=false; return; } d += (started?'L':'M') + X(k).toFixed(1) + ',' + Y(v).toFixed(1) + ' '; started=true; });
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${width}"${dash?` stroke-dasharray="${dash}"`:''} stroke-linejoin="round"/>`;
+  };
+  let body='';
+  for(const s of series){
+    if(s.se){
+      let up='', dn='';
+      for(let k=0;k<=maxK;k++){ const m=s.mean[k]; if(m==null) continue; up += (up?'L':'M') + X(k).toFixed(1) + ',' + Y(m+(s.se[k]||0)).toFixed(1) + ' '; }
+      for(let k=maxK;k>=0;k--){ const m=s.mean[k]; if(m==null) continue; dn += 'L' + X(k).toFixed(1) + ',' + Y(m-(s.se[k]||0)).toFixed(1) + ' '; }
+      if(up) body += `<path d="${up}${dn}Z" fill="${s.color}" opacity="0.10"/>`;
+    }
+    body += line(s.mean, s.color, s.dash, s.dash ? 1.2 : 2);
+  }
+  const legend = `<text x="${(w-padR).toFixed(1)}" y="${(padT+9).toFixed(1)}" font-size="9.5" text-anchor="end">`
+    + series.map(s=>`<tspan fill="${s.color}" font-weight="${s.dash?'400':'700'}">${s.label}</tspan>`).join(`<tspan fill="var(--mut)"> &#183; </tspan>`) + `</text>`;
+  return `${grid}${body}${legend}`;
+}
+
+// OLS of y on [1, x1, x2] with cluster-robust (Liang-Zeger) standard errors
+function olsCluster(rows){
+  const n = rows.length; if(n < 8) return null;
+  const XtX = [[0,0,0],[0,0,0],[0,0,0]], Xty = [0,0,0];
+  const xr = r => [1, r.x1, r.x2];
+  for(const r of rows){ const x = xr(r); for(let a=0;a<3;a++){ Xty[a] += x[a]*r.y; for(let b=0;b<3;b++) XtX[a][b] += x[a]*x[b]; } }
+  const inv3 = M => {
+    const [a,b,c] = M[0], [d,e,f] = M[1], [g,h,i] = M[2];
+    const det = a*(e*i-f*h) - b*(d*i-f*g) + c*(d*h-e*g);
+    if(Math.abs(det) < 1e-12) return null;
+    return [[(e*i-f*h)/det, (c*h-b*i)/det, (b*f-c*e)/det],
+            [(f*g-d*i)/det, (a*i-c*g)/det, (c*d-a*f)/det],
+            [(d*h-e*g)/det, (b*g-a*h)/det, (a*e-b*d)/det]];
+  };
+  const A = inv3(XtX); if(!A) return null;
+  const beta = [0,1,2].map(a => A[a][0]*Xty[0] + A[a][1]*Xty[1] + A[a][2]*Xty[2]);
+  const groups = {};
+  for(const r of rows){ const x = xr(r); const e = r.y - (beta[0] + beta[1]*r.x1 + beta[2]*r.x2); const g = groups[r.g] = groups[r.g] || [0,0,0]; for(let a=0;a<3;a++) g[a] += x[a]*e; }
+  const G = Object.keys(groups).length; if(G < 3) return null;
+  const meat = [[0,0,0],[0,0,0],[0,0,0]];
+  for(const g in groups){ const s = groups[g]; for(let a=0;a<3;a++) for(let b=0;b<3;b++) meat[a][b] += s[a]*s[b]; }
+  const mul = (X,Y) => X.map((row,i)=> [0,1,2].map(j => row[0]*Y[0][j] + row[1]*Y[1][j] + row[2]*Y[2][j]));
+  const V = mul(mul(A, meat), A), adj = G/(G-1) * (n-1)/(n-3);
+  const se = [0,1,2].map(a => Math.sqrt(Math.max(0, V[a][a]*adj)));
+  return {beta, se, t: beta.map((b,a)=> se[a]>0 ? b/se[a] : null), n, G};
+}
+
+function epBandLabel(){
+  return epDir === 'hi'
+    ? `enter at &ge;D${epEnter}, stay while &ge;D${epExit}, exit after ${epConfirm}d &lt;D${epExit}`
+    : `enter at &le;D${11-epEnter}, stay while &le;D${11-epExit}, exit after ${epConfirm}d &gt;D${11-epExit}`;
+}
+
+function renderEpisodes(){
+  const num = (id, lo, hi, dflt) => Math.max(lo, Math.min(hi, parseInt(document.getElementById(id).value||dflt, 10)));
+  epEnter = num('epEnter', 2, 10, 9); epExit = num('epExit', 1, 10, 7);
+  if(epExit > epEnter){ epExit = epEnter; document.getElementById('epExit').value = epExit; }
+  epConfirm = num('epConfirm', 1, 10, 2); epGap = num('epGap', 0, 10, 2);
+  epMin = num('epMin', 1, 30, 3); epLag = num('epLag', 0, 5, 1);
+  const h = parseInt(epH, 10), oneTkr = epTicker === '__ALL__' ? null : epTicker;
+  const cl = epClose();
+  const adjNote = P.rel.adj ? '' : ' <span style="color:var(--neg)">(payload lacks split-adjusted closes -- regenerate the dashboard; using raw closes)</span>';
+  for(const k in xsSpanCache) delete xsSpanCache[k];
+
+  document.getElementById('epSub').innerHTML =
+    `Signal = ${epSig === 'raw' ? 'RAW 1-day FINRA dark ratio' : '5-day MA of the dark ratio (DPI)'} in ${EV_BASIS_LBL[epBasis]} &middot; ` +
+    `${epDir === 'hi' ? 'accumulation (high D)' : 'distribution (low D)'}: ${epBandLabel()}; merge gaps &le;${epGap}d; min length ${epMin}d ` +
+    `&middot; execution lag ${epLag}d &middot; ${HMONTH[epH]} horizon` + (epExcess ? ` &middot; excess of ${P.bench}` : ' &middot; raw returns') +
+    (oneTkr ? ` &middot; <b>${oneTkr}</b> only` : ` &middot; all names pooled`) + adjNote;
+
+  let decs = decsByNameEp(epBasis, epSig);
+  if(oneTkr) decs = decs[oneTkr] ? {[oneTkr]: decs[oneTkr]} : {};
+  const eps = collectEpisodes(decs, epDir);
+
+  // ---- now: active episodes
+  const L = P.rel.dates.length - 1, asOf = P.rel.dates[L];
+  const active = eps.all.filter(e => e.censored && e.t1 >= L - 3).sort((a,b)=>b.L-a.L);
+  const nowEl = document.getElementById('epNow');
+  if(active.length){
+    nowEl.innerHTML = `<b style="color:#e3b341">&#9889; ${active.length} open episode${active.length>1?'s':''} as of ${asOf}</b> ` +
+      `<span class="mut">(entered, not yet exited -- not scored until the exit is confirmed)</span><br>` +
+      active.slice(0,14).map(e=>`<span style="border:1px solid #e3b341;border-radius:6px;padding:2px 8px;margin-right:4px;background:rgba(227,179,65,.09);white-space:nowrap"><b style="color:#e3b341">${e.nm}</b> ${e.L}d since ${P.rel.dates[e.t0]} &middot; mean D${e.meanDec.toFixed(1)}</span>`).join(' ') +
+      (active.length > 14 ? ` <span class="mut">+${active.length-14} more</span>` : '');
+    nowEl.style.borderColor = '#e3b341';
+  } else {
+    const done = eps.all.filter(e=>!e.censored).sort((a,b)=>b.t1-a.t1)[0];
+    nowEl.innerHTML = `No open episode as of <b>${asOf}</b>.` + (done ? ` Last completed: <b>${done.nm}</b> ${P.rel.dates[done.t0]} &rarr; ${P.rel.dates[done.t1]} (${done.L}d, mean D${done.meanDec.toFixed(1)}).` : ' No completed episodes for these settings.');
+    nowEl.style.borderColor = 'var(--grid)';
+  }
+
+  // ---- comparison table
+  const METHODS = [
+    {k:'streak', lbl:'A. Streak trigger <span class="mut">(D-streak events tab: run of ' + epMin + ' in band, no refractory)</span>', hz:true},
+    {k:'entry',  lbl:'B. Episode entry <span class="mut">(one per episode, day ' + epMin + ')</span>', hz:true},
+    {k:'entryR', lbl:'C. Episode entry, refractory <span class="mut">(windows never overlap within a name)</span>', hz:true},
+    {k:'exit',   lbl:'D. Episode exit-anchored, refractory <span class="mut">(window starts after the exit is known)</span>', hz:true},
+    {k:'during', lbl:'E. During the episode <span class="mut">(close before entry &rarr; last in-state close)</span>', hz:false},
+    {k:'hold',   lbl:'F. Hold while dark <span class="mut">(entry + lag &rarr; exit-known + lag)</span>', hz:false},
+  ];
+  const res = {};
+  for(const M of METHODS){
+    const obs = realize(methodObs(M.k, eps, decs, h, epLag), epExcess);
+    res[M.k] = {obs, s: summarize(obs, epExcess, eps.all)};
+  }
+  const pf = v => v==null ? '--' : v.toFixed(3);
+  let html = `<thead><tr><th>Method</th><th title="realized observations">obs</th><th title="distinct episodes those observations fall in">episodes</th>` +
+    `<th title="share of observations whose return window overlaps another observation's window in the same name">overlap</th>` +
+    `<th>mean</th><th>&plusmn;SE</th><th>median</th><th>hit</th><th title="cross-sectional mean of ALL names over the identical windows">matched base</th><th>edge</th>` +
+    `<th title="two-sided p from ${400} circular-shift placebos of each name's whole window pattern">perm p</th><th title="mean window length in trading days">days</th></tr></thead><tbody>`;
+  for(const M of METHODS){
+    const s = res[M.k].s;
+    if(!s.n){ html += `<tr><td>${M.lbl}</td><td>0</td><td colspan="10" class="mut">no observations</td></tr>`; continue; }
+    const ovCls = s.ov > 0 ? 'n' : 'p';
+    html += `<tr><td>${M.lbl}</td><td>${s.n.toLocaleString()}</td><td>${s.eps.toLocaleString()}</td>` +
+      `<td><span class="${ovCls}">${s.ov.toFixed(0)}%</span></td>` +
+      `<td><span class="${s.m>=0?'p':'n'}">${fmtSigned(s.m)}</span></td><td>${s.se==null?'--':s.se.toFixed(2)+'%'}</td>` +
+      `<td>${fmtSigned(s.md)}</td><td>${s.hit.toFixed(0)}%</td><td>${fmtSigned(s.base)}</td>` +
+      `<td><span class="${(s.edge||0)>=0?'p':'n'}">${fmtSigned(s.edge)}</span></td>` +
+      `<td>${s.perm ? pf(s.perm.p) : '--'}</td><td>${s.hold==null?'--':s.hold.toFixed(0)}</td></tr>`;
+  }
+  html += `</tbody>`;
+  document.getElementById('epTable').innerHTML = html;
+  const nEp = eps.all.length, nDone = eps.all.filter(e=>!e.censored).length;
+  document.getElementById('epCount').innerHTML =
+    `<b>${nEp.toLocaleString()}</b> episodes of &ge;${epMin} observed days ` + (oneTkr ? `in <b>${oneTkr}</b>` : `across ${Object.keys(decs).length} names`) +
+    ` (<b>${nDone.toLocaleString()}</b> with a confirmed exit) &middot; the streak rule fires <b>${res.streak.obs.length.toLocaleString()}</b> triggers inside <b>${res.streak.s.eps||0}</b> of them.`;
+
+  // ---- drift charts
+  const entryA = res.entryR.obs, streakA = res.streak.obs, exitA = res.exit.obs;
+  const dS = driftFrom(streakA, epExcess), dE = driftFrom(entryA, epExcess), bE = matchedDriftFrom(entryA, epExcess);
+  document.getElementById('epDriftEntry').innerHTML = renderEpDrift([
+    {mean: bE, color: 'var(--mut)', label: 'matched base (episode anchors)', dash: '4,3'},
+    {mean: dS.mean, color: '#58a6ff', label: `A streak trigger (n ${streakA.length})`},
+    {mean: dE.mean, se: dE.se, color: '#e3b341', label: `C episode entry, refractory (n ${entryA.length})`},
+  ], EP_MAXK, h);
+  const dX = driftFrom(exitA, epExcess), bX = matchedDriftFrom(exitA, epExcess);
+  document.getElementById('epDriftExit').innerHTML = renderEpDrift([
+    {mean: bX, color: 'var(--mut)', label: 'matched base (same dates)', dash: '4,3'},
+    {mean: dX.mean, se: dX.se, color: '#3fb950', label: `D exit-anchored (n ${exitA.length})`},
+  ], EP_MAXK, h);
+  const at = (d, k) => d.mean[k]==null ? '--' : fmtSigned(d.mean[k]);
+  document.getElementById('epDriftEntryStats').innerHTML =
+    `<span>day +${h}: streak <b>${at(dS,h)}</b> vs episode <b>${at(dE,h)}</b> <span class="mut">(base ${bE[h]==null?'--':fmtSigned(bE[h])})</span></span>` +
+    `<span>n at +63: ${dS.n[63]} / ${dE.n[63]}</span>`;
+  document.getElementById('epDriftExitStats').innerHTML =
+    `<span>day +${h}: <b>${at(dX,h)}</b> <span class="mut">(base ${bX[h]==null?'--':fmtSigned(bX[h])})</span></span><span>n at +63: ${dX.n[63]}</span>`;
+
+  // ---- length x intensity conditioning (exit-anchored, plus during/entry for context)
+  renderEpBuckets(res, h);
+  renderEpList(eps, res, h);
+
+  document.getElementById('epNote').innerHTML =
+    `<b>Reading the table.</b> Rows A&ndash;D measure the same ${HMONTH[epH]} forward return from split-adjusted closes with the same ${epLag}-day lag; ` +
+    `only the observation unit differs. <b>obs vs episodes</b> is the double-counting ratio: when A's obs exceed its episodes, the streak rule fired more than once ` +
+    `inside one accumulation (it re-fires after any one-day wobble out of the band). <b>overlap</b> is the share of observations whose forward window shares days ` +
+    `with another observation in the same name -- those are not independent draws, whatever the SE says. Rows C and D enforce a refractory period so within-name ` +
+    `windows never overlap; the SE there is at least honest about n. ` +
+    `<b>Row D</b> is the test the episode design exists for: its window starts only after the exit is confirmed (${epConfirm} days below the stay threshold), so ` +
+    `nothing in the outcome overlaps the signal period, and the episode's length and intensity are fully known and can be conditioned on (tables below). ` +
+    `<b>Row E</b> is diagnostic, not tradeable: negative means dark buying absorbed selling while it lasted; positive means it accompanied the move. ` +
+    `<b>Row F</b> is the variable-holding strategy the episode unit implies. Episodes still open at the sample end are shown above but excluded from D, E, F. ` +
+    `<b>matched base</b> = the cross-sectional mean of every name over the identical windows; <b>edge</b> = mean minus that. <b>perm p</b> slides each name's ` +
+    `entire window pattern by a random offset (count, lengths and spacing preserved) and asks how often the pooled placebo mean is at least as far from its centre ` +
+    `as the real one. The ${epDir==='hi'?'':'mirrored '}streak row reproduces the D-streak events tab at band D${epDir==='hi'?epEnter+'&ndash;D10':'1&ndash;D'+(11-epEnter)}, ` +
+    `streak length ${epMin}, same basis${epSig==='raw' ? '' : ' (but on the smoothed signal)'}.`;
+}
+
+function bucketOf(L){ return L <= 5 ? '&le;5d' : L <= 10 ? '6&ndash;10d' : L <= 20 ? '11&ndash;20d' : '&gt;20d'; }
+
+function renderEpBuckets(res, h){
+  const el = document.getElementById('epBuckets');
+  const exitObs = res.exit.obs, entryObs = res.entryR.obs, durObs = res.during.obs;
+  if(exitObs.length < 3){ el.innerHTML = `<tbody><tr><td class="mut">fewer than 3 exit-anchored observations</td></tr></tbody>`; document.getElementById('epReg').innerHTML=''; return; }
+  const byEp = {}; for(const o of durObs) byEp[o.ep] = o.v;
+  const entByEp = {}; for(const o of entryObs) entByEp[o.ep] = o.v;
+  const cellStats = list => {
+    if(!list.length) return null;
+    const v = list.map(o=>o.v), m = mean(v);
+    let bs=0, bc=0; for(const o of list){ const b = xsSpanMeanCached(o.i, o.j, epExcess); if(b!=null){ bs+=b; bc++; } }
+    return {n: list.length, m, hit: v.filter(x=>x>0).length/list.length*100, base: bc?bs/bc:null};
+  };
+  const cell = s => s ? `<td title="n=${s.n}, hit ${s.hit.toFixed(0)}%, matched base ${fmtSigned(s.base)}"><span class="${s.m>=0?'p':'n'}">${fmtSigned(s.m)}</span><br><span class="mut">n ${s.n} &middot; hit ${s.hit.toFixed(0)}% &middot; edge ${fmtSigned(s.base==null?null:s.m-s.base)}</span></td>` : `<td class="mut">--</td>`;
+  const other = (list, map) => { const v = list.map(o=>map[o.ep]).filter(x=>x!=null); return v.length ? `<td>${fmtSigned(mean(v))}<br><span class="mut">n ${v.length}</span></td>` : `<td class="mut">--</td>`; };
+  // length buckets
+  const LB = ['&le;5d','6&ndash;10d','11&ndash;20d','&gt;20d'];
+  let html = `<thead><tr><th>Episode length</th><th>exit-anchored ${HMONTH[epH]}</th><th>during</th><th>entry-anchored ${HMONTH[epH]}</th></tr></thead><tbody>`;
+  for(const b of LB){
+    const list = exitObs.filter(o => bucketOf(o.e.L) === b);
+    html += `<tr><td>${b}</td>${cell(cellStats(list))}${other(list, byEp)}${other(list, entByEp)}</tr>`;
+  }
+  // intensity terciles (mean decile over the episode)
+  const ints = exitObs.map(o=>o.e.meanDec).sort((a,b)=>a-b);
+  const q1 = ints[Math.floor(ints.length/3)], q2 = ints[Math.floor(2*ints.length/3)];
+  const IB = [{l:`intensity low (mean D &lt; ${q1.toFixed(1)})`, f:o=>o.e.meanDec<q1}, {l:`intensity mid`, f:o=>o.e.meanDec>=q1&&o.e.meanDec<q2}, {l:`intensity high (mean D &ge; ${q2.toFixed(1)})`, f:o=>o.e.meanDec>=q2}];
+  for(const b of IB){
+    const list = exitObs.filter(b.f);
+    html += `<tr><td>${b.l}</td>${cell(cellStats(list))}${other(list, byEp)}${other(list, entByEp)}</tr>`;
+  }
+  // sign of the during-episode return
+  for(const b of [{l:'price fell during episode (absorbed)', f:o=>byEp[o.ep]!=null&&byEp[o.ep]<0}, {l:'price rose during episode (chased)', f:o=>byEp[o.ep]!=null&&byEp[o.ep]>=0}]){
+    const list = exitObs.filter(b.f);
+    html += `<tr><td>${b.l}</td>${cell(cellStats(list))}${other(list, byEp)}${other(list, entByEp)}</tr>`;
+  }
+  html += `</tbody>`;
+  el.innerHTML = html;
+  // regression: exit-anchored return on ln(L) and intensity, clustered by exit month
+  const rows = exitObs.map(o => ({y: o.v, x1: Math.log(o.e.L), x2: o.e.meanDec, g: P.rel.dates[o.i].slice(0,7)}));
+  const reg = olsCluster(rows);
+  const rg = document.getElementById('epReg');
+  if(!reg){ rg.innerHTML = `<span class="mut">regression needs &ge;8 exit-anchored observations in &ge;3 months</span>`; return; }
+  const ft = (b, t) => `<b>${(b>=0?'+':'')}${b.toFixed(2)}</b> <span class="mut">(t ${t==null?'--':t.toFixed(2)})</span>`;
+  rg.innerHTML = `exit-anchored ${HMONTH[epH]} return = ${ft(reg.beta[0], reg.t[0])} + ${ft(reg.beta[1], reg.t[1])} &middot; ln(L) + ${ft(reg.beta[2], reg.t[2])} &middot; mean decile` +
+    ` <span class="mut">&middot; n ${reg.n}, SE clustered by ${reg.G} calendar months of the exit date. The accumulation story predicts positive, monotone loadings on both; |t| &lt; 2 is noise.</span>`;
+}
+
+function renderEpList(eps, res, h){
+  const el = document.getElementById('epList');
+  const val = (k) => { const m = {}; for(const o of res[k].obs) m[o.ep] = o; return m; };
+  const V = {entry: val('entry'), entryR: val('entryR'), exit: val('exit'), during: val('during'), hold: val('hold')};
+  const streakByEp = {}; for(const o of res.streak.obs) streakByEp[o.ep] = (streakByEp[o.ep]||0) + 1;
+  const rows = eps.all.map(e => ({
+    e, nm: e.nm, t0: e.t0, t1: e.t1, L: e.L, dec: e.meanDec, k: streakByEp[e.id]||0,
+    dur: V.during[e.id] ? V.during[e.id].v : null,
+    ent: V.entry[e.id] ? V.entry[e.id].v : null, entKept: !!V.entryR[e.id],
+    ex: V.exit[e.id] ? V.exit[e.id].v : null,
+    exDropped: !e.censored && !V.exit[e.id] && e.exitAt != null && e.exitAt + epLag + h < P.rel.dates.length,
+    hold: V.hold[e.id] ? V.hold[e.id].v : null, holdDays: V.hold[e.id] ? V.hold[e.id].j - V.hold[e.id].i : null,
+  }));
+  const key = epSort.key, dir = epSort.dir;
+  rows.sort((a,b)=>{ const av=a[key], bv=b[key]; if(av==null) return 1; if(bv==null) return -1; return (av>bv?1:av<bv?-1:0)*dir; });
+  const arrow = k => epSort.key===k ? (epSort.dir>0 ? ' ▴' : ' ▾') : '';
+  const th = (k, lbl, title) => `<th data-k="${k}" class="sortable"${title?` title="${title}"`:''}>${lbl}${arrow(k)}</th>`;
+  const fv = v => v==null ? '<span class="mut">--</span>' : `<span class="${v>=0?'p':'n'}">${fmtSigned(v)}</span>`;
+  const CAP = 400;
+  let html = `<thead><tr>${th('nm','Name')}${th('t0','Entry')}${th('t1','Last in-state')}${th('L','L','observed days in state')}${th('dec','mean D','mean decile over the episode')}` +
+    `${th('k','streak fires','how many times the D-streak rule fired inside this episode')}${th('dur','during')}${th('ent','entry '+HMONTH[epH])}${th('ex','exit '+HMONTH[epH])}${th('hold','hold')}${th('holdDays','held')}</tr></thead><tbody>`;
+  for(const r of rows.slice(0, CAP)){
+    const flags = (r.e.censored ? ' <span class="mut" title="no confirmed exit yet">open</span>' : '') +
+      (r.ent!=null && !r.entKept ? ' <span class="mut" title="entry window overlapped the previous kept window in this name; dropped from row C">R</span>' : '') +
+      (r.exDropped ? ' <span class="mut" title="exit window overlapped the previous kept exit window in this name; dropped from row D">RX</span>' : '');
+    html += `<tr><td>${r.nm}${flags}</td><td>${P.rel.dates[r.t0]}</td><td>${r.e.censored ? '<span class="mut">open</span>' : P.rel.dates[r.t1]}</td>` +
+      `<td>${r.L}</td><td>${r.dec.toFixed(1)}</td><td>${r.k}</td><td>${fv(r.dur)}</td><td>${fv(r.ent)}</td><td>${fv(r.ex)}</td><td>${fv(r.hold)}</td><td>${r.holdDays==null?'--':r.holdDays+'d'}</td></tr>`;
+  }
+  html += `</tbody>`;
+  el.innerHTML = html;
+  document.getElementById('epListNote').textContent = rows.length > CAP ? `showing ${CAP} of ${rows.length} episodes -- pick a ticker to see them all` : `${rows.length} episodes`;
+}
+document.getElementById('epList').addEventListener('click', e=>{
+  const th = e.target.closest('th.sortable'); if(!th) return;
+  const k = th.dataset.k;
+  if(epSort.key === k) epSort.dir *= -1; else epSort = {key: k, dir: k === 'nm' ? 1 : -1};
+  renderEpisodes();
+});
+
+(function(){
+  const sel = document.getElementById('epTkr');
+  const names = Object.keys(P.rel.d).filter(n => n !== P.bench).sort();
+  for(const tkr of names){ const opt=document.createElement('option'); opt.value=tkr; opt.textContent=tkr; sel.appendChild(opt); }
+})();
+document.getElementById('epTkr').addEventListener('change', e=>{ epTicker=e.target.value; renderEpisodes(); });
+for(const id of ['epEnter','epExit','epConfirm','epGap','epMin','epLag']) document.getElementById(id).addEventListener('change', renderEpisodes);
+document.getElementById('epExcess').addEventListener('change', e=>{ epExcess=e.target.checked; renderEpisodes(); });
+const segWire = (id, attr, setter) => document.getElementById(id).addEventListener('click', e=>{
+  const b = e.target.closest('button'); if(!b) return;
+  setter(b.dataset[attr]); [...e.currentTarget.children].forEach(x=>x.classList.toggle('on', x===b)); renderEpisodes();
+});
+segWire('epSigSeg', 'sig', v => epSig = v);
+segWire('epBasisSeg', 'b', v => epBasis = v);
+segWire('epDirSeg', 'd', v => epDir = v);
+segWire('epHSeg', 'h', v => epH = v);
+
+
 
 // -------------------------------------------------------------------------
 // Tab: Sector DIX -- reconstructed dollar-DIX per sector ETF, a ranking bar (1y percentile
@@ -5056,6 +5750,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('ctl-contrib').style.display = t==='contrib' ? '' : 'none';
   document.getElementById('ctl-xs').style.display = t==='xs' ? '' : 'none';
   document.getElementById('ctl-ev').style.display = t==='ev' ? '' : 'none';
+  document.getElementById('ctl-ep').style.display = t==='ep' ? '' : 'none';
   document.getElementById('relStats').style.display = t==='rel' ? '' : 'none';
   document.getElementById('grid').style.display = t==='grid' ? '' : 'none';
   document.getElementById('relWrap').style.display = t==='rel' ? '' : 'none';
@@ -5065,6 +5760,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('contribWrap').style.display = t==='contrib' ? '' : 'none';
   document.getElementById('xsWrap').style.display = t==='xs' ? '' : 'none';
   document.getElementById('evWrap').style.display = t==='ev' ? '' : 'none';
+  document.getElementById('epWrap').style.display = t==='ep' ? '' : 'none';
   document.getElementById('sectorsWrap').style.display = t==='sectors' ? '' : 'none';
   document.getElementById('spxtblWrap').style.display = t==='spxtbl' ? '' : 'none';
   document.getElementById('footHint').textContent = t==='today'
@@ -5079,6 +5775,8 @@ document.getElementById('tabs').addEventListener('click', e=>{
     ? 'cross-sectional rank of every name each day → deciles → forward excess return; long-short D10-D1 is market-neutral'
     : t==='ev'
     ? 'streak events: N days in a row inside a decile band → one event on the Nth day → forward return vs an always-invested baseline'
+    : t==='ep'
+    ? 'episodes: hysteresis entry/exit → one row per accumulation → entry-, exit-anchored and during-episode returns with non-overlapping windows, beside the streak-trigger method'
     : t==='sectors'
     ? 'reconstructed dollar-DIX per sector ETF, ranked by 1-year percentile of dark accumulation. Constituents from SPDR Select Sector funds + iShares SOXX'
     : t==='spxtbl'
@@ -5092,6 +5790,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   if(t==='contrib') renderContrib();
   if(t==='xs') renderXs();
   if(t==='ev') renderEvents();
+  if(t==='ep') renderEpisodes();
   if(t==='sectors' && !sectorsRendered){ renderSectors(); sectorsRendered = true; }
   if(t==='spxtbl') renderSpxTable();
 });
@@ -5738,6 +6437,7 @@ def main():
         data = demo_panel(NDX100, BENCH, start=args.plot_start or "2020-01-01")
         panel, r21_panel, r42_panel, r63_panel = data["d"], data["r21"], data["r42"], data["r63"]
         close_panel = data["close"]
+        adjclose_panel = close_panel   # synthetic prices have no splits
         raw_dark_panel, ndx_agg, ndx_dix = data["raw_dark"], data["ndx_agg"], data["ndx_dix"]
         sdix, sclose = demo_russell_dix(start=args.plot_start or "2020-01-01", seed=11)
         spx_payload = (build_reconstructed_index_payload(sdix, sclose, out_key="dix",
@@ -5777,6 +6477,7 @@ def main():
                                     cache_dir=cache_dir, ns="", refresh=args.refresh, label="NDX")
         panel = NDX["d"]
         close_panel, raw_dark_panel = NDX["close"], NDX["dpi"]
+        adjclose_panel = NDX["adjclose"]
         r21_panel = compute_forward_return(NDX["adjclose"], 21)
         r42_panel = compute_forward_return(NDX["adjclose"], 42)
         r63_panel = compute_forward_return(NDX["adjclose"], 63)
@@ -5979,6 +6680,7 @@ def main():
                        spx_weight_map=spx_weight_map, spx_weight_order=spx_weight_order,
                        wl_res=wl_res, wl_rel=wl_rel, wl_sectors=wl_sectors,
                        breadth_px=breadth_px, sector_data=sector_data, contrib=contrib,
+                       adjclose_panel=adjclose_panel,
                        plot_days=args.plot_days, plot_start=plot_start, window=args.window,
                        demo=args.demo)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

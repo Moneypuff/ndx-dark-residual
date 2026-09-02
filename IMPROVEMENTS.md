@@ -80,3 +80,35 @@ own adjusted close.
    only the name's prior 252 sessions (min 120), matching the event-study
    tab's trailing basis, so "today's decile" is the one that was actually
    knowable.
+
+## Episodes vs streaks tab  **[done]**
+
+The D-streak events tab counts every N-day run as an event and re-fires after a
+one-day wobble out of the band, so one ten-day accumulation can be scored several
+times with overlapping forward windows. The **Episodes vs streaks** tab studies
+the same decile signal with the *episode* as the observation unit and puts the
+two side by side:
+
+1. **Episode definition** — enter at ≥D9, stay while ≥D7, exit after 2 days
+   below (hysteresis), merge gaps ≤2 days, minimum length 3; every threshold is
+   a control, and a "Low D" toggle mirrors the scale for distribution. Signal is
+   the raw 1-day ratio (as the streak tab) or its 5-day MA (DPI); deciles use the
+   same trailing / full-sample / pooled bases.
+2. **One table, six rows** — A. streak trigger (the existing method, on the same
+   deciles), B. episode entry, C. episode entry with a refractory rule (no
+   overlapping windows within a name), D. exit-anchored with refractory (window
+   starts only after the exit is confirmed, so length and intensity are known),
+   E. during-episode, F. hold-while-dark. Each row shows obs vs distinct episodes,
+   the within-name overlap share, mean ± SE, hit, a date-matched cross-sectional
+   baseline, edge, and a circular-shift placebo p on the whole window pattern.
+   With hysteresis, merging and confirmation switched off (stay = enter, gap 0,
+   confirm 1, min length 1) row B reproduces row A exactly.
+3. **Conditioning** — exit-anchored return by episode length bucket, intensity
+   tercile and the sign of the during-episode move, plus an OLS of the
+   exit-anchored return on ln(L) and mean decile with SEs clustered by exit month.
+4. **Drift** — entry/trigger-aligned paths for A and C over a matched baseline,
+   and an exit-aligned path for D.
+5. **Split-safe returns** — the payload now packs split-adjusted closes
+   (`rel.adj`; `build_html(..., adjclose_panel=)`) so every episode return is
+   measured on the same basis as `r21/r42/r63`; the tab falls back to raw closes
+   on older payloads and says so.
