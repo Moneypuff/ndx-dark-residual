@@ -1,16 +1,16 @@
 {
  "date": "2026-09-03",
- "captured_utc": "2026-09-03T13:54:27+00:00",
+ "captured_utc": "2026-09-03T14:54:02+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
    "expiries": 10,
-   "rows": 2720
+   "rows": 2719
   },
   "QQQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 2525
+   "rows": 2540
   },
   "IWM": {
    "ok": true,
@@ -20,7 +20,7 @@
   "SMH": {
    "ok": true,
    "expiries": 10,
-   "rows": 1559
+   "rows": 1556
   },
   "IGV": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 1088
+   "rows": 1090
   },
   "EEM": {
    "ok": true,
@@ -60,22 +60,22 @@
   "XLK": {
    "ok": true,
    "expiries": 10,
-   "rows": 1060
+   "rows": 1053
   },
   "XLF": {
    "ok": true,
    "expiries": 9,
-   "rows": 520
+   "rows": 519
   },
   "XLV": {
    "ok": true,
    "expiries": 9,
-   "rows": 737
+   "rows": 738
   },
   "XLY": {
    "ok": true,
    "expiries": 8,
-   "rows": 596
+   "rows": 594
   },
   "XLP": {
    "ok": true,
@@ -85,67 +85,67 @@
   "XLE": {
    "ok": true,
    "expiries": 9,
-   "rows": 649
+   "rows": 642
   },
   "XLI": {
    "ok": true,
    "expiries": 9,
-   "rows": 848
+   "rows": 852
   },
   "XLB": {
    "ok": true,
    "expiries": 8,
-   "rows": 487
+   "rows": 485
   },
   "XLU": {
    "ok": true,
    "expiries": 9,
-   "rows": 497
+   "rows": 495
   },
   "XLRE": {
    "ok": true,
    "expiries": 5,
-   "rows": 118
+   "rows": 119
   },
   "XLC": {
    "ok": true,
    "expiries": 8,
-   "rows": 400
+   "rows": 401
   },
   "KWEB": {
    "ok": true,
    "expiries": 9,
-   "rows": 378
+   "rows": 377
   },
   "FXI": {
    "ok": true,
    "expiries": 12,
-   "rows": 475
+   "rows": 477
   },
   "AAPL": {
    "ok": true,
    "expiries": 11,
-   "rows": 851
+   "rows": 852
   },
   "TSLA": {
    "ok": true,
    "expiries": 10,
-   "rows": 1063
+   "rows": 1062
   },
   "GOOGL": {
    "ok": true,
    "expiries": 10,
-   "rows": 993
+   "rows": 992
   },
   "NVDA": {
    "ok": true,
    "expiries": 10,
-   "rows": 828
+   "rows": 824
   },
   "AMZN": {
    "ok": true,
    "expiries": 11,
-   "rows": 788
+   "rows": 790
   },
   "MSFT": {
    "ok": true,
@@ -155,12 +155,12 @@
   "META": {
    "ok": true,
    "expiries": 10,
-   "rows": 1359
+   "rows": 1349
   },
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1042
+   "rows": 1060
   },
   "MU": {
    "ok": true,
@@ -170,12 +170,12 @@
   "CRWV": {
    "ok": true,
    "expiries": 11,
-   "rows": 712
+   "rows": 711
   },
   "IONQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 528
+   "rows": 531
   },
   "OWL": {
    "ok": true,
@@ -185,7 +185,7 @@
   "RKLB": {
    "ok": true,
    "expiries": 9,
-   "rows": 477
+   "rows": 471
   },
   "ONDS": {
    "ok": true,
@@ -195,7 +195,7 @@
   "SPCX": {
    "ok": true,
    "expiries": 10,
-   "rows": 749
+   "rows": 735
   },
   "DRAM": {
    "ok": true,
@@ -210,17 +210,17 @@
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1806
+   "rows": 1807
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1084
+   "rows": 1085
   },
   "IBIT": {
    "ok": true,
    "expiries": 10,
-   "rows": 777
+   "rows": 781
   },
   "TLT": {
    "ok": true,
@@ -230,17 +230,17 @@
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 968
+   "rows": 972
   },
   "NBIS": {
    "ok": true,
    "expiries": 12,
-   "rows": 776
+   "rows": 784
   },
   "AAOI": {
    "ok": true,
    "expiries": 8,
-   "rows": 565
+   "rows": 571
   }
  }
 }
