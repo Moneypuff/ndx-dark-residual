@@ -41,15 +41,26 @@ this reports:
 Cells below the print gate (42 anchors AND 5 distinct episodes, matching
 the regime study's Rule 5) print only their counts.
 
+Beyond the per-index marginal/3x3/vol-parallel cells above, the study also
+reports (when >= 2 indices are built): a CROSS-INDEX section per proxy by
+how many indices sit in LowCorr simultaneously (N-of-k, common dates), the
+path-study versions of the two evaluable rules in `frozen_rules.json`
+(`ndx_dixlow_caution_v1`, `all_dispersed_derisk_v1`), and the three
+PRE-SPECIFIED primary hypotheses (P1 jump risk, P2 the DIX-Low leg as a
+drawdown effect, P3 panic-tape excursions and decaying vol) with their
+decision rules -- the only claims `REGIME_PATH_FINDINGS.md` may headline.
+
 Data source: same as `intra_index_regime_study.py` -- the built dashboard
 payload (`docs/index.html`) for NDX (fully offline), plus a fetched iShares
-basket for SPX/IWM (needs network or a warm cache).
+basket for SPX/IWM (needs network or a warm cache), plus (optional, skips
+cleanly) Cboe's implied-vol history for the VXN/VIX/RVX leg.
 
 Usage
 -----
     python regime_path_study.py                        # all three indices
     python regime_path_study.py --indices ndx           # offline
     python regime_path_study.py --csv regime_paths.csv --risk-csv regime_path_risk.csv
+    python regime_path_study.py --no-implied            # skip the Cboe CDN fetch
 """
 import argparse
 import sys
@@ -633,12 +644,136 @@ def vol_parallel_comparison(P, M, seed=9000):
     return lines
 
 
-def primaries_report(name, all_stats):
+def era_split(M, mask, split=R.OOS_SPLIT):
+    """(pre, post) dicts -- n scored days, mean r1m, median/q25 mae21 --
+    for the cell's days before/from `split`. Block H's era honesty: reuses
+    the frame's own r1m/mae21 columns directly (mae21 IS the path study's
+    21-session MAE, computed identically in `assemble_frame`), so no path
+    panel is needed here."""
+    m = mask.to_numpy(dtype=bool) if hasattr(mask, "to_numpy") else np.asarray(mask)
+    sel = pd.Series(m, index=M.index)
+    cut = pd.Timestamp(split)
+
+    def summarize(sub):
+        r = sub["r1m"].dropna()
+        mae = sub["mae21"].dropna()
+        return {"n": int(len(r)),
+                "mean_r": float(r.mean()) if len(r) else np.nan,
+                "mae_med": float(np.median(mae)) if len(mae) >= 5 else np.nan,
+                "mae_q25": float(np.percentile(mae, 25)) if len(mae) >= 5 else np.nan}
+    return summarize(M.loc[sel & (M.index < cut)]), summarize(M.loc[sel & (M.index >= cut)])
+
+
+def per_year_median(M, mask, col, min_days=10):
+    """Per-year MEDIAN of `col` for the cell's days ('20:-1.2 21:+0.4
+    25:.') -- the median-based sibling of
+    `intra_index_regime_study.per_year_line` (which reports the mean);
+    used for mae21, where a handful of outliers can swing a mean a lot
+    more than the median a reader would size to."""
+    m = mask.to_numpy(dtype=bool) if hasattr(mask, "to_numpy") else np.asarray(mask)
+    v = M[col].where(pd.Series(m, index=M.index))
+    parts = []
+    for y, g in v.groupby(M.index.year):
+        g = g.dropna()
+        if len(g) == 0:
+            continue
+        parts.append(f"{y % 100:02d}:{g.median():+.1f}" if len(g) >= min_days else f"{y % 100:02d}:.")
+    return " ".join(parts)
+
+
+def loyo_range_stat(M, mask, col, stat, min_days=GATE_DAYS):
+    """Leave-one-year-out range of an arbitrary `stat` (e.g. a q25
+    quantile) of `col` over the cell's days -- the generalized sibling of
+    `intra_index_regime_study.loyo_range` (which is mean-only)."""
+    m = mask.to_numpy(dtype=bool) if hasattr(mask, "to_numpy") else np.asarray(mask)
+    v = M[col].where(pd.Series(m, index=M.index)).dropna()
+    if len(v) < min_days:
+        return (np.nan, np.nan)
+    vals = []
+    for y in v.index.year.unique():
+        rest = v[v.index.year != y]
+        if len(rest) >= min_days // 2:
+            vals.append(stat(rest.to_numpy(dtype=float)))
+    return (float(min(vals)), float(max(vals))) if vals else (np.nan, np.nan)
+
+
+def cluster_boot_ci_diff(rA, idsA, rB, idsB, stat=None, B=R.BOOT_B, seed=0,
+                         levels=(2.5, 97.5), min_clusters=GATE_EPISODES):
+    """Episode-cluster bootstrap CI for stat(A) - stat(B), resampling each
+    cell's episodes INDEPENDENTLY per replicate (not a shared draw index)
+    -- the honest uncertainty for a between-cell comparison when both
+    sides are themselves episode-clustered. NaN unless both cells clear
+    `min_clusters` episodes. Powers P2 (is the DIX-Low leg's worse q25 MAE
+    distinguishable from the DIX-High leg's, or mean-only?)."""
+    fn = stat if stat is not None else (lambda x: float(np.mean(x)))
+
+    def prep(r, ids):
+        r = np.asarray(r, dtype=float)
+        ids = np.asarray(ids)
+        ok = np.isfinite(r) & (ids >= 0)
+        r, ids = r[ok], ids[ok]
+        uniq = np.unique(ids)
+        return [r[ids == u] for u in uniq]
+
+    gA, gB = prep(rA, idsA), prep(rB, idsB)
+    if len(gA) < min_clusters or len(gB) < min_clusters:
+        return (np.nan, np.nan)
+    rng = np.random.default_rng(seed)
+    drawsA = rng.integers(0, len(gA), size=(B, len(gA)))
+    drawsB = rng.integers(0, len(gB), size=(B, len(gB)))
+    diffs = np.array([
+        fn(np.concatenate([gA[j] for j in ra])) - fn(np.concatenate([gB[j] for j in rb]))
+        for ra, rb in zip(drawsA, drawsB)
+    ])
+    return tuple(float(x) for x in np.percentile(diffs, levels))
+
+
+def mae_ids_for_diff(P, mask, h=HOLD):
+    """(mae array, episode ids) for `mask`'s complete-to-h anchors -- the
+    raw material `cluster_boot_ci_diff` needs for a between-cell CI (the
+    same population `excursion_stats` scores, just not collapsed to
+    summary numbers)."""
+    m = mask.to_numpy(dtype=bool)
+    ids_all = R.run_ids(m)
+    dates = mask.index[m]
+    ids = ids_all[m]
+    sub = P.reindex(dates)
+    exc = excursion_stats(sub, h)
+    ok = exc.get("_ok")
+    if ok is None or not ok.any():
+        return np.array([]), np.array([])
+    return exc["_mins"], ids[ok]
+
+
+def p2_report(M, P, seed=9600):
+    """P2 -- within NDX's LowCorr regime, is the DIX-Low leg's worse q25
+    MAE21 distinguishable from the DIX-High leg's (a drawdown effect), or
+    does the episode-cluster difference CI include zero (mean effect
+    only, per the corrected regime study's own finding for the terminal
+    return)?"""
+    mlo = (M["cz_roll"] == "LowCorr") & (M["dz_roll_l1"] == "DIXLow")
+    mhi = (M["cz_roll"] == "LowCorr") & (M["dz_roll_l1"] == "DIXHigh")
+    a_mins, a_ids = mae_ids_for_diff(P, mlo)
+    b_mins, b_ids = mae_ids_for_diff(P, mhi)
+    if len(a_mins) < GATE_DAYS or len(b_mins) < GATE_DAYS:
+        return "  P2 (DIX-Low leg as drawdown effect): -- (a leg below gate)"
+    q25 = lambda x: float(np.percentile(x, 25))    # noqa: E731
+    a_q25, b_q25 = q25(a_mins), q25(b_mins)
+    lo, hi = cluster_boot_ci_diff(a_mins, a_ids, b_mins, b_ids, stat=q25, seed=seed)
+    excludes_zero = np.isfinite(lo) and (lo > 0 or hi < 0)
+    verdict = ("SUPPORTED (drawdown flag)" if (excludes_zero and a_q25 < b_q25)
+              else "NOT SUPPORTED (mean effect only; do not resize on it)")
+    return (f"  P2 (DIX-Low leg as drawdown effect): LowCorrxDIXLow q25 MAE {a_q25:+.1f} "
+           f"vs LowCorrxDIXHigh q25 MAE {b_q25:+.1f}   diff epCI [{lo:+.1f},{hi:+.1f}].   "
+           f"-> {verdict}")
+
+
+def primaries_report(name, M, all_stats):
     """Print the three PRIMARY (pre-specified) path-study hypotheses for
     this index, with their decision rules -- the only claims the findings
-    doc may headline (REGIME_PATH_STUDY_PLAN.md). P2 (the DIX-Low leg as a
-    drawdown effect) is wired in a later phase once the joint-resample
-    difference CI lands."""
+    doc may headline (REGIME_PATH_STUDY_PLAN.md). P2 prints separately
+    (`p2_report`, NDX only) since it needs the path panel directly rather
+    than a summarized cell_stats dict."""
     lines = [f"=== {name} PRIMARY HYPOTHESES (pre-specified; see REGIME_PATH_STUDY_PLAN.md) ==="]
     low, mid, high = all_stats.get("LowCorr"), all_stats.get("MidCorr"), all_stats.get("HighCorr")
 
@@ -655,6 +790,10 @@ def primaries_report(name, all_stats):
             f"-> {verdict}"
             + ("" if supported else
                "  (trailing vol does not detectably understate dispersed-tape path risk)"))
+        pre, post = era_split(M, M["cz_roll"] == "LowCorr")
+        lines.append(f"    years: {R.year_mix(M, M['cz_roll'] == 'LowCorr')}   "
+                     f"pre-2024 n={pre['n']} mean r21 {pre['mean_r']:+.2f}   "
+                     f"2024+ n={post['n']} mean r21 {post['mean_r']:+.2f}")
     else:
         lines.append("  P1 (jump risk): -- (LowCorr or HighCorr marginal below gate)")
 
@@ -674,6 +813,13 @@ def primaries_report(name, all_stats):
             + "  ".join(f"{k} {v:+.1f}" for k, v in q25.items())
             + f"   worst={worst_zone}; HighCorr fwd/trail vol ratio med {vmed:.2f} "
             f"[epCI {vlo:.2f},{vhi:.2f}] vs 1.0.   -> {verdict}")
+        pre, post = era_split(M, M["cz_roll"] == "HighCorr")
+        lo25, hi25 = loyo_range_stat(M, M["cz_roll"] == "HighCorr", "mae21",
+                                     lambda x: float(np.percentile(x, 25)))
+        lines.append(f"    years: {R.year_mix(M, M['cz_roll'] == 'HighCorr')}   "
+                     f"pre-2024 n={pre['n']} MAE q25 {pre['mae_q25']:+.1f}   "
+                     f"2024+ n={post['n']} MAE q25 {post['mae_q25']:+.1f}   "
+                     f"LOYO range [{lo25:+.1f},{hi25:+.1f}]")
     else:
         lines.append("  P3 (panic tapes): -- (a zone marginal below gate)")
     return "\n".join(lines)
@@ -829,6 +975,81 @@ def render_hold(st):
     return s
 
 
+# ----------------------------------------------------------------------------
+# Cross-index cells (N-of-k dispersed) and the frozen-rule path rows
+# ----------------------------------------------------------------------------
+def n_dispersed(frames):
+    """Per-day count of indices in LowCorr (rolling basis) over the common
+    calendar across `frames` ({index: frame}) -- the path-study input to
+    `intra_index_regime_study.cross_index_report`'s N-of-k table. Returns
+    (nlow, common_cz): nlow a Series on the common dates (0..len(frames)),
+    common_cz the aligned per-index zone frame it was built from."""
+    keys = list(frames)
+    cz = pd.DataFrame({k: frames[k]["cz_roll"] for k in keys}).dropna()
+    cz = cz[(cz != "NA").all(axis=1)]
+    nlow = (cz == "LowCorr").sum(axis=1)
+    return nlow, cz
+
+
+def cross_index_masks(M, nlow, n_indices):
+    """{'{k}of{n_indices}': mask} for k=0..n_indices, on M's OWN calendar
+    (True only where the common-dates count also has a row in M)."""
+    masks = OrderedDict()
+    for k in range(n_indices + 1):
+        sel = nlow.index[nlow == k]
+        m = pd.Series(False, index=M.index)
+        common = m.index.intersection(sel)
+        m.loc[common] = True
+        masks[f"{k}of{n_indices}"] = m
+    return masks
+
+
+def cross_index_section(name, M, P, nlow, n_indices, proxy, seed=9700):
+    """ENV cell_stats for `name`'s own proxy by N-of-`n_indices` indices
+    simultaneously in LowCorr (common-dates mask, reindexed to this
+    index's own calendar) -- the path-study sibling of
+    `intra_index_regime_study.cross_index_report`'s N-of-3 table."""
+    lines = [f"=== {name} BY N-OF-{n_indices} INDICES DISPERSED (common dates) ==="]
+    for k, mask in cross_index_masks(M, nlow, n_indices).items():
+        seed += 1
+        st = cell_stats(P, M["rv"], mask, seed=seed)
+        lines.append(render_cell(f"{name} {k} dispersed", st, proxy))
+    return "\n\n".join(lines)
+
+
+def rule_row_ndx_dixlow_caution(M, P, ndx_dixlow_cell, seed=9800):
+    """Path-study version of `frozen_rules.json`'s ndx_dixlow_caution_v1:
+    active (NDX LowCorr & DIX-Low, lag-1 -- the `LowCorrxDIXLow(l1)` cell
+    already computed in the per-index loop, passed in to avoid a
+    recompute) vs LowCorr-but-not-active (LowCorr & DIX Mid/High)."""
+    lines = ["=== NDX RULE ndx_dixlow_caution_v1 (active vs LowCorr-not-active) ==="]
+    lines.append(render_cell("active (LowCorr & DIXLow, lag-1)", ndx_dixlow_cell, "QQQ"))
+    not_active = ((M["cz_roll"] == "LowCorr") & (M["dz_roll_l1"] != "DIXLow")
+                 & (M["dz_roll_l1"] != "NA"))
+    st_not = cell_stats(P, M["rv"], not_active, seed=seed)
+    lines.append(render_cell("LowCorr-not-active (DIX Mid/High, lag-1)", st_not, "QQQ"))
+    return "\n\n".join(lines)
+
+
+def rule_row_all_dispersed(frames, paths, metas, nlow, n_indices, seed=9900):
+    """Path-study version of `frozen_rules.json`'s all_dispersed_derisk_v1:
+    active (all `n_indices` indices LowCorr simultaneously) vs not (fewer
+    than `n_indices`), one row per proxy."""
+    lines = ["=== RULE all_dispersed_derisk_v1 (all dispersed vs not, by proxy) ==="]
+    for name, M in frames.items():
+        seed += 2
+        active = pd.Series(False, index=M.index)
+        active.loc[active.index.intersection(nlow.index[nlow == n_indices])] = True
+        not_active = pd.Series(False, index=M.index)
+        not_active.loc[not_active.index.intersection(nlow.index[nlow < n_indices])] = True
+        proxy = metas[name]["proxy"]
+        st_a = cell_stats(paths[name], M["rv"], active, seed=seed)
+        st_n = cell_stats(paths[name], M["rv"], not_active, seed=seed + 1)
+        lines.append(render_cell(f"{name} active (all {n_indices} dispersed)", st_a, proxy))
+        lines.append(render_cell(f"{name} not-active", st_n, proxy))
+    return "\n\n".join(lines)
+
+
 def report_index(name, M, meta, args):
     proxy = meta["proxy"]
     proxy_close = meta["proxy_close"]
@@ -869,14 +1090,96 @@ def report_index(name, M, meta, args):
         print("\n".join(lines))
         print()
 
-    print(primaries_report(name, all_stats))
+    prim = primaries_report(name, M, all_stats)
+    if name == "NDX":     # P2 is pre-specified on NDX's own LowCorrxDIX(l1) legs
+        prim += "\n" + p2_report(M, P)
+    print(prim)
     print()
     vp_lines = vol_parallel_comparison(P, M)
     if vp_lines:
         print(f"=== {name} CORR-VS-VOL COMPARISON (LowCorr vs VolLow, by DIX(lag-1) zone) ===")
         print("\n".join(vp_lines))
         print()
-    return P
+    return P, all_stats
+
+
+# ----------------------------------------------------------------------------
+# CSV writers (committed surface: regime_paths.csv, regime_path_risk.csv)
+# ----------------------------------------------------------------------------
+def _parse_cell_label(label):
+    """Best-effort split of a `cell_masks()` label into (corr_regime,
+    dix_regime) for the tidy CSVs: 'LowCorrxDIXLow(l1)' -> ('LowCorr',
+    'DIXLow'); a bare zone marginal -> (zone, ''); anything else (N-of-k
+    cross-index cells, rule rows -- not run through this path) -> ('', '')."""
+    if "x" in label and label.endswith("(l1)"):
+        corr, dix = label[:-len("(l1)")].split("x", 1)
+        return corr, dix
+    if label in R.ZONES or label in R.VZONES:
+        return label, ""
+    return "", ""
+
+
+def cell_to_long_rows(index_name, family, label, st):
+    """Flatten one gated `cell_stats()` dict's fan into `regime_paths.csv`
+    long rows (one per checkpoint h): index, family, cell, corr_regime,
+    dix_regime, h, n, n_eps, gate, then a p5..p95/mean/hit column per row.
+    Empty list for an ungated or empty cell -- the CSV never carries an
+    ungated statistic, matching the console report's own discipline."""
+    if not st.get("gate"):
+        return []
+    fan = st.get("fan")
+    if fan is None or not len(fan):
+        return []
+    corr, dix = _parse_cell_label(label)
+    rows = []
+    for h in sorted(fan["h"].unique()):
+        sub = fan[fan["h"] == h]
+        row = {"index": index_name, "family": family, "cell": label,
+              "corr_regime": corr, "dix_regime": dix, "h": int(h),
+              "n": int(sub["n"].iloc[0]), "n_eps": st.get("n_eps"), "gate": True}
+        for _, r in sub.iterrows():
+            key = f"p{int(round(r['q'] * 100))}" if isinstance(r["q"], float) else r["q"]
+            row[key] = round(float(r["value"]), 3)
+        rows.append(row)
+    return rows
+
+
+def cell_to_risk_row(index_name, family, label, st):
+    """One `regime_path_risk.csv` row per cell: counts and gate always;
+    blocks B-G plus episode-cluster CIs only when gated (ungated numeric
+    fields are simply absent columns for that row, never a filled-in
+    ungated value)."""
+    corr, dix = _parse_cell_label(label)
+    row = {"index": index_name, "family": family, "cell": label,
+          "corr_regime": corr, "dix_regime": dix,
+          "n_days": st.get("n_days"), "n_eps": st.get("n_eps"), "gate": st.get("gate")}
+    if not st.get("gate"):
+        return row
+    exc, bar = st.get("exc", {}), st.get("bar", {})
+    vol, size, ci = st.get("vol", {}), st.get("size", {}), st.get("ci", {})
+    row.update({
+        "mae_med": exc.get("mae_med"), "mae_q25": exc.get("mae_q25"),
+        "mae_p10": exc.get("mae_p10"), "mae_worst": exc.get("mae_worst"),
+        "trough_d": exc.get("trough_d"), "mfe_med": exc.get("mfe_med"),
+        "mfe_q75": exc.get("mfe_q75"), "peak_d": exc.get("peak_d"),
+        "giveback_med": exc.get("giveback_med"),
+        "dip3": exc.get("dip3"), "dip5": exc.get("dip5"),
+        "dip8": exc.get("dip8"), "dip12": exc.get("dip12"),
+        "touch_m3": bar.get("touch_m3"), "touch_m5": bar.get("touch_m5"),
+        "touch_m8": bar.get("touch_m8"), "touch_m12": bar.get("touch_m12"),
+        "touch_p3": bar.get("touch_p3"), "touch_p5": bar.get("touch_p5"),
+        "touch_p8": bar.get("touch_p8"), "touch_p12": bar.get("touch_p12"),
+        "rv21_med": vol.get("rv21_med"), "rv21_p90": vol.get("rv21_p90"),
+        "vratio_med": vol.get("vratio_med"), "vratio_gt1": vol.get("vratio_gt1"),
+        "vr21": vol.get("vr21"), "z_gt1": vol.get("z_gt1"), "z_gt2": vol.get("z_gt2"),
+        "ivrp_med": vol.get("ivrp_med"), "iv_exceeded": vol.get("iv_exceeded"),
+        "size_q25": size.get("size_q25"), "size_p10": size.get("size_p10"),
+        "rr": size.get("rr"),
+    })
+    for k, v in ci.items():
+        if isinstance(v, tuple) and len(v) == 2:
+            row[f"ci_{k}_lo"], row[f"ci_{k}_hi"] = v
+    return row
 
 
 # ----------------------------------------------------------------------------
@@ -895,14 +1198,19 @@ def main():
     ap.add_argument("--no-ci", action="store_true", help="skip episode-cluster CIs (faster)")
     ap.add_argument("--no-implied", action="store_true",
                     help="skip the implied-vol (VXN/VIX/RVX) leg -- no Cboe CDN fetch")
-    ap.add_argument("--csv", default=None, help="(wired in a later phase)")
-    ap.add_argument("--risk-csv", default=None, help="(wired in a later phase)")
+    ap.add_argument("--csv", default=None,
+                    help="write the per-cell fan quantiles here (regime_paths.csv schema)")
+    ap.add_argument("--risk-csv", default=None,
+                    help="write the per-cell risk columns here (regime_path_risk.csv schema)")
     args = ap.parse_args()
 
     P_html = R.load_payload(args.html)
     print(f"Payload generated: {P_html.get('generated')}")
     wanted = [w.strip().upper() for w in args.indices.split(",") if w.strip()]
 
+    frames, metas, paths = {}, {}, {}
+    ndx_all_stats = {}
+    long_rows, risk_rows = [], []
     for name in ("NDX", "SPX", "IWM"):
         if name not in wanted:
             continue
@@ -915,7 +1223,38 @@ def main():
         except RuntimeError as e:
             print(f"##### {name}: SKIPPED ({e}) #####\n", file=sys.stderr)
             continue
-        report_index(name, M, meta, args)
+        P, all_stats = report_index(name, M, meta, args)
+        frames[name], metas[name], paths[name] = M, meta, P
+        if name == "NDX":
+            ndx_all_stats = all_stats
+        for label, st in all_stats.items():
+            long_rows.extend(cell_to_long_rows(name, "ENV", label, st))
+            risk_rows.append(cell_to_risk_row(name, "ENV", label, st))
+
+    if len(frames) >= 2:
+        nlow, _ = n_dispersed(frames)
+        n_indices = len(frames)
+        for name, M in frames.items():
+            print(cross_index_section(name, M, paths[name], nlow, n_indices,
+                                      metas[name]["proxy"]))
+            print()
+        print(rule_row_all_dispersed(frames, paths, metas, nlow, n_indices))
+        print()
+    else:
+        print("=== cross-index cells and all_dispersed_derisk_v1: skipped "
+             "(need >= 2 indices) ===\n", file=sys.stderr)
+
+    ndx_dixlow_cell = ndx_all_stats.get("LowCorrxDIXLow(l1)")
+    if "NDX" in frames and ndx_dixlow_cell:
+        print(rule_row_ndx_dixlow_caution(frames["NDX"], paths["NDX"], ndx_dixlow_cell))
+        print()
+
+    if args.csv and long_rows:
+        pd.DataFrame(long_rows).to_csv(args.csv, index=False)
+        print(f"wrote {args.csv}", file=sys.stderr)
+    if args.risk_csv and risk_rows:
+        pd.DataFrame(risk_rows).to_csv(args.risk_csv, index=False)
+        print(f"wrote {args.risk_csv}", file=sys.stderr)
 
 
 if __name__ == "__main__":

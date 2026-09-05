@@ -502,50 +502,150 @@ def test_vol_parallel_comparison_renders_when_vz_roll_present():
 # ---------------------------------------------------------------------------
 # primaries_report (P1, P3) -- decision logic on synthetic cell_stats dicts
 # ---------------------------------------------------------------------------
+def _fake_frame_for_primaries(n=600):
+    """Minimal M frame (cz_roll, r1m, mae21) spanning several years, for
+    primaries_report's era_split/year_mix side-lines -- the decision logic
+    itself is exercised via the hand-built all_stats dicts."""
+    idx = _bdays(n, start="2019-01-02")
+    rng = np.random.default_rng(42)
+    cz = np.random.default_rng(1).choice(["LowCorr", "MidCorr", "HighCorr"], size=n)
+    return pd.DataFrame({"cz_roll": cz, "r1m": rng.normal(1.0, 3.0, n),
+                         "mae21": -np.abs(rng.normal(4.0, 2.0, n))}, index=idx)
+
+
 def test_primaries_report_p1_supported():
+    M = _fake_frame_for_primaries()
     low = {"gate": True, "vol": {"z_gt2": 10.0}, "ci": {"z_gt2": (6.0, 14.0)}}
     high = {"gate": True, "vol": {"z_gt2": 3.0}, "ci": {}}
-    out = S.primaries_report("NDX", {"LowCorr": low, "HighCorr": high})
+    out = S.primaries_report("NDX", M, {"LowCorr": low, "HighCorr": high})
     assert "-> SUPPORTED" in out
 
 
 def test_primaries_report_p1_not_supported_when_ci_touches_benchmark():
+    M = _fake_frame_for_primaries()
     low = {"gate": True, "vol": {"z_gt2": 5.0}, "ci": {"z_gt2": (3.0, 7.0)}}  # CI spans 4.6
     high = {"gate": True, "vol": {"z_gt2": 3.0}, "ci": {}}
-    out = S.primaries_report("NDX", {"LowCorr": low, "HighCorr": high})
+    out = S.primaries_report("NDX", M, {"LowCorr": low, "HighCorr": high})
     assert "-> NOT SUPPORTED" in out
 
 
 def test_primaries_report_p1_missing_when_below_gate():
-    out = S.primaries_report("NDX", {"LowCorr": {"gate": False}, "HighCorr": {"gate": True}})
+    M = _fake_frame_for_primaries()
+    out = S.primaries_report("NDX", M, {"LowCorr": {"gate": False}, "HighCorr": {"gate": True}})
     assert "P1 (jump risk): --" in out
 
 
 def test_primaries_report_p3_both_legs_supported():
+    M = _fake_frame_for_primaries()
     low = {"gate": True, "exc": {"n": 100, "mae_q25": -4.0}}
     mid = {"gate": True, "exc": {"n": 100, "mae_q25": -5.0}}
     high = {"gate": True, "exc": {"n": 100, "mae_q25": -9.0},
            "vol": {"vratio_med": 0.8}, "ci": {"vratio": (0.6, 0.9)}}
-    out = S.primaries_report("NDX", {"LowCorr": low, "MidCorr": mid, "HighCorr": high})
+    out = S.primaries_report("NDX", M, {"LowCorr": low, "MidCorr": mid, "HighCorr": high})
     assert "SUPPORTED (both legs)" in out
 
 
 def test_primaries_report_p3_mae_leg_only():
+    M = _fake_frame_for_primaries()
     low = {"gate": True, "exc": {"n": 100, "mae_q25": -4.0}}
     mid = {"gate": True, "exc": {"n": 100, "mae_q25": -5.0}}
     high = {"gate": True, "exc": {"n": 100, "mae_q25": -9.0},
            "vol": {"vratio_med": 1.1}, "ci": {"vratio": (0.9, 1.3)}}
-    out = S.primaries_report("NDX", {"LowCorr": low, "MidCorr": mid, "HighCorr": high})
+    out = S.primaries_report("NDX", M, {"LowCorr": low, "MidCorr": mid, "HighCorr": high})
     assert "MAE leg only" in out
 
 
 def test_primaries_report_p3_not_supported_when_highcorr_not_worst():
+    M = _fake_frame_for_primaries()
     low = {"gate": True, "exc": {"n": 100, "mae_q25": -9.0}}
     mid = {"gate": True, "exc": {"n": 100, "mae_q25": -5.0}}
     high = {"gate": True, "exc": {"n": 100, "mae_q25": -4.0},
            "vol": {"vratio_med": 0.8}, "ci": {"vratio": (0.6, 0.9)}}
-    out = S.primaries_report("NDX", {"LowCorr": low, "MidCorr": mid, "HighCorr": high})
+    out = S.primaries_report("NDX", M, {"LowCorr": low, "MidCorr": mid, "HighCorr": high})
     assert "NOT SUPPORTED" in out
+
+
+# ---------------------------------------------------------------------------
+# Block H helpers: era_split, per_year_median, loyo_range_stat
+# ---------------------------------------------------------------------------
+def test_era_split_splits_on_oos_cutoff():
+    idx = _bdays(20, start="2023-12-15")   # straddles the 2024-01-01 cutoff
+    M = pd.DataFrame({"r1m": np.arange(20, dtype=float), "mae21": -np.arange(20, dtype=float) - 1},
+                     index=idx)
+    mask = pd.Series(True, index=idx)
+    pre, post = S.era_split(M, mask, split="2024-01-01")
+    expect_pre = int((idx < pd.Timestamp("2024-01-01")).sum())
+    assert pre["n"] == expect_pre
+    assert post["n"] == 20 - expect_pre
+    assert 0 < expect_pre < 20   # sanity: the window really does straddle the cutoff
+
+
+def test_per_year_median_gates_thin_years():
+    idx = _bdays(5, start="2023-01-02").append(_bdays(15, start="2024-01-02"))
+    vals = list(range(20))
+    M = pd.DataFrame({"col": vals}, index=idx)
+    mask = pd.Series(True, index=idx)
+    out = S.per_year_median(M, mask, "col", min_days=10)
+    assert "23:." in out    # only 5 obs in 2023 -- below min_days
+    assert "24:" in out and "." not in out.split("24:")[1][:1]
+
+
+def test_loyo_range_stat_q25():
+    idx = _bdays(750, start="2020-01-02")   # spans 2020, 2021, 2022
+    years = idx.year.to_numpy()
+    vals = np.where(years == 2020, -10.0, np.where(years == 2021, -2.0, -5.0))
+    M = pd.DataFrame({"col": vals.astype(float)}, index=idx)
+    mask = pd.Series(True, index=idx)
+    lo, hi = S.loyo_range_stat(M, mask, "col", lambda x: float(np.percentile(x, 25)))
+    assert np.isfinite(lo) and np.isfinite(hi)
+    assert lo <= hi
+
+
+# ---------------------------------------------------------------------------
+# cluster_boot_ci_diff / mae_ids_for_diff / p2_report
+# ---------------------------------------------------------------------------
+def test_cluster_boot_ci_diff_detects_separation():
+    rng = np.random.default_rng(5)
+    idsA = np.repeat(np.arange(10), 5)
+    idsB = np.repeat(np.arange(10), 5)
+    a = rng.normal(-8.0, 0.5, 50)   # clearly more negative
+    b = rng.normal(-2.0, 0.5, 50)
+    q25 = lambda x: float(np.percentile(x, 25))
+    lo, hi = S.cluster_boot_ci_diff(a, idsA, b, idsB, stat=q25, seed=1)
+    assert np.isfinite(lo) and np.isfinite(hi)
+    assert hi < 0    # a's q25 is reliably below b's
+
+
+def test_cluster_boot_ci_diff_gates_on_episode_count():
+    idsA = np.array([0, 0, 1, 1])   # only 2 episodes -- below GATE_EPISODES
+    idsB = np.repeat(np.arange(10), 5)
+    lo, hi = S.cluster_boot_ci_diff(np.zeros(4), idsA, np.zeros(50), idsB)
+    assert np.isnan(lo) and np.isnan(hi)
+
+
+def test_mae_ids_for_diff_matches_excursion_stats():
+    n = 200
+    idx = _bdays(n)
+    rng = np.random.default_rng(2)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    mask = pd.Series(False, index=idx)
+    mask.iloc[20:60] = True
+    P = S.forward_path_panel(close, horizon=S.H)
+    mins, ids = S.mae_ids_for_diff(P, mask)
+    sub = P.reindex(mask.index[mask.to_numpy(dtype=bool)])
+    exc = S.excursion_stats(sub, S.HOLD)
+    assert len(mins) == exc["n"]
+    np.testing.assert_allclose(np.sort(mins), np.sort(exc["_mins"]))
+
+
+def test_p2_report_below_gate_when_legs_thin():
+    n = 100
+    idx = _bdays(n)
+    close = pd.Series(100.0, index=idx)
+    M = pd.DataFrame({"cz_roll": ["LowCorr"] * n, "dz_roll_l1": ["DIXLow"] * n}, index=idx)
+    P = S.forward_path_panel(close, horizon=S.H)
+    out = S.p2_report(M, P)
+    assert "below gate" in out
 
 
 # ---------------------------------------------------------------------------
@@ -644,3 +744,189 @@ def test_render_cell_shows_implied_line_when_present():
     st = S.cell_stats(P, rv, mask, seed=2, implied=implied)
     out = S.render_cell("NDX LowCorr", st, "QQQ")
     assert "implied-realized" in out
+
+
+# ---------------------------------------------------------------------------
+# n_dispersed / cross_index_masks / cross_index_section (Phase 5)
+# ---------------------------------------------------------------------------
+def _cz_frame(idx, pattern):
+    return pd.DataFrame({"cz_roll": pattern}, index=idx)
+
+
+def test_n_dispersed_counts_and_common_dates():
+    idx = _bdays(10)
+    ndx = _cz_frame(idx, ["LowCorr"] * 6 + ["HighCorr"] * 4)
+    spx = _cz_frame(idx, ["LowCorr"] * 4 + ["MidCorr"] * 6)
+    iwm = _cz_frame(idx, ["LowCorr"] * 8 + ["HighCorr"] * 2)
+    nlow, cz = S.n_dispersed({"NDX": ndx, "SPX": spx, "IWM": iwm})
+    assert len(cz) == 10
+    assert nlow.iloc[0] == 3    # all three LowCorr on day 0
+    # day 9: ndx=HighCorr, spx=MidCorr, iwm=HighCorr -> none LowCorr
+    assert nlow.iloc[9] == 0
+
+
+def test_n_dispersed_drops_na_rows():
+    idx = _bdays(5)
+    ndx = _cz_frame(idx, ["LowCorr", "NA", "HighCorr", "LowCorr", "LowCorr"])
+    spx = _cz_frame(idx, ["LowCorr"] * 5)
+    nlow, cz = S.n_dispersed({"NDX": ndx, "SPX": spx})
+    assert len(cz) == 4    # the NA row is dropped
+
+
+def test_cross_index_masks_labels_and_counts():
+    idx = _bdays(10)
+    M = pd.DataFrame(index=idx)
+    nlow = pd.Series([3, 3, 2, 1, 0, 0, 1, 2, 3, 3], index=idx)
+    masks = S.cross_index_masks(M, nlow, n_indices=3)
+    assert set(masks) == {"0of3", "1of3", "2of3", "3of3"}
+    assert masks["3of3"].sum() == 4
+    assert masks["0of3"].sum() == 2
+
+
+def test_cross_index_section_smoke():
+    n = 300
+    idx = _bdays(n)
+    rng = np.random.default_rng(3)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    M = pd.DataFrame({"rv": np.full(n, 18.0)}, index=idx)
+    nlow = pd.Series(rng.integers(0, 4, n), index=idx)
+    P = S.forward_path_panel(close, horizon=S.H)
+    out = S.cross_index_section("NDX", M, P, nlow, 3, "QQQ")
+    assert "BY N-OF-3 INDICES DISPERSED" in out
+
+
+# ---------------------------------------------------------------------------
+# rule rows (Phase 5)
+# ---------------------------------------------------------------------------
+def test_rule_row_ndx_dixlow_caution_smoke():
+    n = 500
+    idx = _bdays(n)
+    rng = np.random.default_rng(7)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    cz = np.where(np.arange(n) % 10 < 6, "LowCorr", "MidCorr")
+    dz = np.where(np.arange(n) % 6 < 2, "DIXLow", np.where(np.arange(n) % 6 < 4,
+                                                           "DIXMid", "DIXHigh"))
+    M = pd.DataFrame({"cz_roll": cz, "dz_roll_l1": dz, "rv": np.full(n, 18.0)}, index=idx)
+    P = S.forward_path_panel(close, horizon=S.H)
+    active_mask = (M["cz_roll"] == "LowCorr") & (M["dz_roll_l1"] == "DIXLow")
+    active_st = S.cell_stats(P, M["rv"], active_mask, seed=1)
+    out = S.rule_row_ndx_dixlow_caution(M, P, active_st)
+    assert "ndx_dixlow_caution_v1" in out
+    assert "LowCorr-not-active" in out
+
+
+def test_rule_row_all_dispersed_smoke():
+    n = 300
+    idx = _bdays(n)
+    rng = np.random.default_rng(9)
+    close_a = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    close_b = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    Ma = pd.DataFrame({"cz_roll": ["LowCorr"] * n, "rv": np.full(n, 18.0)}, index=idx)
+    Mb = pd.DataFrame({"cz_roll": np.where(np.arange(n) % 3 == 0, "LowCorr", "MidCorr"),
+                       "rv": np.full(n, 15.0)}, index=idx)
+    frames = {"NDX": Ma, "SPX": Mb}
+    paths = {"NDX": S.forward_path_panel(close_a, horizon=S.H),
+            "SPX": S.forward_path_panel(close_b, horizon=S.H)}
+    metas = {"NDX": {"proxy": "QQQ"}, "SPX": {"proxy": "SPY"}}
+    nlow, _ = S.n_dispersed(frames)
+    out = S.rule_row_all_dispersed(frames, paths, metas, nlow, 2)
+    assert "all_dispersed_derisk_v1" in out
+    assert "NDX active" in out and "SPX active" in out
+
+
+# ---------------------------------------------------------------------------
+# CSV row builders (Phase 5)
+# ---------------------------------------------------------------------------
+def test_parse_cell_label_variants():
+    assert S._parse_cell_label("LowCorrxDIXLow(l1)") == ("LowCorr", "DIXLow")
+    assert S._parse_cell_label("HighCorr") == ("HighCorr", "")
+    assert S._parse_cell_label("VolLow") == ("VolLow", "")
+    assert S._parse_cell_label("2of3") == ("", "")
+
+
+def test_cell_to_long_rows_empty_when_ungated():
+    assert S.cell_to_long_rows("NDX", "ENV", "LowCorr", {"gate": False}) == []
+
+
+def test_cell_to_long_rows_shape_when_gated():
+    n = 400
+    idx = _bdays(n)
+    rng = np.random.default_rng(3)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    rv = pd.Series(18.0, index=idx)
+    mask = pd.Series(False, index=idx)
+    for s in (10, 60, 120, 180, 240, 300):
+        mask.iloc[s:s + 10] = True
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.cell_stats(P, rv, mask, seed=1)
+    rows = S.cell_to_long_rows("NDX", "ENV", "LowCorrxDIXLow(l1)", st)
+    assert len(rows) > 0
+    assert all(r["corr_regime"] == "LowCorr" and r["dix_regime"] == "DIXLow" for r in rows)
+    assert all(r["gate"] for r in rows)
+    assert any("p50" in r for r in rows)
+
+
+def test_cell_to_risk_row_ungated_has_no_numeric_fields():
+    row = S.cell_to_risk_row("NDX", "ENV", "LowCorr", {"gate": False, "n_days": 10, "n_eps": 1})
+    assert row["gate"] is False
+    assert "mae_q25" not in row
+
+
+def test_cell_to_risk_row_gated_has_expected_columns():
+    n = 400
+    idx = _bdays(n)
+    rng = np.random.default_rng(3)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    rv = pd.Series(18.0, index=idx)
+    mask = pd.Series(False, index=idx)
+    for s in (10, 60, 120, 180, 240, 300):
+        mask.iloc[s:s + 10] = True
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.cell_stats(P, rv, mask, seed=1)
+    row = S.cell_to_risk_row("NDX", "ENV", "LowCorr", st)
+    assert row["mae_q25"] == pytest.approx(st["exc"]["mae_q25"])
+    assert "ci_mae_q25_lo" in row and "ci_mae_q25_hi" in row
+
+
+# ---------------------------------------------------------------------------
+# full end-to-end main()-style integration (3 synthetic indices, CSVs)
+# ---------------------------------------------------------------------------
+def test_cross_index_and_csv_integration(tmp_path, capsys):
+    import intra_index_regime_study as R
+
+    rng = np.random.default_rng(0)
+    n = 900
+    frames, metas, paths, all_long, all_risk = {}, {}, {}, [], []
+    for name, proxy_sym in (("NDX", "QQQ"), ("SPX", "SPY"), ("IWM", "IWM")):
+        idx = _bdays(n, start="2020-01-02")
+        names = [f"{name}{i:02d}" for i in range(35)]   # >= MIN_NAMES so avg_corr is defined
+        px = pd.DataFrame({t: 100.0 * np.cumprod(1 + rng.normal(0, 0.015, n)) for t in names},
+                          index=idx)
+        proxy = pd.Series(100.0 * np.cumprod(1 + rng.normal(0.0003, 0.012, n)), index=idx)
+        dix = pd.Series(rng.normal(0.42, 0.05, n), index=idx)
+        r1m = (proxy.shift(-21) / proxy - 1) * 100
+        M = R.assemble_frame(px, proxy, dix, r1m)
+        meta = {"proxy": proxy_sym, "proxy_close": proxy, "note": "smoke", "dropped": {}}
+        P, all_stats = S.report_index(name, M, meta, type("A", (), {})())
+        frames[name], metas[name], paths[name] = M, meta, P
+        for label, st in all_stats.items():
+            all_long.extend(S.cell_to_long_rows(name, "ENV", label, st))
+            all_risk.append(S.cell_to_risk_row(name, "ENV", label, st))
+
+    capsys.readouterr()   # discard the per-index report output
+    nlow, _ = S.n_dispersed(frames)
+    for name, M in frames.items():
+        print(S.cross_index_section(name, M, paths[name], nlow, 3, metas[name]["proxy"]))
+    print(S.rule_row_all_dispersed(frames, paths, metas, nlow, 3))
+    out = capsys.readouterr().out
+    assert "BY N-OF-3 INDICES DISPERSED" in out
+    assert "all_dispersed_derisk_v1" in out
+
+    long_csv, risk_csv = tmp_path / "paths.csv", tmp_path / "risk.csv"
+    pd.DataFrame(all_long).to_csv(long_csv, index=False)
+    pd.DataFrame(all_risk).to_csv(risk_csv, index=False)
+    long_df = pd.read_csv(long_csv)
+    risk_df = pd.read_csv(risk_csv)
+    assert {"index", "family", "cell", "h", "gate"}.issubset(long_df.columns)
+    assert {"index", "cell", "mae_q25", "gate"}.issubset(risk_df.columns)
+    assert (risk_df["gate"] == True).any()   # noqa: E712 -- at least one gated row present
