@@ -120,7 +120,10 @@ def _ensure_hydrated(path):
     """If the local duckdb store is absent but the committed parquet mirror exists, hydrate the
     store from it -- so a fresh (ephemeral) session inherits the durable prices and does not
     re-query Yahoo. No-op once the store exists."""
-    if not os.path.exists(path) and os.path.exists(PARQUET_MIRROR):
+    # Only the default store is seeded from the committed mirror; a custom/temp store path
+    # (tests, ad-hoc) stays isolated so it never inherits the repo's committed prices.
+    if (os.path.abspath(path) == os.path.abspath(default_store_path())
+            and not os.path.exists(path) and os.path.exists(PARQUET_MIRROR)):
         try:
             import_parquet(path=path)
         except Exception as e:  # noqa: BLE001

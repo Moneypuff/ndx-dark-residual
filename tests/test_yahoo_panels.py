@@ -151,3 +151,28 @@ def test_symbol_within_tolerance_of_start_is_not_backfilled(tmp_path, monkeypatc
 
     assert calls and calls[0][1] == dates.max(), (
         "within-tolerance staleness must extend forward, not trigger a full backfill")
+
+
+# ---------------------------------------------------------------------------
+# equity-store isolation: a custom/temp cache_dir must NOT inherit the durable
+# store's committed prices and must NOT rewrite the committed parquet mirror.
+# (Regression: the store read/write-through once fired for every cache_dir,
+# so tests served a store symbol as "current" and clobbered data/*.parquet.)
+# ---------------------------------------------------------------------------
+def test_equity_store_isolation_for_custom_cache_dir(tmp_path, monkeypatch):
+    import os
+    # BIIB is a real exited member that lives in the committed equity store; a temp
+    # cache_dir must still fetch it (not silently serve it from the store).
+    dates = pd.bdate_range("2020-01-02", "2020-03-01")
+    calls = []
+    monkeypatch.setattr(N, "fetch_yahoo_one", _fake_fetch(calls, {"BIIB": _mkdf(dates)}))
+
+    mirror = os.path.join(os.path.dirname(N.__file__), "data", "equity_prices.parquet")
+    before = os.path.getsize(mirror) if os.path.exists(mirror) else None
+
+    N.load_yahoo_panels(["BIIB"], "2020-01-02", "2020-03-01",
+                        cache_dir=str(tmp_path), refresh=False, label="T")
+
+    assert calls, "a custom cache_dir must fetch, not inherit the committed equity store"
+    after = os.path.getsize(mirror) if os.path.exists(mirror) else None
+    assert before == after, "load_yahoo_panels with a custom cache_dir must not rewrite the committed parquet mirror"

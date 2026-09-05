@@ -6007,6 +6007,8 @@ YAHOO_CHART = ("https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
 _YF_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
           "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 YAHOO_CACHE = "yahoo_prices.pkl"
+# The durable equity store backs only this (default) cache location; see equity_store.py.
+_EQS_DEFAULT_CACHE_DIR = DEFAULT_CACHE_DIR
 # A symbol whose cached history starts later than (requested start + this many days) is treated
 # as truncated and backfilled in full rather than only ever fetched forward -- see
 # load_yahoo_panels. 400 days mirrors the shallow-panel tolerance build_gex_dispersion.py already
@@ -6143,9 +6145,12 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
     # symbols/dates the day-cache lacks so they count as already-held and are not re-queried
     # from Yahoo. Guarded -- if duckdb/the store is absent this is a silent no-op. See
     # equity_store.py.
+    # Only the DEFAULT production cache is backed by the durable store; a custom/temp cache_dir
+    # (tests, ad-hoc runs) stays fully isolated and never inherits the committed parquet mirror.
     try:
         import equity_store as _eqs
-        _stored = _eqs.load_panels(symbols, cache_dir=cache_dir) if cache_dir else None
+        _use_store = bool(cache_dir) and os.path.abspath(cache_dir) == os.path.abspath(_eqs.DEFAULT_CACHE_DIR)
+        _stored = _eqs.load_panels(symbols, cache_dir=cache_dir) if _use_store else None
         if _stored:
             for f in fields:
                 sdf = _stored.get(f)
@@ -6273,10 +6278,11 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
             print(f"  ! could not write yahoo cache ({e})", file=sys.stderr)
     # Write-through to the durable equity store so this history is reused next time and never
     # re-queried from Yahoo (guarded; no-op without duckdb/the store).
-    if cache_dir and not out["close"].empty:
+    if cache_dir and not out["close"].empty and \
+            os.path.abspath(cache_dir) == os.path.abspath(_EQS_DEFAULT_CACHE_DIR):
         try:
             import equity_store as _eqs
-            _eqs.upsert_panels({f: out[f] for f in fields}, cache_dir=cache_dir)
+            _eqs.upsert_panels({f: out[f] for f in fields}, cache_dir=cache_dir, mirror=False)
         except Exception as _e:  # noqa: BLE001
             print(f"  ! equity store write-through skipped ({_e})", file=sys.stderr)
     return _window(out)
