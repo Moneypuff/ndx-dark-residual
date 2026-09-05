@@ -1,6 +1,6 @@
 {
  "date": "2026-09-04",
- "captured_utc": "2026-09-04T18:54:55+00:00",
+ "captured_utc": "2026-09-04T19:55:18+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -15,12 +15,12 @@
   "IWM": {
    "ok": true,
    "expiries": 11,
-   "rows": 1156
+   "rows": 1166
   },
   "SMH": {
    "ok": true,
    "expiries": 10,
-   "rows": 1567
+   "rows": 1556
   },
   "IGV": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 1086
+   "rows": 1089
   },
   "EEM": {
    "ok": true,
@@ -85,7 +85,7 @@
   "XLE": {
    "ok": true,
    "expiries": 9,
-   "rows": 646
+   "rows": 647
   },
   "XLI": {
    "ok": true,
@@ -125,12 +125,12 @@
   "AAPL": {
    "ok": true,
    "expiries": 11,
-   "rows": 844
+   "rows": 841
   },
   "TSLA": {
    "ok": true,
    "expiries": 10,
-   "rows": 1010
+   "rows": 1011
   },
   "GOOGL": {
    "ok": true,
@@ -140,7 +140,7 @@
   "NVDA": {
    "ok": true,
    "expiries": 10,
-   "rows": 831
+   "rows": 829
   },
   "AMZN": {
    "ok": true,
@@ -155,22 +155,22 @@
   "META": {
    "ok": true,
    "expiries": 10,
-   "rows": 1347
+   "rows": 1357
   },
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1080
+   "rows": 1098
   },
   "MU": {
    "ok": true,
    "expiries": 11,
-   "rows": 1761
+   "rows": 1784
   },
   "CRWV": {
    "ok": true,
    "expiries": 11,
-   "rows": 725
+   "rows": 728
   },
   "IONQ": {
    "ok": true,
@@ -195,12 +195,12 @@
   "SPCX": {
    "ok": true,
    "expiries": 10,
-   "rows": 745
+   "rows": 732
   },
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 987
+   "rows": 997
   },
   "USO": {
    "ok": true,
@@ -210,7 +210,7 @@
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1797
+   "rows": 1788
   },
   "SLV": {
    "ok": true,
@@ -230,17 +230,17 @@
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 958
+   "rows": 967
   },
   "NBIS": {
    "ok": true,
    "expiries": 12,
-   "rows": 784
+   "rows": 795
   },
   "AAOI": {
    "ok": true,
    "expiries": 8,
-   "rows": 583
+   "rows": 580
   }
  }
 }
