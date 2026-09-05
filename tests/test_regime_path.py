@@ -438,3 +438,134 @@ def test_render_cell_prints_blocks_above_gate():
     assert "vol:" in out
     assert "sizing:" in out
     assert "epCI" in out
+
+
+# ---------------------------------------------------------------------------
+# daily_microstructure (Phase 3, block E)
+# ---------------------------------------------------------------------------
+def test_daily_microstructure_basic_stats():
+    idx = _bdays(10)
+    proxy = pd.Series([100.0, 102, 101, 105, 103, 106, 104, 108, 107, 110], index=idx)
+    mask = pd.Series(True, index=idx)
+    micro = S.daily_microstructure(proxy, mask)
+    r = (proxy.pct_change() * 100).dropna().to_numpy()
+    assert micro["n"] == len(r)
+    assert micro["worst"] == pytest.approx(float(r.min()))
+    assert micro["best"] == pytest.approx(float(r.max()))
+    assert micro["up_frac"] == pytest.approx(float(np.mean(r > 0) * 100))
+
+
+def test_daily_microstructure_below_min_n():
+    idx = _bdays(4)
+    proxy = pd.Series([100.0, 101, 99, 102], index=idx)
+    mask = pd.Series(True, index=idx)
+    micro = S.daily_microstructure(proxy, mask)
+    assert micro["n"] < 5
+    assert "ann_vol" not in micro
+
+
+def test_daily_microstructure_positive_autocorrelation():
+    # alternating +1%/-1% BLOCKS of 10 days each: mostly same-sign neighbors
+    idx = _bdays(50)
+    trend = np.concatenate([np.full(10, 1.0), np.full(10, -1.0)] * 3)[:49] / 100.0
+    proxy = pd.Series(100.0 * np.cumprod(np.concatenate([[1.0], 1 + trend])), index=idx)
+    mask = pd.Series(True, index=idx)
+    micro = S.daily_microstructure(proxy, mask)
+    assert micro["autocorr1"] > 0.3
+
+
+# ---------------------------------------------------------------------------
+# vol_parallel_comparison (Phase 3)
+# ---------------------------------------------------------------------------
+def test_vol_parallel_comparison_empty_without_vz_roll():
+    idx = _bdays(10)
+    M = pd.DataFrame({"cz_roll": ["LowCorr"] * 10, "dz_roll_l1": ["DIXLow"] * 10}, index=idx)
+    P = pd.DataFrame({0: [0.0] * 10})
+    assert S.vol_parallel_comparison(P, M) == []
+
+
+def test_vol_parallel_comparison_renders_when_vz_roll_present():
+    n = 400
+    idx = _bdays(n)
+    rng = np.random.default_rng(1)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    rv = pd.Series(15.0, index=idx)
+    cz = np.where(np.arange(n) % 20 < 10, "LowCorr", "MidCorr")
+    vz = np.where(np.arange(n) % 15 < 7, "VolLow", "VolMid")
+    dz = np.where(np.arange(n) % 8 < 4, "DIXLow", "DIXMid")
+    M = pd.DataFrame({"cz_roll": cz, "dz_roll_l1": dz, "vz_roll": vz, "rv": rv}, index=idx)
+    P = S.forward_path_panel(close, horizon=S.H)
+    lines = S.vol_parallel_comparison(P, M, seed=1)
+    assert any("DIX(l1)=DIXLow" in l for l in lines)
+
+
+# ---------------------------------------------------------------------------
+# primaries_report (P1, P3) -- decision logic on synthetic cell_stats dicts
+# ---------------------------------------------------------------------------
+def test_primaries_report_p1_supported():
+    low = {"gate": True, "vol": {"z_gt2": 10.0}, "ci": {"z_gt2": (6.0, 14.0)}}
+    high = {"gate": True, "vol": {"z_gt2": 3.0}, "ci": {}}
+    out = S.primaries_report("NDX", {"LowCorr": low, "HighCorr": high})
+    assert "-> SUPPORTED" in out
+
+
+def test_primaries_report_p1_not_supported_when_ci_touches_benchmark():
+    low = {"gate": True, "vol": {"z_gt2": 5.0}, "ci": {"z_gt2": (3.0, 7.0)}}  # CI spans 4.6
+    high = {"gate": True, "vol": {"z_gt2": 3.0}, "ci": {}}
+    out = S.primaries_report("NDX", {"LowCorr": low, "HighCorr": high})
+    assert "-> NOT SUPPORTED" in out
+
+
+def test_primaries_report_p1_missing_when_below_gate():
+    out = S.primaries_report("NDX", {"LowCorr": {"gate": False}, "HighCorr": {"gate": True}})
+    assert "P1 (jump risk): --" in out
+
+
+def test_primaries_report_p3_both_legs_supported():
+    low = {"gate": True, "exc": {"n": 100, "mae_q25": -4.0}}
+    mid = {"gate": True, "exc": {"n": 100, "mae_q25": -5.0}}
+    high = {"gate": True, "exc": {"n": 100, "mae_q25": -9.0},
+           "vol": {"vratio_med": 0.8}, "ci": {"vratio": (0.6, 0.9)}}
+    out = S.primaries_report("NDX", {"LowCorr": low, "MidCorr": mid, "HighCorr": high})
+    assert "SUPPORTED (both legs)" in out
+
+
+def test_primaries_report_p3_mae_leg_only():
+    low = {"gate": True, "exc": {"n": 100, "mae_q25": -4.0}}
+    mid = {"gate": True, "exc": {"n": 100, "mae_q25": -5.0}}
+    high = {"gate": True, "exc": {"n": 100, "mae_q25": -9.0},
+           "vol": {"vratio_med": 1.1}, "ci": {"vratio": (0.9, 1.3)}}
+    out = S.primaries_report("NDX", {"LowCorr": low, "MidCorr": mid, "HighCorr": high})
+    assert "MAE leg only" in out
+
+
+def test_primaries_report_p3_not_supported_when_highcorr_not_worst():
+    low = {"gate": True, "exc": {"n": 100, "mae_q25": -9.0}}
+    mid = {"gate": True, "exc": {"n": 100, "mae_q25": -5.0}}
+    high = {"gate": True, "exc": {"n": 100, "mae_q25": -4.0},
+           "vol": {"vratio_med": 0.8}, "ci": {"vratio": (0.6, 0.9)}}
+    out = S.primaries_report("NDX", {"LowCorr": low, "MidCorr": mid, "HighCorr": high})
+    assert "NOT SUPPORTED" in out
+
+
+# ---------------------------------------------------------------------------
+# report_index integration smoke test
+# ---------------------------------------------------------------------------
+def test_report_index_smoke_includes_primaries_and_microstructure(capsys):
+    import intra_index_regime_study as R
+
+    rng = np.random.default_rng(0)
+    n = 1000
+    idx = _bdays(n, start="2020-01-02")
+    names = [f"N{i:02d}" for i in range(30)]
+    px = pd.DataFrame({t: 100.0 * np.cumprod(1 + rng.normal(0, 0.015, n)) for t in names},
+                      index=idx)
+    proxy = pd.Series(100.0 * np.cumprod(1 + rng.normal(0.0003, 0.012, n)), index=idx)
+    dix = pd.Series(rng.normal(0.42, 0.05, n), index=idx)
+    r1m = (proxy.shift(-21) / proxy - 1) * 100
+    M = R.assemble_frame(px, proxy, dix, r1m)
+    meta = {"proxy": "QQQ", "proxy_close": proxy, "note": "smoke", "dropped": {}}
+    S.report_index("SYN", M, meta, type("A", (), {})())
+    out = capsys.readouterr().out
+    assert "PRIMARY HYPOTHESES" in out
+    assert "microstructure" in out

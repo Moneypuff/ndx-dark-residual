@@ -302,13 +302,16 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0):
         if dvar > 0:
             vol["vr21"] = float(np.var(term, ddof=0) / (h * dvar))
         term21 = exc["_term"]
+        # vol-scaled terminal z = r21 / (trailing-vol-implied 21-session sd) -- kept as a
+        # full-length array (NaN where rv is undefined) so it aligns with ids_ok below and
+        # feeds both the point share and its episode-cluster CI from one array.
         with np.errstate(invalid="ignore", divide="ignore"):
             zdenom = rv_ok * np.sqrt(h / 252.0)
-        zok = np.isfinite(zdenom) & (zdenom > 0)
+            z_full = np.where(zdenom > 0, term21 / zdenom, np.nan)
+        zok = np.isfinite(z_full)
         if zok.any():
-            z = term21[zok] / zdenom[zok]
-            vol["z_gt1"] = float(np.mean(np.abs(z) > 1) * 100)
-            vol["z_gt2"] = float(np.mean(np.abs(z) > 2) * 100)
+            vol["z_gt1"] = float(np.mean(np.abs(z_full[zok]) > 1) * 100)
+            vol["z_gt2"] = float(np.mean(np.abs(z_full[zok]) > 2) * 100)
 
         if gate:
             ids_ok = ids[ok]
@@ -322,6 +325,8 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0):
                 ratio_full = np.where(rok, fv / np.where(rv_ok == 0, np.nan, rv_ok), np.nan)
             ci["vratio"] = R.cluster_boot_ci(
                 ratio_full, ids_ok, seed=seed + 3, stat=lambda x: float(np.median(x)))
+            z_gt2_ind = np.where(zok, np.where(np.abs(z_full) > 2, 100.0, 0.0), np.nan)
+            ci["z_gt2"] = R.cluster_boot_ci(z_gt2_ind, ids_ok, seed=seed + 4)
     out["vol"] = vol
     out["ci"] = ci
 
@@ -495,6 +500,133 @@ def transition_within(M, mask, h=HOLD, zone_col="cz_roll", to="HighCorr"):
 
 
 # ----------------------------------------------------------------------------
+# Block E: daily microstructure (day level, not paths)
+# ----------------------------------------------------------------------------
+def daily_microstructure(proxy_close, mask):
+    """Block E: day-level (not path-level) diagnostics over the cell's OWN
+    days -- annualized vol, skew, excess kurtosis, lag-1 autocorrelation
+    (of the regime's own day-to-day moves, in the order they occur -- not
+    necessarily calendar-consecutive across a gap), worst/best day, share
+    of |r|>2%, up-day fraction. Cheap and diagnostic: says whether a
+    regime's path risk is gap-driven (fat tails, a large worst day) or
+    grind-driven (small, persistent moves). Assumes `proxy_close` is a
+    dense daily series (no internal gaps) -- true for the index proxies
+    this study uses."""
+    r = (proxy_close.pct_change() * 100.0).reindex(mask.index)
+    m = mask.to_numpy(dtype=bool)
+    v = r.to_numpy(dtype=float)[m]
+    v = v[np.isfinite(v)]
+    n = len(v)
+    out = {"n": n}
+    if n < 5:
+        return out
+    mu, sd = float(np.mean(v)), float(np.std(v, ddof=0))
+    out["ann_vol"] = sd * np.sqrt(252)
+    if sd > 0:
+        zc = (v - mu) / sd
+        out["skew"] = float(np.mean(zc ** 3))
+        out["exkurt"] = float(np.mean(zc ** 4) - 3.0)
+    else:
+        out["skew"] = out["exkurt"] = np.nan
+    out["worst"] = float(np.min(v))
+    out["best"] = float(np.max(v))
+    out["share_gt2"] = float(np.mean(np.abs(v) > 2) * 100)
+    out["up_frac"] = float(np.mean(v > 0) * 100)
+    if n > 2:
+        a, b = v[:-1], v[1:]
+        sa, sb = np.std(a, ddof=0), np.std(b, ddof=0)
+        out["autocorr1"] = (float(np.mean((a - a.mean()) * (b - b.mean())) / (sa * sb))
+                            if sa > 0 and sb > 0 else np.nan)
+    else:
+        out["autocorr1"] = np.nan
+    return out
+
+
+# ----------------------------------------------------------------------------
+# Corr-vs-vol comparison, and the three PRIMARY hypotheses
+# ----------------------------------------------------------------------------
+GAUSSIAN_Z1, GAUSSIAN_Z2 = 31.7, 4.6   # Gaussian |z|>1 / |z|>2 benchmarks, percent
+
+
+def vol_parallel_comparison(P, M, seed=9000):
+    """One comparison block per index: for each DIX(lag-1) zone, contrasts
+    the comovement cell (LowCorr x DIX) against the vol-regime cell
+    (VolLow x DIX) on MAE q25 (21d), the -5% touch probability and the
+    vol-expansion-ratio median -- the corr-vs-vol honesty owed since
+    realized correlation and realized vol run ~0.8 correlated in-sample.
+    Empty list when the frame carries no vz_roll column."""
+    if "vz_roll" not in M.columns:
+        return []
+    lines = []
+    for dz in R.DZONES:
+        cst = cell_stats(P, M["rv"], (M["cz_roll"] == "LowCorr") & (M["dz_roll_l1"] == dz),
+                         seed=seed)
+        vst = cell_stats(P, M["rv"], (M["vz_roll"] == "VolLow") & (M["dz_roll_l1"] == dz),
+                         seed=seed + 1)
+        seed += 2
+
+        def cell_line(tag, st):
+            if not st.get("gate"):
+                return f"    {tag}: -- (n={st['n_days']}d/{st['n_eps']}ep)"
+            exc, bar, vol = st["exc"], st["bar"], st["vol"]
+            return (f"    {tag}: n={st['n_days']}d/{st['n_eps']}ep   "
+                    f"MAE q25 {exc.get('mae_q25', float('nan')):+.1f}   "
+                    f"touch-5 {bar.get('touch_m5', float('nan')):.0f}%   "
+                    f"vol-ratio med {vol.get('vratio_med', float('nan')):.2f}")
+
+        lines.append(f"  DIX(l1)={dz}:")
+        lines.append(cell_line("LowCorr", cst))
+        lines.append(cell_line("VolLow ", vst))
+    return lines
+
+
+def primaries_report(name, all_stats):
+    """Print the three PRIMARY (pre-specified) path-study hypotheses for
+    this index, with their decision rules -- the only claims the findings
+    doc may headline (REGIME_PATH_STUDY_PLAN.md). P2 (the DIX-Low leg as a
+    drawdown effect) is wired in a later phase once the joint-resample
+    difference CI lands."""
+    lines = [f"=== {name} PRIMARY HYPOTHESES (pre-specified; see REGIME_PATH_STUDY_PLAN.md) ==="]
+    low, mid, high = all_stats.get("LowCorr"), all_stats.get("MidCorr"), all_stats.get("HighCorr")
+
+    if low and low.get("gate") and high and high.get("gate"):
+        lz2 = low.get("vol", {}).get("z_gt2", np.nan)
+        hz2 = high.get("vol", {}).get("z_gt2", np.nan)
+        lo, hi = low.get("ci", {}).get("z_gt2", (np.nan, np.nan))
+        supported = (np.isfinite(lo) and lo > GAUSSIAN_Z2
+                    and np.isfinite(lz2) and np.isfinite(hz2) and lz2 > hz2)
+        verdict = "SUPPORTED" if supported else "NOT SUPPORTED"
+        lines.append(
+            f"  P1 (jump risk in dispersed tapes): LowCorr |z|>2 share {lz2:.1f}% "
+            f"[epCI {lo:.1f},{hi:.1f}] vs Gaussian {GAUSSIAN_Z2}%; HighCorr {hz2:.1f}%.   "
+            f"-> {verdict}"
+            + ("" if supported else
+               "  (trailing vol does not detectably understate dispersed-tape path risk)"))
+    else:
+        lines.append("  P1 (jump risk): -- (LowCorr or HighCorr marginal below gate)")
+
+    cells = {"LowCorr": low, "MidCorr": mid, "HighCorr": high}
+    gated = {k: v for k, v in cells.items() if v and v.get("gate") and v.get("exc", {}).get("n")}
+    if "HighCorr" in gated and len(gated) == 3:
+        q25 = {k: v["exc"]["mae_q25"] for k, v in gated.items()}
+        worst_zone = min(q25, key=q25.get)
+        vlo, vhi = high.get("ci", {}).get("vratio", (np.nan, np.nan))
+        vmed = high.get("vol", {}).get("vratio_med", np.nan)
+        mae_leg = worst_zone == "HighCorr"
+        vol_leg = np.isfinite(vhi) and vhi < 1.0
+        verdict = ("SUPPORTED (both legs)" if mae_leg and vol_leg else
+                  "MAE leg only" if mae_leg else "NOT SUPPORTED")
+        lines.append(
+            "  P3 (panic tapes: worst excursions, decaying vol): q25 MAE21 by zone "
+            + "  ".join(f"{k} {v:+.1f}" for k, v in q25.items())
+            + f"   worst={worst_zone}; HighCorr fwd/trail vol ratio med {vmed:.2f} "
+            f"[epCI {vlo:.2f},{vhi:.2f}] vs 1.0.   -> {verdict}")
+    else:
+        lines.append("  P3 (panic tapes): -- (a zone marginal below gate)")
+    return "\n".join(lines)
+
+
+# ----------------------------------------------------------------------------
 # Report rendering
 # ----------------------------------------------------------------------------
 def fmt_gate(st):
@@ -578,6 +710,16 @@ def render_survival(surv):
     return f"  survival: still in cell at   {parts}"
 
 
+def render_microstructure(micro):
+    if micro.get("n", 0) < 5:
+        return None
+    return (f"  microstructure (day-level, n={micro['n']}): ann.vol {micro['ann_vol']:.1f}   "
+           f"skew {micro['skew']:+.2f}  exkurt {micro['exkurt']:+.2f}   "
+           f"worst {micro['worst']:+.1f}%  best {micro['best']:+.1f}%   "
+           f"|r|>2%: {micro['share_gt2']:.0f}%   up-day {micro['up_frac']:.0f}%   "
+           f"autocorr1 {micro['autocorr1']:+.2f}")
+
+
 def render_transition(hit, valid, sub_all, h):
     v = valid.to_numpy(dtype=bool)
     if not v.any():
@@ -641,11 +783,16 @@ def report_index(name, M, meta, args):
           f"rates); print gate {GATE_DAYS}d AND {GATE_EPISODES} episodes (ENTRY: "
           f"{GATE_EVENTS} events).\n")
     seed = 200
+    all_stats = {}
     for label, mask in masks.items():
         seed += 1
         st = cell_stats(P, M["rv"], mask, family="ENV", seed=seed)
+        all_stats[label] = st
         lines = [render_cell(f"{name} {label}", st, proxy)]
         if st.get("gate"):
+            micro_line = render_microstructure(daily_microstructure(proxy_close, mask))
+            if micro_line:
+                lines.append(micro_line)
             if label in R.ZONES:
                 lines.append(render_survival(survival(mask)))
             if label == "LowCorr" or label.startswith("LowCorrx"):
@@ -657,6 +804,14 @@ def report_index(name, M, meta, args):
         lines.append(render_entry(entry_stats(M, P, mask, seed=seed + 1000), proxy))
         lines.append(render_hold(hold_stats(P, mask, seed=seed + 2000)))
         print("\n".join(lines))
+        print()
+
+    print(primaries_report(name, all_stats))
+    print()
+    vp_lines = vol_parallel_comparison(P, M)
+    if vp_lines:
+        print(f"=== {name} CORR-VS-VOL COMPARISON (LowCorr vs VolLow, by DIX(lag-1) zone) ===")
+        print("\n".join(vp_lines))
         print()
     return P
 
