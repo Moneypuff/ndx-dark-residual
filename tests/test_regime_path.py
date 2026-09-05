@@ -268,6 +268,160 @@ def test_render_cell_suppresses_detail_below_gate():
     assert "excursion" not in out
 
 
+# ---------------------------------------------------------------------------
+# episode_hold_paths / hold_stats (Phase 2)
+# ---------------------------------------------------------------------------
+def test_episode_hold_paths_confirm_exit_and_post_exit():
+    n = 60
+    idx = _bdays(n)
+    close = pd.Series(100.0 + np.arange(n), index=idx)   # strictly increasing, easy to hand-check
+    mask = pd.Series(False, index=idx)
+    mask.iloc[5:10] = True   # episode: positions 5..9 (5 days)
+    P = S.forward_path_panel(close, horizon=S.H)
+    holds = S.episode_hold_paths(P, mask, confirm=3, cap=S.H)
+    assert len(holds) == 1
+    row = holds.iloc[0]
+    assert row["start"] == idx[7]      # 3rd consecutive True day (positions 5, 6, 7)
+    assert row["exit"] == idx[10]      # first failing close after the run
+    assert row["duration"] == 3
+    expected_term = float((close.iloc[10] / close.iloc[7] - 1) * 100)
+    assert row["terminal"] == pytest.approx(expected_term)
+    expected_mae = float((close.iloc[8] / close.iloc[7] - 1) * 100)  # smallest of the 3 forward gains
+    assert row["mae"] == pytest.approx(expected_mae)
+    assert row["trough_d"] == 1
+    assert row["peak_d"] == 3
+    expected_post = float((close.iloc[10 + S.HOLD] / close.iloc[10] - 1) * 100)
+    assert row["post_exit_r21"] == pytest.approx(expected_post)
+
+
+def test_episode_hold_paths_skips_short_and_open_episodes():
+    n = 30
+    idx = _bdays(n)
+    close = pd.Series(100.0 + np.arange(n), index=idx)
+    mask = pd.Series(False, index=idx)
+    mask.iloc[3:5] = True    # only 2 days -- never confirms at confirm=3
+    mask.iloc[20:30] = True  # runs through the end of the sample -- open episode
+    P = S.forward_path_panel(close, horizon=S.H)
+    holds = S.episode_hold_paths(P, mask, confirm=3, cap=S.H)
+    assert holds.empty
+
+
+def test_hold_stats_gate_and_ci():
+    n = 500
+    idx = _bdays(n)
+    close = pd.Series(100.0 + np.arange(n) * 0.3, index=idx)
+    mask = pd.Series(False, index=idx)
+    for s in (5, 60, 120, 180, 240, 300):
+        mask.iloc[s:s + 8] = True   # 6 episodes of 8 days -> 6 EPISODE-HOLD rows
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.hold_stats(P, mask, seed=3)
+    assert st["n_eps"] == 6
+    assert st["gate"] is True
+    assert np.isfinite(st["term_med"])
+    lo, hi = st["ci_term"]
+    assert np.isfinite(lo) and np.isfinite(hi)
+
+
+def test_hold_stats_below_gate():
+    n = 100
+    idx = _bdays(n)
+    close = pd.Series(100.0 + np.arange(n), index=idx)
+    mask = pd.Series(False, index=idx)
+    mask.iloc[5:13] = True   # 1 episode only
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.hold_stats(P, mask)
+    assert st["n_eps"] == 1
+    assert st["gate"] is False
+    assert "ci_term" not in st
+
+
+# ---------------------------------------------------------------------------
+# entry_stats (Phase 2)
+# ---------------------------------------------------------------------------
+def test_entry_stats_gate_and_fields():
+    n = 500
+    idx = _bdays(n)
+    rng = np.random.default_rng(9)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    M = pd.DataFrame(index=idx)
+    mask = pd.Series(False, index=idx)
+    starts = [10, 40, 70, 100, 130, 160, 190, 220, 250, 280, 310, 340]
+    for s in starts:
+        mask.iloc[s:s + 5] = True
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.entry_stats(M, P, mask, seed=1)
+    assert st["n_events"] == len(starts)
+    assert st["gate"] is True
+    assert np.isfinite(st["mean_r"])
+    assert np.isfinite(st["hit"])
+    lo, hi = st["ci_mean_r"]
+    assert np.isfinite(lo) and np.isfinite(hi)
+
+
+def test_entry_stats_below_gate():
+    n = 200
+    idx = _bdays(n)
+    close = pd.Series(100.0, index=idx)
+    M = pd.DataFrame(index=idx)
+    mask = pd.Series(False, index=idx)
+    mask.iloc[10:15] = True   # only 1 entry
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.entry_stats(M, P, mask)
+    assert st["n_events"] == 1
+    assert st["gate"] is False
+    assert "ci_mean_r" not in st
+
+
+# ---------------------------------------------------------------------------
+# survival / transition_within (Phase 2)
+# ---------------------------------------------------------------------------
+def test_survival_known_share():
+    idx = _bdays(20)
+    mask = pd.Series(False, index=idx)
+    mask.iloc[0:10] = True
+    surv = S.survival(mask, checkpoints=(5,))
+    # anchors 0..9; future = anchor+5; anchors 0..4 -> future 5..9 (all True);
+    # anchors 5..9 -> future 10..14 (all False) -> 5 of 10 anchors survive
+    assert surv[5] == pytest.approx(50.0)
+
+
+def test_survival_nan_when_no_valid_future():
+    idx = _bdays(10)
+    mask = pd.Series(False, index=idx)
+    mask.iloc[8:10] = True
+    surv = S.survival(mask, checkpoints=(21,))
+    assert np.isnan(surv[21])
+
+
+def test_transition_within_hits_and_valid():
+    idx = _bdays(30)
+    M = pd.DataFrame({"cz_roll": ["LowCorr"] * 30}, index=idx)
+    M.loc[idx[15], "cz_roll"] = "HighCorr"
+    mask = pd.Series(False, index=idx)
+    mask.iloc[10:14] = True
+    hit, valid = S.transition_within(M, mask, h=5, to="HighCorr")
+    assert bool(hit.loc[idx[10]]) is True    # window 11..15 includes position 15
+    assert bool(hit.loc[idx[13]]) is True    # window 14..18 includes position 15
+    assert bool(valid.loc[idx[10]]) is True
+
+
+def test_transition_within_invalid_near_end():
+    idx = _bdays(10)
+    M = pd.DataFrame({"cz_roll": ["LowCorr"] * 10}, index=idx)
+    mask = pd.Series(False, index=idx)
+    mask.iloc[8] = True   # near the end -- t+h runs past the frame
+    hit, valid = S.transition_within(M, mask, h=5, to="HighCorr")
+    assert bool(valid.loc[idx[8]]) is False
+
+
+# ---------------------------------------------------------------------------
+# render_entry / render_hold gate suppression
+# ---------------------------------------------------------------------------
+def test_render_entry_and_hold_suppress_below_gate():
+    assert "below" in S.render_entry({"n_events": 3, "gate": False}, "QQQ")
+    assert "below" in S.render_hold({"n_eps": 2, "gate": False})
+
+
 def test_render_cell_prints_blocks_above_gate():
     n = 400
     idx = _bdays(n)

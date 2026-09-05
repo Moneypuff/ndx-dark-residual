@@ -333,6 +333,168 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0):
 
 
 # ----------------------------------------------------------------------------
+# ENTRY family: first day the cell's condition forms, cool-down apart
+# ----------------------------------------------------------------------------
+def entry_stats(M, P, mask, min_gap=HOLD, h=HOLD, seed=0):
+    """ENTRY family: first-day-of-condition events (`min_gap`-session
+    cool-down -- unchanged semantics from `intra_index_regime_study.
+    entry_events`, so ENTRY numbers here are directly comparable to the
+    regime study's own entry section), scored on the same excursion/
+    barrier blocks as ENV. Entries are >= `min_gap` sessions apart by
+    construction, so the events are treated as independent draws (a plain
+    percentile bootstrap over events, not an episode-cluster resample).
+    Gated at GATE_EVENTS (10)."""
+    idx = R.entry_events(M, mask, min_gap=min_gap)
+    n_events = len(idx)
+    out = {"family": "ENTRY", "n_events": n_events, "gate": n_events >= GATE_EVENTS}
+    if not n_events:
+        return out
+    dates = M.index[idx]
+    sub = P.reindex(dates)
+    exc = excursion_stats(sub, h)
+    out["exc"] = {k: v for k, v in exc.items() if not k.startswith("_")}
+    out["bar"] = barrier_touch(sub, h)
+    if exc.get("n"):
+        term = exc["_term"]
+        out["mean_r"] = float(np.mean(term))
+        out["hit"] = float(np.mean(term > 0) * 100)
+        if out["gate"]:
+            rng = np.random.default_rng(seed)
+            draws = rng.integers(0, len(term), size=(R.BOOT_B, len(term)))
+            means = term[draws].mean(axis=1)
+            out["ci_mean_r"] = tuple(float(x) for x in np.percentile(means, (2.5, 97.5)))
+    return out
+
+
+# ----------------------------------------------------------------------------
+# EPISODE-HOLD family: a confirmed, variable-duration position
+# ----------------------------------------------------------------------------
+def episode_hold_paths(P, mask, confirm=3, cap=H):
+    """One row per EPISODE-HOLD episode: enter at the close of the
+    CONFIRM-th consecutive session the cell condition holds (DIX-zone
+    episodes flicker daily -- see the design plan's "regime flicker" open
+    risk -- so a naive first-day entry would churn), exit at the close of
+    the first session the condition fails, capped at `cap` sessions. Skips
+    episodes shorter than `confirm` (never confirm) and episodes still
+    open at the end of the sample (no realized exit yet). Columns:
+    start/exit (dates), duration, terminal/mae/mfe (%), trough_d/peak_d,
+    hold_rv (annualized, from the hold's own daily returns), post_exit_r21
+    (%, the 21-session return AFTER exit -- what the regime's ending costs
+    or pays, pricing the jump risk the regime study's transition section
+    left unpriced). `P` is the forward-path panel on the proxy's own
+    calendar."""
+    m = mask.to_numpy(dtype=bool)
+    ids = R.run_ids(m)
+    dates = mask.index
+    n = len(m)
+    rows = []
+    for ep in np.unique(ids[ids >= 0]):
+        pos = np.where(ids == ep)[0]
+        start_pos, end_pos = pos[0], pos[-1]
+        if end_pos - start_pos + 1 < confirm or end_pos + 1 >= n:
+            continue    # never confirms, or the episode is still open (no realized exit)
+        entry_pos = start_pos + confirm - 1
+        exit_pos = min(end_pos + 1, entry_pos + cap)
+        h = exit_pos - entry_pos
+        if h <= 0:
+            continue
+        entry_date, exit_date = dates[entry_pos], dates[exit_pos]
+        if entry_date not in P.index or h not in P.columns:
+            continue
+        path = P.loc[entry_date, list(range(h + 1))].to_numpy(dtype=float)
+        if not np.isfinite(path).all():
+            continue
+        seg = path[1:]
+        growth = path / 100.0 + 1.0
+        with np.errstate(invalid="ignore", divide="ignore"):
+            rets = (growth[1:] / growth[:-1] - 1.0) * 100.0
+        post_exit = (float(P.loc[exit_date, HOLD])
+                    if exit_date in P.index and HOLD in P.columns
+                    and np.isfinite(P.loc[exit_date, HOLD]) else np.nan)
+        rows.append({
+            "episode": int(ep), "start": entry_date, "exit": exit_date,
+            "duration": int(h), "terminal": float(path[h]),
+            "mae": float(seg.min()), "trough_d": int(seg.argmin()) + 1,
+            "mfe": float(seg.max()), "peak_d": int(seg.argmax()) + 1,
+            "hold_rv": float(np.std(rets, ddof=0) * np.sqrt(252)) if len(rets) else np.nan,
+            "post_exit_r21": post_exit,
+        })
+    return pd.DataFrame(rows)
+
+
+def hold_stats(P, mask, confirm=3, cap=H, seed=0):
+    """EPISODE-HOLD family summary: confirmed, variable-duration holds
+    (`episode_hold_paths`). Each row IS its own episode, so the
+    episode-cluster CI on the terminal return degenerates to a standard
+    per-observation bootstrap here (one observation per cluster) -- the
+    same estimator, applied to a family whose anchors already are
+    episodes. Gated at GATE_EPISODES (5)."""
+    holds = episode_hold_paths(P, mask, confirm=confirm, cap=cap)
+    n_eps = len(holds)
+    out = {"family": "EPISODE-HOLD", "n_eps": n_eps, "gate": n_eps >= GATE_EPISODES}
+    if not n_eps:
+        return out
+    dur = holds["duration"].to_numpy(dtype=float)
+    term = holds["terminal"].to_numpy(dtype=float)
+    mae = holds["mae"].to_numpy(dtype=float)
+    post = holds["post_exit_r21"].dropna().to_numpy(dtype=float)
+    out.update(
+        dur_med=float(np.median(dur)), dur_q75=float(np.percentile(dur, 75)),
+        dur_max=float(np.max(dur)),
+        term_med=float(np.median(term)), term_hit=float(np.mean(term > 0) * 100),
+        mae_med=float(np.median(mae)), mae_q25=float(np.percentile(mae, 25)),
+        post_exit_med=float(np.median(post)) if len(post) else np.nan,
+        post_exit_hit=float(np.mean(post > 0) * 100) if len(post) else np.nan,
+    )
+    if out["gate"]:
+        ids = holds["episode"].to_numpy()
+        out["ci_term"] = R.cluster_boot_ci(term, ids, seed=seed)
+    return out
+
+
+# ----------------------------------------------------------------------------
+# Survival and the transition-within-the-hold split
+# ----------------------------------------------------------------------------
+def survival(mask, checkpoints=(5, 10, 21, 42, 63)):
+    """P(the mask condition still holds at t+h) for h in `checkpoints`,
+    scored over every ENV anchor (day mask holds) with a defined t+h row
+    in the frame. NaN for a checkpoint with no scoreable anchor."""
+    m = mask.to_numpy(dtype=bool)
+    n = len(m)
+    anchor_idx = np.where(m)[0]
+    out = {}
+    for h in checkpoints:
+        if len(anchor_idx) == 0:
+            out[h] = np.nan
+            continue
+        future = anchor_idx + h
+        valid = future < n
+        out[h] = float(np.mean(m[future[valid]]) * 100) if valid.any() else np.nan
+    return out
+
+
+def transition_within(M, mask, h=HOLD, zone_col="cz_roll", to="HighCorr"):
+    """Per-anchor boolean: does `zone_col` reach `to` at any point within
+    t+1..t+h (a regime-ending jump landing inside the hold)? Returns
+    (hit, valid) Series indexed by the ENV anchor dates -- `valid` marks
+    anchors whose t+h window is complete in the frame; `hit` is only
+    meaningful where `valid` is True (it is False, not NaN, elsewhere, so
+    it composes safely with `excursion_stats`' own completeness filter)."""
+    m = mask.to_numpy(dtype=bool)
+    zone = M[zone_col].to_numpy()
+    n = len(m)
+    anchor_idx = np.where(m)[0]
+    hit = np.zeros(len(anchor_idx), dtype=bool)
+    valid = np.zeros(len(anchor_idx), dtype=bool)
+    for i, t in enumerate(anchor_idx):
+        if t + h < n:
+            valid[i] = True
+            hit[i] = bool(np.any(zone[t + 1: t + h + 1] == to))
+    dates = M.index[anchor_idx]
+    return pd.Series(hit, index=dates), pd.Series(valid, index=dates)
+
+
+# ----------------------------------------------------------------------------
 # Report rendering
 # ----------------------------------------------------------------------------
 def fmt_gate(st):
@@ -410,6 +572,64 @@ def render_cell(label, st, proxy):
     return "\n".join(lines)
 
 
+def render_survival(surv):
+    parts = "  ".join(
+        f"d{h}: {v:.0f}%" if np.isfinite(v) else f"d{h}: --" for h, v in surv.items())
+    return f"  survival: still in cell at   {parts}"
+
+
+def render_transition(hit, valid, sub_all, h):
+    v = valid.to_numpy(dtype=bool)
+    if not v.any():
+        return None
+    share = float(np.mean(hit.to_numpy(dtype=bool)[v]) * 100)
+    hit_full = hit.reindex(sub_all.index).fillna(False).to_numpy(dtype=bool)
+    exc_hit = excursion_stats(sub_all[hit_full], h)
+    exc_not = excursion_stats(sub_all[~hit_full], h)
+    mq_hit = exc_hit.get("mae_q25", float("nan"))
+    mq_not = exc_not.get("mae_q25", float("nan"))
+    return (f"    -> HighCorr within {h}d: {share:.0f}%   "
+           f"MAE q25 if so {mq_hit:+.1f} (n={exc_hit.get('n', 0)}) "
+           f"vs {mq_not:+.1f} if not (n={exc_not.get('n', 0)})")
+
+
+def render_entry(st, proxy):
+    if not st.get("n_events"):
+        return "  ENTRY: n=0 events"
+    if not st.get("gate"):
+        return f"  ENTRY: n={st['n_events']} events  -- (below {GATE_EVENTS}-event gate)"
+    exc = st.get("exc", {})
+    s = (f"  ENTRY: n={st['n_events']} events   {proxy} mean {st['mean_r']:+.2f}%  "
+        f"hit {st['hit']:.0f}%")
+    if exc.get("n"):
+        s += f"   MAE q25 {exc['mae_q25']:+.1f}"
+    bar = st.get("bar", {})
+    if np.isfinite(bar.get("touch_m5", np.nan)):
+        s += f"   touch -5 {bar['touch_m5']:.0f}%"
+    ci = st.get("ci_mean_r")
+    if ci and np.isfinite(ci[0]):
+        s += f"   CI [{ci[0]:+.1f},{ci[1]:+.1f}]"
+    return s
+
+
+def render_hold(st):
+    if not st.get("n_eps"):
+        return "  EPISODE-HOLD (confirm 3): n=0 episodes"
+    if not st.get("gate"):
+        return (f"  EPISODE-HOLD (confirm 3): n={st['n_eps']} episodes  "
+                f"-- (below {GATE_EPISODES}-episode gate)")
+    s = (f"  EPISODE-HOLD (confirm 3): n={st['n_eps']} episodes   "
+        f"dur med {st['dur_med']:.0f}d q75 {st['dur_q75']:.0f}d max {st['dur_max']:.0f}d   "
+        f"terminal med {st['term_med']:+.1f} hit {st['term_hit']:.0f}%   "
+        f"MAE q25 {st['mae_q25']:+.1f}")
+    if np.isfinite(st.get("post_exit_med", float("nan"))):
+        s += f"   post-exit r21 med {st['post_exit_med']:+.1f} hit {st['post_exit_hit']:.0f}%"
+    ci = st.get("ci_term")
+    if ci and np.isfinite(ci[0]):
+        s += f"   CI [{ci[0]:+.1f},{ci[1]:+.1f}]"
+    return s
+
+
 def report_index(name, M, meta, args):
     proxy = meta["proxy"]
     proxy_close = meta["proxy_close"]
@@ -418,12 +638,25 @@ def report_index(name, M, meta, args):
     print(f"##### {name} PATH STUDY: {meta['note']}  "
           f"({M.index.min().date()} -> {M.index.max().date()}, {len(M)} days) #####")
     print(f"NOTE: barriers/brackets are close-only (a floor on true intraday touch "
-          f"rates); print gate {GATE_DAYS}d AND {GATE_EPISODES} episodes.\n")
+          f"rates); print gate {GATE_DAYS}d AND {GATE_EPISODES} episodes (ENTRY: "
+          f"{GATE_EVENTS} events).\n")
     seed = 200
     for label, mask in masks.items():
         seed += 1
         st = cell_stats(P, M["rv"], mask, family="ENV", seed=seed)
-        print(render_cell(f"{name} {label}", st, proxy))
+        lines = [render_cell(f"{name} {label}", st, proxy)]
+        if st.get("gate"):
+            if label in R.ZONES:
+                lines.append(render_survival(survival(mask)))
+            if label == "LowCorr" or label.startswith("LowCorrx"):
+                hit, valid = transition_within(M, mask, h=HOLD, to="HighCorr")
+                sub_all = P.reindex(mask.index[mask.to_numpy(dtype=bool)])
+                tline = render_transition(hit, valid, sub_all, HOLD)
+                if tline:
+                    lines.append(tline)
+        lines.append(render_entry(entry_stats(M, P, mask, seed=seed + 1000), proxy))
+        lines.append(render_hold(hold_stats(P, mask, seed=seed + 2000)))
+        print("\n".join(lines))
         print()
     return P
 
