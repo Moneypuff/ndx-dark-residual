@@ -267,6 +267,41 @@ tr.feat .reg-cell::before{content:"◆"; color:var(--accent); font-size:10px; ma
   padding:6px 12px; cursor:pointer; transition:.15s}
 .zoom-reset:hover{color:var(--ink); border-color:var(--accent-line)}
 
+/* ---- path section: fan charts + metrics strip ---- */
+.path-toolbar{display:flex; flex-wrap:wrap; gap:14px 22px; align-items:center; margin-bottom:18px}
+.path-toolbar .lead{font-family:var(--mono); font-size:12.5px; color:var(--ink-dim)}
+.path-toolbar .lead b{color:var(--accent)}
+.lens-na{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin-left:4px}
+.fan-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px}
+.fan-card{border:1px solid var(--line); border-radius:14px; background:var(--surface);
+  box-shadow:var(--shadow); padding:14px 15px 15px; min-width:0}
+.fan-card .fh{display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px}
+.fan-card .fh .nm{font-family:var(--mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-faint)}
+.fan-card .fh .nm b{color:var(--ink-dim); text-transform:none; letter-spacing:0; font-size:13px}
+.fan-card .fh .n{font-family:var(--mono); font-size:11px; color:var(--ink-faint)}
+.fan-wrap{position:relative}
+.fan-card canvas{display:block; width:100%; height:168px; touch-action:none}
+.fan-tip{position:absolute; pointer-events:none; opacity:0; transition:opacity .12s;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:8px 10px;
+  font-family:var(--mono); font-size:11px; box-shadow:var(--shadow); z-index:5; min-width:118px}
+.fan-tip .d{color:var(--ink); margin-bottom:4px}
+.fan-tip .row{display:flex; justify-content:space-between; gap:12px; color:var(--ink-dim)}
+.fan-tip .row b{color:var(--ink); font-variant-numeric:tabular-nums}
+.fan-metrics{display:grid; grid-template-columns:1fr 1fr; gap:5px 14px; margin-top:12px;
+  font-family:var(--mono); font-size:11.5px}
+.fan-metrics .fm{display:flex; justify-content:space-between; gap:8px; color:var(--ink-dim)}
+.fan-metrics .fm b{color:var(--ink); font-variant-numeric:tabular-nums}
+.fan-label{display:inline-block; margin-top:11px; font-family:var(--mono); font-size:11px;
+  letter-spacing:.03em; padding:4px 10px; border-radius:100px; border:1px solid var(--accent-line);
+  color:var(--accent); background:var(--accent-soft)}
+.fan-note{font-family:var(--mono); font-size:11.5px; color:var(--ink-faint); margin-top:16px;
+  display:flex; gap:8px; align-items:baseline}
+.fan-note b{color:var(--ink-dim); font-weight:500}
+.pm-cell{padding:10px 13px; text-align:right; font-family:var(--mono); position:relative}
+.pm-cell .v{font-size:13.5px; font-weight:600; letter-spacing:-.01em}
+.pm-cell .x{font-size:10px; color:var(--ink-faint); margin-top:1px; letter-spacing:.01em}
+
 /* ---- findings ---- */
 .finds{display:grid; gap:14px}
 .find{
@@ -298,6 +333,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
   color:var(--ink-faint)}
 
 @media (max-width:720px){
+  .fan-grid{grid-template-columns:1fr}
   .stat-grid{grid-template-columns:1fr}
   .stat{border-right:0; border-bottom:1px solid var(--line)}
   .stat:last-child{border-bottom:0}
@@ -456,6 +492,73 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
     <div class="sec-h">
       <span class="n">04</span>
       <div>
+        <h2>How the month unfolds</h2>
+        <p class="h-sub">Mean return says nothing about the road there. This maps the <b>shape</b> of
+          the following 21 sessions for the selected regime: forward realized volatility, whether the
+          month trended or chopped (Kaufman efficiency ratio), the drawdown and run-up along the way,
+          and the full cone of outcomes — set against the baseline (dashed) for scale.</p>
+      </div>
+    </div>
+
+    <div class="path-toolbar">
+      <div class="seg" role="group" aria-label="path lens">
+        <button data-lens="everyday" aria-pressed="true">Every-day</button>
+        <button data-lens="entry" aria-pressed="false">Entry-day</button>
+      </div>
+      <span class="lead" id="pathLead"></span>
+    </div>
+
+    <div class="fan-grid" id="fanGrid">
+      <div class="fan-card" data-k="NDX">
+        <div class="fh"><span class="nm">NDX-100 <b>· QQQ</b></span><span class="n" data-role="n"></span></div>
+        <div class="fan-wrap"><canvas></canvas><div class="fan-tip"></div></div>
+        <div class="fan-metrics"></div>
+        <span class="fan-label"></span>
+      </div>
+      <div class="fan-card" data-k="SPX">
+        <div class="fh"><span class="nm">S&amp;P 500 <b>· SPY</b></span><span class="n" data-role="n"></span></div>
+        <div class="fan-wrap"><canvas></canvas><div class="fan-tip"></div></div>
+        <div class="fan-metrics"></div>
+        <span class="fan-label"></span>
+      </div>
+      <div class="fan-card" data-k="IWM">
+        <div class="fh"><span class="nm">Russell 2000 <b>· IWM</b></span><span class="n" data-role="n"></span></div>
+        <div class="fan-wrap"><canvas></canvas><div class="fan-tip"></div></div>
+        <div class="fan-metrics"></div>
+        <span class="fan-label"></span>
+      </div>
+    </div>
+    <p class="fan-note"><b>Reading it:</b> shaded bands are the 10–90th and 25–75th percentile of the
+      cumulative path across every day scored in this regime; the solid line is the median, the dashed
+      line the all-days baseline median. Use the segmented filter or table in the next section to change
+      the regime — this chart follows the same selection.</p>
+
+    <div class="tscroll" style="margin-top:22px">
+      <table class="hm">
+        <thead>
+          <tr>
+            <th class="lft">Regime <span class="px">· days</span></th>
+            <th class="grp-dix">NDX <span class="px">vol / trend</span></th>
+            <th>NDX <span class="px">drawdown / range</span></th>
+            <th class="grp-ret">SPX <span class="px">vol / trend</span></th>
+            <th>SPX <span class="px">drawdown / range</span></th>
+            <th class="grp-ret">IWM <span class="px">vol / trend</span></th>
+            <th>IWM <span class="px">drawdown / range</span></th>
+          </tr>
+        </thead>
+        <tbody id="pmBody"></tbody>
+      </table>
+    </div>
+    <p class="hm-note"><b>Reading it:</b> vol = median forward realized vol (annualized) with the
+      efficiency ratio below it (→1 trends, →0 chops); drawdown = median max adverse excursion with the
+      terminal-return IQR below it. Colour is relative to that index's own baseline. <b>Click a row to
+      filter everything above.</b></p>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <span class="n">05</span>
+      <div>
         <h2>The comovement landscape</h2>
         <p class="h-sub">Every observed regime, sorted by frequency. Amber intensity encodes the DIX
           level fed in; the teal↔rust scale encodes the 1-month return that came out.
@@ -495,7 +598,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
 
   <section>
     <div class="sec-h">
-      <span class="n">05</span>
+      <span class="n">06</span>
       <div>
         <h2>What the pattern says</h2>
         <p class="h-sub">Four reads that hold across the table.</p>
@@ -526,7 +629,7 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
 
   <section>
     <div class="sec-h">
-      <span class="n">06</span>
+      <span class="n">07</span>
       <div><h2>Read with these in mind</h2></div>
     </div>
     <div class="cav">
@@ -540,6 +643,11 @@ footer{border-top:1px solid var(--line); margin-top:20px; padding:34px 0 60px}
       <div class="c"><b>IWM DIX is reconstructed</b> from iShares' Russell 2000 holdings and spans a
         wider raw range than the NDX/SPX gauges — its deciles are internally consistent, not comparable
         in level.</div>
+      <div class="c"><b>Path metrics are noisy per-day.</b> A single day's forward volatility or
+        efficiency ratio is one realization of a 21-day path; only the cell-level medians in the "How the
+        month unfolds" section are meaningful, and small cells are suggestive at best. Full robustness
+        detail — a vol-persistence control, expanding-window cutoffs, an out-of-sample split — is in
+        <b>REGIME_PATHS_FINDINGS.md</b>.</div>
     </div>
   </section>
 
@@ -582,6 +690,7 @@ function retStyle(val, metric){
   return {bg, ink};
 }
 function fmt(val, metric){
+  if(val==null) return "—";                 // regime too young for a full 21-session forward window
   if(metric==="hit") return Math.round(val)+"%";
   return (val>=0?"+":"")+val.toFixed(2)+"%";
 }
@@ -623,8 +732,9 @@ function render(){
       const {bg, ink} = retStyle(v, METRIC);
       const td = document.createElement("td");
       td.className = cls;
-      const xtra = METRIC==="hit" ? `μ ${arr[0]>=0?"+":""}${arr[0].toFixed(1)}` :
-                   METRIC==="mean" ? `hit ${Math.round(arr[2])}%` : `hit ${Math.round(arr[2])}%`;
+      const xtra = arr[0]==null ? "n/a" :
+                   METRIC==="hit" ? `μ ${arr[0]>=0?"+":""}${arr[0].toFixed(1)}` :
+                   `hit ${Math.round(arr[2])}%`;
       td.innerHTML = `<div class="retc" style="background:${bg}">
         <div class="v" style="color:${ink}">${fmt(v,METRIC)}</div>
         <div class="x">${xtra}</div></div>`;
@@ -677,6 +787,7 @@ if("IntersectionObserver" in window){
 /* ===== price chart + regime filter ===== */
 const PX = /*__PX__*/;
 const META = /*__META__*/;
+const PATHS = /*__PATHS__*/;
 const IDX3 = ["NDX","SPX","IWM"];
 const SERIES_TOK = ["--sNDX","--sSPX","--sIWM"];
 const LVL = {L:"Low", M:"Mid", H:"High"};
@@ -931,7 +1042,262 @@ cv.addEventListener("wheel", e=>{
 cv.addEventListener("dblclick", ()=>setView(0, PX.dates.length-1));
 document.getElementById("zoomReset").addEventListener("click", ()=>setView(0, PX.dates.length-1));
 
-function refresh(){ updateFilterUI(); readout(matchMask()); draw(); }
+function refresh(){ updateFilterUI(); readout(matchMask()); draw(); refreshPaths(); }
+
+/* ===== section 04: "how the month unfolds" -- fan charts + path metrics ===== */
+let LENS = "everyday";
+const FAN_Q = PATHS.q;              // [10,25,50,75,90]
+const regStringFromCode = code => `N=${LVL[code[0]]},S=${LVL[code[1]]},I=${LVL[code[2]]}`;
+const labelForCode = code => `NDX ${LVL[code[0]]} · SPX ${LVL[code[1]]} · IWM ${LVL[code[2]]}`;
+
+function pathCode(){ return FILT.every(v=>v!=="") ? FILT.join("") : null; }
+
+function dataForIndex(k, code){
+  if(LENS==="entry"){
+    if(!code) return {none:true, n:null};
+    const e = PATHS.entry[code];
+    if(!e) return {none:true, n:0};
+    return Object.assign({}, e[k], {n:e.n, ep:null});
+  }
+  if(!code) return Object.assign({}, PATHS.base[k], {n:PATHS.base[k].m.n, ep:null, isBase:true});
+  const c = PATHS.cell[code];
+  if(!c) return {none:true, n:0};
+  return Object.assign({}, c[k], {n:c.n, ep:c.ep});
+}
+
+const fanCards = IDX3.map(k=>{
+  const card = document.querySelector(`.fan-card[data-k="${k}"]`);
+  return {k, card, cv:card.querySelector("canvas"), ctx:card.querySelector("canvas").getContext("2d"),
+         tip:card.querySelector(".fan-tip"), plot:null, hoverDay:-1};
+});
+
+function fanSizeCanvas(fc){
+  const dpr = Math.min(2, window.devicePixelRatio||1);
+  const w = fc.cv.clientWidth, h = fc.cv.clientHeight;
+  fc.cv.width = Math.round(w*dpr); fc.cv.height = Math.round(h*dpr);
+  fc.ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w,h};
+}
+
+function drawFanCard(fc, sel, base){
+  const {w,h} = fanSizeCanvas(fc);
+  const ctx = fc.ctx;
+  const cs = getComputedStyle(document.documentElement);
+  const colv = k => cs.getPropertyValue(k).trim();
+  const soft=colv("--line-soft"), faint=colv("--ink-faint"), dim=colv("--ink-dim");
+  const posRGB=colv("--pos-rgb"), negRGB=colv("--neg-rgb");
+  ctx.clearRect(0,0,w,h);
+  const pad={l:34,r:8,t:8,b:16};
+  const pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
+  const nday = PATHS.h+1;
+  let mn=Infinity, mx=-Infinity;
+  [sel,base].forEach(fan=>{ if(!fan||!fan.fan) return;
+    fan.fan.forEach(row=>row.forEach(v=>{ if(v!=null){ if(v<mn)mn=v; if(v>mx)mx=v; } })); });
+  if(!isFinite(mn)){ mn=-1; mx=1; }
+  if(mn===mx){ mn-=1; mx+=1; }
+  const padv=(mx-mn)*0.08; mn-=padv; mx+=padv;
+  const xF = d => pad.l + d/(nday-1)*pw;
+  const yF = v => pad.t + (1-(v-mn)/(mx-mn))*ph;
+  fc.plot = {pad,pw,ph,nday,xF,yF};
+
+  ctx.strokeStyle=soft; ctx.lineWidth=1;
+  const y0=yF(0);
+  ctx.beginPath(); ctx.moveTo(pad.l,y0+.5); ctx.lineTo(w-pad.r,y0+.5); ctx.stroke();
+  ctx.fillStyle=faint; ctx.font="10px ui-monospace, Menlo, monospace";
+  ctx.textAlign="right"; ctx.textBaseline="middle";
+  ctx.fillText("0%", pad.l-4, y0);
+
+  const iMed = FAN_Q.indexOf(50);
+  const upEnd = !sel || !sel.m || sel.m.r21==null || sel.m.r21>=0;
+  const bandRGB = upEnd ? posRGB : negRGB;
+
+  function fillBand(fan, qLo, qHi, alpha){
+    if(!fan) return;
+    const iLo=FAN_Q.indexOf(qLo), iHi=FAN_Q.indexOf(qHi);
+    ctx.beginPath(); let started=false;
+    for(let d=0; d<nday; d++){ const v=fan[iLo][d]; if(v==null) continue;
+      const x=xF(d), y=yF(v); started?ctx.lineTo(x,y):ctx.moveTo(x,y); started=true; }
+    for(let d=nday-1; d>=0; d--){ const v=fan[iHi][d]; if(v==null) continue; ctx.lineTo(xF(d), yF(v)); }
+    ctx.closePath(); ctx.fillStyle=`rgba(${bandRGB},${alpha})`; ctx.fill();
+  }
+  if(sel && sel.fan){ fillBand(sel.fan, 10, 90, 0.10); fillBand(sel.fan, 25, 75, 0.20); }
+
+  if(base && base.fan){
+    ctx.strokeStyle=faint; ctx.setLineDash([3,3]); ctx.lineWidth=1.3;
+    ctx.beginPath(); let started=false;
+    base.fan[iMed].forEach((v,d)=>{ if(v==null) return; const x=xF(d), y=yF(v);
+      started?ctx.lineTo(x,y):ctx.moveTo(x,y); started=true; });
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  if(sel && sel.fan){
+    ctx.strokeStyle=`rgba(${bandRGB},1)`; ctx.lineWidth=2; ctx.lineJoin="round"; ctx.lineCap="round";
+    ctx.beginPath(); let started=false;
+    sel.fan[iMed].forEach((v,d)=>{ if(v==null) return; const x=xF(d), y=yF(v);
+      started?ctx.lineTo(x,y):ctx.moveTo(x,y); started=true; });
+    ctx.stroke();
+  }
+  if(fc.hoverDay>=0 && fc.hoverDay<nday){
+    const x=xF(fc.hoverDay);
+    ctx.strokeStyle=dim; ctx.globalAlpha=.5; ctx.lineWidth=1; ctx.setLineDash([2,2]);
+    ctx.beginPath(); ctx.moveTo(x+.5,pad.t); ctx.lineTo(x+.5,pad.t+ph); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+  }
+}
+
+function showFanTip(fc, sel, clientX){
+  if(!fc.plot) return;
+  const rect=fc.cv.getBoundingClientRect();
+  const px=clientX-rect.left;
+  let d=Math.round((px-fc.plot.pad.l)/fc.plot.pw*(fc.plot.nday-1));
+  d=Math.max(0,Math.min(fc.plot.nday-1,d));
+  fc.hoverDay=d;
+  drawFanCard(fc, sel, PATHS.base[fc.k]);
+  let html = `<div class="d">day ${d}</div>`;
+  if(sel && sel.fan){
+    [90,75,50,25,10].forEach(q=>{
+      const v=sel.fan[FAN_Q.indexOf(q)][d];
+      html += `<div class="row"><span>q${q}</span><b>${v==null?"—":(v>=0?"+":"")+v.toFixed(1)+"%"}</b></div>`;
+    });
+  } else {
+    html += `<div class="row"><span>no data</span></div>`;
+  }
+  fc.tip.innerHTML = html;
+  fc.tip.style.opacity = 1;
+  const wrapW = fc.cv.parentElement.clientWidth;
+  let tx = px+12; if(tx > wrapW-124) tx = px-fc.tip.offsetWidth-12;
+  fc.tip.style.left = Math.max(4,tx)+"px";
+  fc.tip.style.top = "6px";
+}
+
+function metricRows(sel, base){
+  if(!sel || !sel.m) return null;
+  const m = sel.m, b = base.m;
+  const dv = (sel.isBase || m.rv==null || b.rv==null) ? null : m.rv-b.rv;
+  const rows = [
+    ["n" + (sel.ep!=null ? " / episodes" : ""), sel.ep!=null ? `${m.n} · ${sel.ep} ep` : `${m.n}`],
+    ["fwd vol", m.rv==null ? "—" : `${m.rv.toFixed(1)}%${dv==null?"":`<span class="arrow">${dv>=0?" ▲":" ▼"}</span>`}`],
+    ["vol vs trailing", m.rv_ratio==null ? "—" : `${m.rv_ratio.toFixed(2)}×`],
+    ["efficiency (ER)", m.er==null ? "—" : m.er.toFixed(2)],
+    ["max drawdown", m.mae==null ? "—" : `${m.mae.toFixed(1)}% · d${m.mae_day}`],
+    ["max run-up", m.mfe==null ? "—" : `${m.mfe>=0?"+":""}${m.mfe.toFixed(1)}% · d${m.mfe_day}`],
+    ["time above water", m.taw==null ? "—" : `${Math.round(m.taw)}%`],
+    ["r21 IQR", m.r21_iqr==null ? "—" : `±${(m.r21_iqr/2).toFixed(1)}%`],
+  ];
+  if(sel.ci_rv) rows.push(["vol 95% CI", `[${sel.ci_rv[0].toFixed(1)}, ${sel.ci_rv[1].toFixed(1)}]`]);
+  return rows;
+}
+
+function renderMetrics(card, sel, base){
+  const strip = card.querySelector(".fan-metrics");
+  const rows = metricRows(sel, base);
+  strip.innerHTML = rows
+    ? rows.map(([lab,val])=>`<div class="fm"><span>${lab}</span><b>${val}</b></div>`).join("")
+    : `<div class="fm" style="grid-column:1/-1">no observations of this regime in the sample</div>`;
+}
+
+function refreshPaths(){
+  const code = pathCode();
+  const lead = document.getElementById("pathLead");
+  lead.innerHTML = LENS==="entry"
+    ? (code ? `Entry-day lens · first day <b>${labelForCode(code)}</b> forms (21-session cool-down)`
+            : `Entry-day lens needs a specific regime — set Low/Mid/High for all three above`)
+    : (code ? `Every-day lens · <b>${labelForCode(code)}</b>` : `Every-day lens · <b>baseline</b> (no filter set)`);
+  fanCards.forEach(fc=>{
+    const d = dataForIndex(fc.k, code);
+    const base = PATHS.base[fc.k];
+    const ok = d && !d.none;
+    fc.card.querySelector('[data-role="n"]').textContent =
+      ok && d.n!=null ? `n=${d.n}${d.ep!=null?` · ${d.ep} ep`:""}` : "";
+    fc.card.querySelector(".fan-label").textContent = ok ? (d.isBase ? "baseline" : (d.lbl||"")) : "";
+    renderMetrics(fc.card, ok ? d : null, base);
+    drawFanCard(fc, ok ? d : null, base);
+  });
+}
+
+fanCards.forEach(fc=>{
+  fc.cv.addEventListener("pointermove", e=>{
+    const d = dataForIndex(fc.k, pathCode());
+    showFanTip(fc, d && !d.none ? d : null, e.clientX);
+  });
+  fc.cv.addEventListener("pointerleave", ()=>{
+    fc.hoverDay=-1; fc.tip.style.opacity=0;
+    const d = dataForIndex(fc.k, pathCode());
+    drawFanCard(fc, d && !d.none ? d : null, PATHS.base[fc.k]);
+  });
+});
+document.querySelectorAll(".path-toolbar .seg button[data-lens]").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    LENS = b.dataset.lens;
+    document.querySelectorAll(".path-toolbar .seg button[data-lens]")
+      .forEach(x=>x.setAttribute("aria-pressed", x===b));
+    refreshPaths();
+  });
+});
+
+/* ---- compact path-metrics table (drives the same shared filter) ---- */
+function pmAmber(val, baseVal){
+  if(val==null||baseVal==null||baseVal===0) return {bg:"transparent", ink:"var(--ink-faint)"};
+  const t = Math.max(-1, Math.min(1, (val-baseVal)/Math.abs(baseVal)/0.6));
+  const a = Math.pow(Math.abs(t),0.8)*0.55;
+  return {bg:`rgba(var(--acc-rgb),${a.toFixed(3)})`, ink: Math.abs(t)>0.3?"var(--accent)":"var(--ink)"};
+}
+function pmDiverge(val, baseVal){
+  if(val==null||baseVal==null||baseVal===0) return {bg:"transparent", ink:"var(--ink-faint)"};
+  const t = Math.max(-1, Math.min(1, (val-baseVal)/Math.abs(baseVal)/0.6));
+  const a = Math.pow(Math.abs(t),0.85)*0.85;
+  const rgb = t>=0 ? css("--pos-rgb") : css("--neg-rgb");
+  let ink = t>=0 ? css("--pos-ink") : css("--neg-ink");
+  if(Math.abs(t) < 0.14) ink = css("--ink");
+  return {bg:`rgba(${rgb},${a.toFixed(3)})`, ink};
+}
+function renderPmTable(){
+  const body = document.getElementById("pmBody");
+  body.innerHTML = "";
+  const codes = Object.keys(PATHS.cell).sort((a,b)=>PATHS.cell[b].n - PATHS.cell[a].n);
+  codes.forEach(code=>{
+    const c = PATHS.cell[code];
+    const [lN,lS,lI] = dixLevels(regStringFromCode(code));
+    const tr = document.createElement("tr");
+    tr.dataset.reg = code; tr.style.cursor = "pointer";
+    tr.title = "Filter everything above to this regime";
+    const tdReg = document.createElement("td");
+    tdReg.innerHTML = `<div class="reg-cell">
+      <div class="dixtiles">
+        <span class="dixtile" style="background:rgba(var(--acc-rgb),${dixAlpha(lN)})" title="NDX DIX ${lN}">N</span>
+        <span class="dixtile" style="background:rgba(var(--acc-rgb),${dixAlpha(lS)})" title="SPX DIX ${lS}">S</span>
+        <span class="dixtile" style="background:rgba(var(--acc-rgb),${dixAlpha(lI)})" title="IWM DIX ${lI}">I</span>
+      </div>
+      <span class="days">${c.n}d</span>
+    </div>`;
+    tr.appendChild(tdReg);
+    IDX3.forEach((k,ki)=>{
+      const d = c[k], base = PATHS.base[k];
+      const td1 = document.createElement("td"); if(ki===0) td1.className="grp-dix";
+      const td2 = document.createElement("td"); if(ki>0) td2.className="grp-ret";
+      if(d.m.rv==null){
+        td1.innerHTML = `<div class="pm-cell"><div class="v" style="color:var(--ink-faint)">—</div></div>`;
+        td2.innerHTML = `<div class="pm-cell"><div class="v" style="color:var(--ink-faint)">—</div></div>`;
+      } else {
+        const v1 = pmAmber(d.m.rv, base.m.rv);
+        td1.innerHTML = `<div class="pm-cell" style="background:${v1.bg}">
+          <div class="v" style="color:${v1.ink}">${d.m.rv.toFixed(1)}%</div>
+          <div class="x">ER ${d.m.er!=null?d.m.er.toFixed(2):"—"}</div></div>`;
+        const v2 = pmDiverge(d.m.mae, base.m.mae);
+        td2.innerHTML = `<div class="pm-cell" style="background:${v2.bg}">
+          <div class="v" style="color:${v2.ink}">${d.m.mae!=null?d.m.mae.toFixed(1)+"%":"—"}</div>
+          <div class="x">IQR ±${d.m.r21_iqr!=null?(d.m.r21_iqr/2).toFixed(1):"—"}%</div></div>`;
+      }
+      tr.appendChild(td1); tr.appendChild(td2);
+    });
+    body.appendChild(tr);
+  });
+}
+document.getElementById("pmBody").addEventListener("click", e=>{
+  const tr=e.target.closest("tr[data-reg]"); if(!tr) return;
+  const code=tr.dataset.reg;
+  FILT=[code[0],code[1],code[2]]; refresh();
+  document.getElementById("fanGrid").scrollIntoView({behavior:"smooth", block:"center"});
+});
 
 document.querySelectorAll(".seg.lmh").forEach(seg=>{
   const k=+seg.dataset.idx;
@@ -951,8 +1317,11 @@ document.getElementById("hmBody").addEventListener("click", e=>{
 });
 
 let rAF=null;
-window.addEventListener("resize", ()=>{ cancelAnimationFrame(rAF); rAF=requestAnimationFrame(draw); });
-new MutationObserver(()=>{ readout(matchMask()); draw(); })
+window.addEventListener("resize", ()=>{
+  cancelAnimationFrame(rAF);
+  rAF=requestAnimationFrame(()=>{ draw(); refreshPaths(); });
+});
+new MutationObserver(()=>{ readout(matchMask()); draw(); refreshPaths(); renderPmTable(); })
   .observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
 
 /* ===== bind computed figures from META (keeps the page correct as data refreshes) ===== */
@@ -1017,6 +1386,7 @@ function applyCurrent(){
 applyCurrent();
 render();
 applyMeta();
+renderPmTable();
 refresh();
 
 </script>

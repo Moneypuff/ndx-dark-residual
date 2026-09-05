@@ -14,9 +14,14 @@ Yahoo loader), and computes:
     derived client-side from the last day's code, so it always tracks the data)
   * baseline / headline figures -> `META`
     (so the prose figures stay correct as the dashboard refreshes)
+  * per-regime forward-PATH metrics (realized vol, vol-vs-trailing, max
+    drawdown/run-up, efficiency ratio, time-above-water) and fan-chart
+    quantiles, every-day and entry-day lenses -> `PATHS` (see
+    regime_paths.py and REGIME_PATHS_PLAN.md; powers the "How the month
+    unfolds" section)
 
-The HTML shell lives in comovement_template.html with three placeholders
-(/*__DATA__*/, /*__PX__*/ and /*__META__*/). Mirrors build_report.py.
+The HTML shell lives in comovement_template.html with four placeholders
+(/*__DATA__*/, /*__PX__*/, /*__META__*/ and /*__PATHS__*/). Mirrors build_report.py.
 
     python build_comovement.py --docs-out docs/comovement.html --cache-dir .ndx_dark_cache
 """
@@ -32,6 +37,8 @@ import numpy as np
 import pandas as pd
 
 import ndx_dark_residual as N
+import regime_paths as RP
+from index_comovement_study import entry_events
 
 IDX = ["NDX", "SPX", "IWM"]
 PROXY = {"NDX": "QQQ", "SPX": "SPY", "IWM": "IWM"}   # index -> ETF price proxy
@@ -175,6 +182,80 @@ def build_meta(A, data, P):
     }
 
 
+def _row_metrics(row):
+    """Pull the plain-language path metrics out of one cell_table row (a
+    pandas Series with the *_med columns), NaN-safe."""
+    return {
+        "n": int(row["n"]), "r21": row["r21_med"], "r21_iqr": row["r21_iqr"],
+        "rv": row["rv_med"], "rv_ratio": row["rv_ratio_med"],
+        "mae": row["mae_med"], "mae_day": row["mae_day_med"],
+        "mfe": row["mfe_med"], "mfe_day": row["mfe_day_med"],
+        "er": row["er_med"], "taw": row["taw_med"],
+    }
+
+
+def _round_metrics(m):
+    out = {}
+    for k, v in m.items():
+        if k == "n":
+            out[k] = int(v)
+        elif pd.isna(v):
+            out[k] = None
+        elif k in ("mae_day", "mfe_day"):
+            out[k] = int(round(v))
+        else:
+            out[k] = round(float(v), 2)
+    return out
+
+
+def _fan_json(fan):
+    return [[None if not np.isfinite(x) else round(float(x), 2) for x in row] for row in fan]
+
+
+def build_paths(A):
+    """PATHS payload: forward-path metrics + fan-chart quantiles per regime
+    and per index, under both the every-day and entry-day lenses. Powers the
+    "How the month unfolds" section. See REGIME_PATHS_PLAN.md."""
+    codes = sorted(A["code"].unique())
+    # index_comovement_study.entry_events expects "{k}_r1m" columns (its own
+    # convention); this frame's forward returns are named "{k}_ret" -- alias
+    # them so the entry-lens helpers (which import entry_events) work unchanged.
+    A_ev = A.rename(columns={f"{k}_ret": f"{k}_r1m" for k in IDX})
+    metrics = {k: RP.path_metrics(A[k + "_px"], horizon=RP.H, trail=RP.TRAIL) for k in IDX}
+    tables = {k: RP.cell_table(A, metrics[k], k, with_ci=True) for k in IDX}
+    base_row = {k: tables[k].set_index("regime").loc["BASELINE"] for k in IDX}
+    ep_counts = RP.run_lengths(A["code"])["code"].value_counts()
+
+    def cell_entry(k, row, dates):
+        lbl = RP.classify(row, base_row[k])
+        ci = ([round(float(row["rv_ci_lo"]), 2), round(float(row["rv_ci_hi"]), 2)]
+             if np.isfinite(row.get("rv_ci_lo", np.nan)) else None)
+        fan = RP.fan_quantiles(A[k + "_px"], dates, horizon=RP.H)
+        return {"fan": _fan_json(fan), "m": _round_metrics(_row_metrics(row)),
+               "lbl": lbl, "ci_rv": ci}
+
+    base = {k: cell_entry(k, base_row[k], list(A.index)) for k in IDX}
+
+    cell = {}
+    for code in codes:
+        dates = list(A.index[A["code"] == code])
+        entry = {"n": len(dates), "ep": int(ep_counts.get(code, 0))}
+        for k in IDX:
+            row = tables[k].set_index("regime").loc[code]
+            entry[k] = cell_entry(k, row, dates)
+        cell[code] = entry
+
+    entry_payload = {}
+    for code in codes:
+        edates = list(entry_events(A_ev, code)[0])
+        entry_payload[code] = {"n": len(edates)}
+        for k in IDX:
+            et = RP.entry_cell_table(A_ev, metrics[k], k, [code]).iloc[0]
+            entry_payload[code][k] = cell_entry(k, et, [d for d in edates if d in A.index])
+
+    return {"h": RP.H, "q": list(RP.FAN_Q), "base": base, "cell": cell, "entry": entry_payload}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -199,11 +280,13 @@ def main():
     data = build_data(A)
     px = build_px(A)
     meta = build_meta(A, data, P)
+    paths = build_paths(A)
 
     body = (Path(args.template).read_text(encoding="utf-8")
             .replace("/*__DATA__*/", json.dumps(data, separators=(",", ":")))
             .replace("/*__PX__*/", json.dumps(px, separators=(",", ":")))
-            .replace("/*__META__*/", json.dumps(meta, separators=(",", ":"))))
+            .replace("/*__META__*/", json.dumps(meta, separators=(",", ":")))
+            .replace("/*__PATHS__*/", json.dumps(paths, separators=(",", ":"))))
     doc = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
            '<meta name="viewport" content="width=device-width,initial-scale=1">'
            '<title>DIX Comovement → 1-Month Forward Returns</title></head>'
