@@ -9,13 +9,15 @@
 > expand or contract while you hold.** The engine lives in
 > `regime_path_study.py`, tested against synthetic panels in
 > `tests/test_regime_path.py` (101 tests); `build_regime_state.py` reads the
-> committed envelope JSON when present. Numbers have not yet been run
-> against a live payload in this development session (no built dashboard
-> or network access here) — see `REGIME_PATH_FINDINGS.md` for the findings
-> scaffold and its own status banner before trusting any number there. This
-> document is kept as the design record; its "Rules" and "Decision log"
-> still govern follow-up work, and every phase below reflects what actually
-> shipped.
+> committed envelope JSON when present. **First live run completed
+> 2026-09-05** against the published payload plus fetched SPX/IWM baskets
+> and Cboe's implied-vol history — see `REGIME_PATH_FINDINGS.md` for real
+> results (all three primaries resolved; the DIX-Low caution flag confirmed
+> as a drawdown effect, not just a mean effect) and the committed
+> `regime_paths.csv` / `regime_path_risk.csv` / `regime_path_envelopes.json`
+> for the full per-cell numbers. This document is kept as the design
+> record; its "Rules" and "Decision log" still govern follow-up work, and
+> every phase below reflects what actually shipped.
 
 Reproduce (once implemented):
 ```
