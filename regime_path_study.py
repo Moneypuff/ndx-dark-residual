@@ -27,8 +27,11 @@ this reports:
     matrix (close-only -- a floor on true intraday touch rates);
   * a VOLATILITY block: forward realized vol vs. the frame's own trailing
     realized vol (expansion ratio), a variance ratio (trending vs.
-    mean-reverting inside the hold), and vol-scaled tail shares against the
-    Gaussian benchmarks (|z|>1 in 31.7%, |z|>2 in 4.6%);
+    mean-reverting inside the hold), vol-scaled tail shares against the
+    Gaussian benchmarks (|z|>1 in 31.7%, |z|>2 in 4.6%), day-level
+    microstructure (skew, excess kurtosis, autocorrelation), and -- when
+    Cboe's implied-vol history is reachable -- the implied-minus-realized
+    comparison (VXN/VIX/RVX; skips cleanly offline);
   * a SIZING translation (ETF_PATH_PLAYBOOK.md's convention: position
     weight that loses 1% NAV at the q25/p10 max adverse excursion);
   * episode-cluster bootstrap CIs (resampling whole contiguous episodes,
@@ -51,6 +54,7 @@ Usage
 import argparse
 import sys
 from collections import OrderedDict
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -69,6 +73,7 @@ BRACKET_LEVELS = (3, 5, 8)
 GATE_DAYS = R.GATE_DAYS
 GATE_EPISODES = R.GATE_EPISODES
 GATE_EVENTS = R.GATE_EVENTS
+CBOE_VOL_SYMBOL = {"NDX": "VXN", "SPX": "VIX", "IWM": "RVX"}   # implied-vol leg, Phase 4
 
 
 # ----------------------------------------------------------------------------
@@ -82,6 +87,36 @@ def forward_path_panel(close, horizon=H):
     close = close.astype(float)
     cols = {h: (close.shift(-h) / close - 1.0) * 100.0 for h in range(horizon + 1)}
     return pd.DataFrame(cols, index=close.index)
+
+
+def load_cboe_vol(index_key, cache_dir=None, refresh=False):
+    """Cboe's published implied-vol index for `index_key` (VXN/NDX, VIX/SPX,
+    RVX/IWM) as a daily Series, via the same CDN reader the GEX/dispersion
+    barometer uses (`build_gex_dispersion.fetch_text_cached` +
+    `parse_cboe_csv`, same `CBOE_HISTORY_TMPL`). Empty Series (never
+    raises) on any fetch/parse failure or network-policy block -- callers
+    treat that as a clean skip, matching Rule 3 (the offline NDX path
+    stays intact)."""
+    sym = CBOE_VOL_SYMBOL.get(index_key)
+    if sym is None:
+        return pd.Series(dtype="float64")
+    try:
+        import build_gex_dispersion as G
+    except Exception as e:                                       # noqa: BLE001
+        print(f"  implied leg: skipped (build_gex_dispersion unavailable: {e})",
+              file=sys.stderr)
+        return pd.Series(dtype="float64")
+    cache_path = Path(cache_dir) / f"regime_path_{sym.lower()}.csv" if cache_dir else None
+    text = G.fetch_text_cached(G.CBOE_HISTORY_TMPL.format(sym=sym), cache_path,
+                               refresh=refresh, label=sym)
+    if not text:
+        print(f"  implied leg: skipped ({sym} unavailable, offline and no cache)",
+              file=sys.stderr)
+        return pd.Series(dtype="float64")
+    s = G.parse_cboe_csv(text)
+    if s.empty:
+        print(f"  implied leg: skipped ({sym} fetched but unparseable)", file=sys.stderr)
+    return s
 
 
 def daily_rets_from_path(sub, h):
@@ -253,7 +288,7 @@ def cell_masks(M):
     return masks
 
 
-def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0):
+def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0, implied=None):
     """One flat stats dict (fan, excursion at h and h2, barriers, brackets,
     volatility, sizing, episode-cluster CIs) for one cell's ENV anchors:
     every day `mask` holds. `P` is the forward-path panel on the PROXY's
@@ -261,7 +296,11 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0):
     trailing realized vol, `M['rv']`) are on the FRAME's calendar. Episodes
     are contiguous runs of `mask` (positional contiguity on the frame's own
     index -- a gap in the frame does not merge two episodes, matching
-    `intra_index_regime_study.run_ids`)."""
+    `intra_index_regime_study.run_ids`). `implied` (optional): a daily
+    implied-vol Series (`load_cboe_vol`'s output, same annualized-points
+    scale as `rv`) aligned to anchor dates via `.reindex` -- when given,
+    adds the implied-vs-realized comparison to the volatility block;
+    omitted or empty, the block silently carries NaN (a clean skip)."""
     m = mask.to_numpy(dtype=bool)
     ids_all = R.run_ids(m)
     dates = mask.index[m]
@@ -283,7 +322,8 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0):
     out["brk"] = bracket_outcomes(sub, h)
 
     vol = {"rv21_med": np.nan, "rv21_p90": np.nan, "vratio_med": np.nan,
-          "vratio_gt1": np.nan, "vr21": np.nan, "z_gt1": np.nan, "z_gt2": np.nan}
+          "vratio_gt1": np.nan, "vr21": np.nan, "z_gt1": np.nan, "z_gt2": np.nan,
+          "ivrp_med": np.nan, "iv_exceeded": np.nan}
     ci = {}
     ok = exc.get("_ok")
     if ok is not None and ok.any():
@@ -297,6 +337,16 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0):
             ratio = fv[rok] / rv_ok[rok]
             vol["vratio_med"] = float(np.median(ratio))
             vol["vratio_gt1"] = float(np.mean(ratio > 1) * 100)
+
+        iv_diff_full = None
+        if implied is not None and len(implied):
+            iv_ok = implied.reindex(dates).to_numpy(dtype=float)[ok]
+            ivok = np.isfinite(iv_ok)
+            if ivok.any():
+                iv_diff_full = np.where(ivok, iv_ok - fv, np.nan)
+                vol["ivrp_med"] = float(np.median(iv_diff_full[ivok]))
+                vol["iv_exceeded"] = float(np.mean(fv[ivok] > iv_ok[ivok]) * 100)
+
         term = rets.sum(axis=1)
         dvar = float(np.var(rets.reshape(-1), ddof=0))
         if dvar > 0:
@@ -327,6 +377,9 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0):
                 ratio_full, ids_ok, seed=seed + 3, stat=lambda x: float(np.median(x)))
             z_gt2_ind = np.where(zok, np.where(np.abs(z_full) > 2, 100.0, 0.0), np.nan)
             ci["z_gt2"] = R.cluster_boot_ci(z_gt2_ind, ids_ok, seed=seed + 4)
+            if iv_diff_full is not None:
+                ci["ivrp"] = R.cluster_boot_ci(
+                    iv_diff_full, ids_ok, seed=seed + 5, stat=lambda x: float(np.median(x)))
     out["vol"] = vol
     out["ci"] = ci
 
@@ -692,6 +745,10 @@ def render_cell(label, st, proxy):
             f"fwd/trail ratio med {vol['vratio_med']:.2f} (>1 in {vol['vratio_gt1']:.0f}%)   "
             f"VR{HOLD} {vol['vr21']:.2f}   |z|>1 {vol['z_gt1']:.0f}%  |z|>2 {vol['z_gt2']:.0f}%"
             "   (Gaussian: 32%/4.6%)")
+        if np.isfinite(vol.get("ivrp_med", np.nan)):
+            lines.append(
+                f"    implied-realized (points) med {vol['ivrp_med']:+.1f}   "
+                f"realized>implied in {vol['iv_exceeded']:.0f}% of holds")
     size = st.get("size", {})
     if size and np.isfinite(size.get("size_q25", np.nan)):
         lines.append(
@@ -777,6 +834,12 @@ def report_index(name, M, meta, args):
     proxy_close = meta["proxy_close"]
     P = forward_path_panel(proxy_close, horizon=H)
     masks = cell_masks(M)
+    # implied-vol leg: skip by default for any caller that doesn't explicitly opt in via a
+    # real argparse Namespace (no_implied=False there) -- a lightweight test double lacking
+    # the attribute must never trigger a live network fetch.
+    implied = (pd.Series(dtype="float64") if getattr(args, "no_implied", True) else
+              load_cboe_vol(name, getattr(args, "cache_dir", None),
+                            refresh=getattr(args, "refresh", False)))
     print(f"##### {name} PATH STUDY: {meta['note']}  "
           f"({M.index.min().date()} -> {M.index.max().date()}, {len(M)} days) #####")
     print(f"NOTE: barriers/brackets are close-only (a floor on true intraday touch "
@@ -786,7 +849,7 @@ def report_index(name, M, meta, args):
     all_stats = {}
     for label, mask in masks.items():
         seed += 1
-        st = cell_stats(P, M["rv"], mask, family="ENV", seed=seed)
+        st = cell_stats(P, M["rv"], mask, family="ENV", seed=seed, implied=implied)
         all_stats[label] = st
         lines = [render_cell(f"{name} {label}", st, proxy)]
         if st.get("gate"):
@@ -830,6 +893,8 @@ def main():
     ap.add_argument("--refresh", action="store_true")
     ap.add_argument("--horizon", type=int, default=H, help="secondary path horizon (default 63)")
     ap.add_argument("--no-ci", action="store_true", help="skip episode-cluster CIs (faster)")
+    ap.add_argument("--no-implied", action="store_true",
+                    help="skip the implied-vol (VXN/VIX/RVX) leg -- no Cboe CDN fetch")
     ap.add_argument("--csv", default=None, help="(wired in a later phase)")
     ap.add_argument("--risk-csv", default=None, help="(wired in a later phase)")
     args = ap.parse_args()

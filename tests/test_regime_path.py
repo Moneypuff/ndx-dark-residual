@@ -569,3 +569,78 @@ def test_report_index_smoke_includes_primaries_and_microstructure(capsys):
     out = capsys.readouterr().out
     assert "PRIMARY HYPOTHESES" in out
     assert "microstructure" in out
+
+
+# ---------------------------------------------------------------------------
+# load_cboe_vol (Phase 4, implied-vol leg)
+# ---------------------------------------------------------------------------
+def test_load_cboe_vol_unknown_index_returns_empty():
+    assert S.load_cboe_vol("XYZ").empty
+
+
+def test_load_cboe_vol_skips_cleanly_when_fetch_fails(monkeypatch):
+    import build_gex_dispersion as G
+    monkeypatch.setattr(G, "fetch_text_cached", lambda *a, **k: None)
+    out = S.load_cboe_vol("NDX", cache_dir=None)
+    assert out.empty
+
+
+def test_load_cboe_vol_parses_fetched_csv(monkeypatch):
+    import build_gex_dispersion as G
+    csv_text = "DATE,OPEN,HIGH,LOW,CLOSE\n01/03/2022,18.0,19.0,17.5,18.5\n01/04/2022,17.0,18.0,16.5,17.2\n"
+    monkeypatch.setattr(G, "fetch_text_cached", lambda *a, **k: csv_text)
+    out = S.load_cboe_vol("NDX", cache_dir=None)
+    assert len(out) == 2
+    assert out.iloc[0] == pytest.approx(18.5)
+
+
+# ---------------------------------------------------------------------------
+# cell_stats implied-vs-realized leg (Phase 4)
+# ---------------------------------------------------------------------------
+def test_cell_stats_implied_leg_populates_ivrp_and_ci():
+    n = 400
+    idx = _bdays(n)
+    rng = np.random.default_rng(4)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    rv = pd.Series(20.0, index=idx)
+    implied = pd.Series(22.0, index=idx)   # implied consistently a few points above realized
+    mask = pd.Series(False, index=idx)
+    for s in (10, 60, 120, 180, 240, 300):
+        mask.iloc[s:s + 10] = True
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.cell_stats(P, rv, mask, seed=2, implied=implied)
+    assert np.isfinite(st["vol"]["ivrp_med"])
+    assert st["vol"]["ivrp_med"] > 0     # implied ran above realized by construction
+    lo, hi = st["ci"]["ivrp"]
+    assert np.isfinite(lo) and np.isfinite(hi)
+
+
+def test_cell_stats_without_implied_leaves_ivrp_nan():
+    n = 400
+    idx = _bdays(n)
+    rng = np.random.default_rng(4)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    rv = pd.Series(20.0, index=idx)
+    mask = pd.Series(False, index=idx)
+    for s in (10, 60, 120, 180, 240, 300):
+        mask.iloc[s:s + 10] = True
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.cell_stats(P, rv, mask, seed=2)
+    assert np.isnan(st["vol"]["ivrp_med"])
+    assert "ivrp" not in st["ci"]
+
+
+def test_render_cell_shows_implied_line_when_present():
+    n = 400
+    idx = _bdays(n)
+    rng = np.random.default_rng(6)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    rv = pd.Series(20.0, index=idx)
+    implied = pd.Series(23.0, index=idx)
+    mask = pd.Series(False, index=idx)
+    for s in (10, 60, 120, 180, 240, 300):
+        mask.iloc[s:s + 10] = True
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.cell_stats(P, rv, mask, seed=2, implied=implied)
+    out = S.render_cell("NDX LowCorr", st, "QQQ")
+    assert "implied-realized" in out
