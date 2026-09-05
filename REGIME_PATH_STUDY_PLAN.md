@@ -1,15 +1,21 @@
 # Regime path study — design (corr × DIX cells, cross-index states, rule states)
 
-> **Status: DESIGN — not yet implemented.** Companion to
+> **Status: IMPLEMENTED** (all six phases, Sep 2026). Companion to
 > `REGIME_STUDY_IMPROVEMENT_PLAN.md` (implemented, Aug 2026). That study
 > answers "what is the mean 1-month return inside each regime combination".
 > This one answers the question that a mean cannot: **how volatile is the
 > path between entry and exit, how deep does it go before it pays, how often
 > does a stop get hit before a target, and does the regime's own volatility
-> expand or contract while you hold.** Every decision below is made; an
-> implementer follows the phases in order, runs the tests after each, and
-> keeps the guardrails in "Rules". Numbers in this document are layout
-> placeholders (`—`), never results.
+> expand or contract while you hold.** The engine lives in
+> `regime_path_study.py`, tested against synthetic panels in
+> `tests/test_regime_path.py` (101 tests); `build_regime_state.py` reads the
+> committed envelope JSON when present. Numbers have not yet been run
+> against a live payload in this development session (no built dashboard
+> or network access here) — see `REGIME_PATH_FINDINGS.md` for the findings
+> scaffold and its own status banner before trusting any number there. This
+> document is kept as the design record; its "Rules" and "Decision log"
+> still govern follow-up work, and every phase below reflects what actually
+> shipped.
 
 Reproduce (once implemented):
 ```

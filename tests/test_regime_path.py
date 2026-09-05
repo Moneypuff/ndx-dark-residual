@@ -4,6 +4,8 @@ engine, ENV-family cell stats, fan/excursion/barrier/bracket blocks).
 All synthetic; no payload or network required, matching the style of
 ``tests/test_intra_index_regime.py``.
 """
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -930,3 +932,59 @@ def test_cross_index_and_csv_integration(tmp_path, capsys):
     assert {"index", "family", "cell", "h", "gate"}.issubset(long_df.columns)
     assert {"index", "cell", "mae_q25", "gate"}.issubset(risk_df.columns)
     assert (risk_df["gate"] == True).any()   # noqa: E712 -- at least one gated row present
+
+
+# ---------------------------------------------------------------------------
+# envelope_cell / build_envelopes (Phase 6)
+# ---------------------------------------------------------------------------
+def test_envelope_cell_below_gate_has_only_counts():
+    n = 100
+    idx = _bdays(n)
+    close = pd.Series(100.0, index=idx)
+    M = pd.DataFrame({"rv": np.full(n, 15.0)}, index=idx)
+    mask = pd.Series(False, index=idx)
+    mask.iloc[10:20] = True   # 1 episode -- below gate
+    P = S.forward_path_panel(close, horizon=S.H)
+    cell = S.envelope_cell(P, M, mask)
+    assert cell["gate"] is False
+    assert "mae_q25" not in cell
+
+
+def test_envelope_cell_gated_has_json_safe_numbers():
+    n = 400
+    idx = _bdays(n)
+    rng = np.random.default_rng(3)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    M = pd.DataFrame({"rv": np.full(n, 18.0)}, index=idx)
+    mask = pd.Series(False, index=idx)
+    for s in (10, 60, 120, 180, 240, 300):
+        mask.iloc[s:s + 10] = True
+    P = S.forward_path_panel(close, horizon=S.H)
+    cell = S.envelope_cell(P, M, mask, seed=3)
+    assert cell["gate"] is True
+    assert set(cell["p50"].keys()) == {"5", "10", "21"}
+    assert isinstance(cell["mae_q25"], float)
+    # every value must be JSON round-trippable (no NaN literal, no numpy scalar)
+    json.dumps(cell)
+
+
+def test_build_envelopes_schema_and_json_roundtrip(tmp_path):
+    n = 400
+    idx = _bdays(n)
+    rng = np.random.default_rng(1)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    cz = np.where(np.arange(n) % 20 < 10, "LowCorr", "MidCorr")
+    dz = np.where(np.arange(n) % 6 < 2, "DIXLow", np.where(np.arange(n) % 6 < 4,
+                                                           "DIXMid", "DIXHigh"))
+    M = pd.DataFrame({"cz_roll": cz, "dz_roll_l1": dz, "rv": np.full(n, 18.0)}, index=idx)
+    P = S.forward_path_panel(close, horizon=S.H)
+    env = S.build_envelopes({"NDX": M}, {"NDX": P}, payload_generated="2026-08-01")
+    assert env["schema"] == 1
+    assert env["payload_generated"] == "2026-08-01"
+    assert "LowCorr" in env["indices"]["NDX"]
+    assert "LowCorr|DIXLow" in env["indices"]["NDX"]
+    assert env["indices"]["NDX"]["asof"] == idx[-1].strftime("%Y-%m-%d")
+    out = tmp_path / "env.json"
+    out.write_text(json.dumps(env, indent=1), encoding="utf-8")
+    back = json.loads(out.read_text())
+    assert back == env

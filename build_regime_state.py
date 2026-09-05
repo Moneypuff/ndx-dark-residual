@@ -21,10 +21,21 @@ cache) the page still ships with NDX-only state and says so. All reads
 respect the study's trailing-completeness guard, so the state is never
 computed off a partial session.
 
+Optionally reads a committed operational envelope
+(`regime_path_study.py --envelopes regime_path_envelopes.json`) and, when
+the CURRENT cell (this index's zone / lag-1 DIX zone) has one and clears
+its own print gate, adds an "expected path" line to the strip: the
+committed p10/p50/p90 at a few checkpoints, the q25 MAE and the playbook
+sizing weight, dated by the envelope's own `generated`/`payload_generated`
+stamps (which are almost certainly OLDER than tonight's build -- the
+envelope is regenerated on demand, not nightly, by design). Absent,
+missing, or malformed envelope file -> no line, no failure; this build
+never regenerates the envelope itself.
+
 Usage (mirrors the other page builds):
     python build_regime_state.py --html docs/index.html \
         --docs-out docs/regime_state.html --json-out docs/regime_state.json \
-        --cache-dir .ndx_dark_cache
+        --cache-dir .ndx_dark_cache --envelopes regime_path_envelopes.json
 """
 import argparse
 import hashlib
@@ -98,6 +109,44 @@ def ndx_tilt_screen(P, asof, q=0.80):
     return sorted(row[row >= cut].index)
 
 
+def load_envelopes(path):
+    """The committed operational envelope JSON, or None (never raises) if
+    `path` is falsy, the file is absent, or it fails to parse."""
+    p = Path(path) if path else None
+    if not p or not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:                                   # noqa: BLE001
+        print(f"regime_state: envelope file unreadable ({e})", file=sys.stderr)
+        return None
+
+
+def envelope_for_state(envelopes, index_name, state):
+    """The current cell's committed path envelope for `index_name`, keyed
+    off `state`'s own zone/dz_roll_l1 ('LowCorr' or 'LowCorr|DIXLow',
+    matching `regime_path_study.build_envelopes`'s key convention). None
+    (no line, no failure) when there is no envelope file, it doesn't cover
+    this index, or the current cell is below its own print gate."""
+    if not envelopes:
+        return None
+    idx_env = envelopes.get("indices", {}).get(index_name)
+    if not idx_env:
+        return None
+    zone, dz = state.get("zone"), state.get("dz_roll_l1")
+    if not zone:
+        return None
+    key = f"{zone}|{dz}" if dz and f"{zone}|{dz}" in idx_env else zone
+    cell = idx_env.get(key)
+    if not cell or not cell.get("gate"):
+        return None
+    out = dict(cell)
+    out["cell"] = key
+    out["envelope_generated"] = envelopes.get("generated")
+    out["envelope_payload_generated"] = envelopes.get("payload_generated")
+    return out
+
+
 def eval_rules(states, screen):
     """Evaluate frozen_rules.json against the state dicts."""
     ndx = states.get("NDX") or {}
@@ -115,6 +164,15 @@ def eval_rules(states, screen):
             "evaluable": all(k in states for k in ("NDX", "SPX", "IWM")),
         },
     }
+
+
+def render_envelope_line(name, env):
+    return (f"<li><b>{name}</b> expected path ({env['cell']}, 21d): "
+           f"p10 {env['p10'].get('21', '--')}%  p50 {env['p50'].get('21', '--')}%  "
+           f"p90 {env['p90'].get('21', '--')}%   MAE q25 {env['mae_q25']}%   "
+           f"size/1% risk {env['size_q25']}%   "
+           f"<span class=dim>(envelope as of {env.get('envelope_generated', '?')}, "
+           f"payload {env.get('envelope_payload_generated', '?')})</span></li>")
 
 
 def render_html(state):
@@ -153,6 +211,15 @@ def render_html(state):
                  + ("ACTIVE" if a3["active"] else
                     ("inactive" if a3.get("evaluable", True) else
                      "not evaluable (missing an index this build)")) + "</li>")
+    env_lines = [render_envelope_line(k, s["envelope"])
+                for k in ("NDX", "SPX", "IWM")
+                for s in [state["indices"].get(k)] if s and s.get("envelope")]
+    envelope_section = (f"<h1>Expected path (committed envelope)</h1><ul>{''.join(env_lines)}"
+                        "</ul><p class=note>From regime_path_study.py's committed "
+                        "regime_path_envelopes.json -- an IN-SAMPLE estimate, regenerated on "
+                        "demand rather than nightly on purpose; the dates above may lag "
+                        "tonight's build by design. See REGIME_PATH_FINDINGS.md.</p>"
+                        if env_lines else "")
     return f"""<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -179,6 +246,7 @@ one-session-lagged signal. Generated {state["generated"]} &middot;
 </table>
 <h1>Pre-registered rule readings</h1>
 <ul>{''.join(flags)}</ul>
+{envelope_section}
 <p class=note>Rules are frozen in <code>frozen_rules.json</code>
 (sha256 {state["rules_hash"][:12]}&hellip;, frozen {state["rules_frozen"]}); readings
 and realized 21-session outcomes accumulate on the <code>regime-scoring-data</code>
@@ -196,6 +264,10 @@ def main():
     ap.add_argument("--json-out", default="docs/regime_state.json")
     ap.add_argument("--cache-dir", default=".ndx_dark_cache")
     ap.add_argument("--basket-size", type=int, default=R.BASKET_N)
+    ap.add_argument("--envelopes", default="regime_path_envelopes.json",
+                    help="committed operational envelope from regime_path_study.py "
+                         "--envelopes (optional; absent/unreadable file -> no envelope "
+                         "line, no failure)")
     args = ap.parse_args()
 
     P = R.load_payload(args.html)
@@ -228,6 +300,12 @@ def main():
             states[name] = index_state(M, proxies[name])
         except Exception as e:                                   # noqa: BLE001
             print(f"regime_state: {name} unavailable ({e})", file=sys.stderr)
+
+    envelopes = load_envelopes(args.envelopes)
+    for name, st in states.items():
+        env = envelope_for_state(envelopes, name, st)
+        if env:
+            st["envelope"] = env
 
     screen = ndx_tilt_screen(P, states["NDX"]["asof"])
     state = {

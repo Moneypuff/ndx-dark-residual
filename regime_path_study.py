@@ -63,6 +63,7 @@ Usage
     python regime_path_study.py --no-implied            # skip the Cboe CDN fetch
 """
 import argparse
+import json
 import sys
 from collections import OrderedDict
 from pathlib import Path
@@ -1183,6 +1184,69 @@ def cell_to_risk_row(index_name, family, label, st):
 
 
 # ----------------------------------------------------------------------------
+# Operational envelope (committed JSON for the nightly regime-state strip)
+# ----------------------------------------------------------------------------
+def _jnum(x, nd=None):
+    """None for NaN/None (valid JSON has no NaN literal); optionally
+    rounded, else the plain float/int."""
+    if x is None or (isinstance(x, float) and not np.isfinite(x)):
+        return None
+    return round(float(x), nd) if nd is not None else x
+
+
+def envelope_cell(P, M, mask, seed=9999):
+    """One envelope cell: {n, n_eps, gate, p10/p50/p90 at h=5/10/21,
+    mae_q25, touch_m5, vratio_med, size_q25} -- the numbers
+    `build_regime_state.py` shows for the CURRENT cell on the nightly
+    strip. Gate-respecting: an ungated cell carries only its counts."""
+    st = cell_stats(P, M["rv"], mask, seed=seed)
+    cell = {"n": st["n_days"], "n_eps": st["n_eps"], "gate": bool(st["gate"])}
+    if not st.get("gate"):
+        return cell
+    fan = st.get("fan")
+    for q, key in ((0.10, "p10"), (0.50, "p50"), (0.90, "p90")):
+        sub = fan[(fan["q"] == q) & (fan["h"].isin((5, 10, 21)))] if fan is not None else None
+        # keys are STRINGS even before a JSON round-trip: JSON object keys are always
+        # strings, so a consumer reading the dict straight from Python must see the same
+        # shape as one reading it back from the written file.
+        cell[key] = ({str(int(r["h"])): _jnum(r["value"], 2) for _, r in sub.iterrows()}
+                    if sub is not None else {})
+    cell["mae_q25"] = _jnum(st.get("exc", {}).get("mae_q25"), 2)
+    cell["touch_m5"] = _jnum(st.get("bar", {}).get("touch_m5"), 1)
+    cell["vratio_med"] = _jnum(st.get("vol", {}).get("vratio_med"), 3)
+    cell["size_q25"] = _jnum(st.get("size", {}).get("size_q25"), 1)
+    return cell
+
+
+def build_envelopes(frames, paths, payload_generated=None):
+    """Committed operational envelope, one entry per index: the rolling-
+    basis comovement-zone marginals plus the 3x3 comovement x DIX(lag-1)
+    grid (keys 'LowCorr', 'LowCorr|DIXLow', ... -- a friendlier form of
+    `cell_masks()`'s 'LowCorr'/'LowCorrxDIXLow(l1)' labels). Regenerated on
+    demand, NOT nightly -- the estimates are in-sample and dated on
+    purpose; the forward-scoring log, not a re-estimate, is what updates a
+    reader's belief between runs."""
+    out = {"schema": 1,
+          "generated": pd.Timestamp.now("UTC").strftime("%Y-%m-%d %H:%M UTC"),
+          "gate_days": GATE_DAYS, "gate_episodes": GATE_EPISODES,
+          "payload_generated": payload_generated, "indices": {}}
+    for name, M in frames.items():
+        P = paths[name]
+        asof = M.index[-1].strftime("%Y-%m-%d") if len(M) else None
+        cells = {"asof": asof}
+        seed = 9999
+        for cz in R.ZONES:
+            seed += 1
+            cells[cz] = envelope_cell(P, M, M["cz_roll"] == cz, seed=seed)
+            for dz in R.DZONES:
+                seed += 1
+                mask = (M["cz_roll"] == cz) & (M["dz_roll_l1"] == dz)
+                cells[f"{cz}|{dz}"] = envelope_cell(P, M, mask, seed=seed)
+        out["indices"][name] = cells
+    return out
+
+
+# ----------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1202,6 +1266,10 @@ def main():
                     help="write the per-cell fan quantiles here (regime_paths.csv schema)")
     ap.add_argument("--risk-csv", default=None,
                     help="write the per-cell risk columns here (regime_path_risk.csv schema)")
+    ap.add_argument("--envelopes", default=None,
+                    help="write the committed operational envelope JSON here "
+                         "(regime_path_envelopes.json schema; consumed by "
+                         "build_regime_state.py)")
     args = ap.parse_args()
 
     P_html = R.load_payload(args.html)
@@ -1255,6 +1323,11 @@ def main():
     if args.risk_csv and risk_rows:
         pd.DataFrame(risk_rows).to_csv(args.risk_csv, index=False)
         print(f"wrote {args.risk_csv}", file=sys.stderr)
+    if args.envelopes and frames:
+        env = build_envelopes(frames, paths, payload_generated=P_html.get("generated"))
+        Path(args.envelopes).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.envelopes).write_text(json.dumps(env, indent=1), encoding="utf-8")
+        print(f"wrote {args.envelopes}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -133,3 +133,120 @@ def test_resolve_outcomes_handles_missing_closes():
     out = score.resolve_outcomes(df, horizon=21)
     assert out["fwd21_qqq"].iloc[0] is None or pd.isna(out["fwd21_qqq"].iloc[0])
     assert out["fwd21_spy"].iloc[0] == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# load_envelopes / envelope_for_state / render_envelope_line (Phase 6 of the
+# path-study plan: the operational envelope on the state strip)
+# ---------------------------------------------------------------------------
+def _envelope_doc():
+    return {
+        "schema": 1, "generated": "2026-08-15 03:00 UTC",
+        "payload_generated": "2026-08-14 22:00 UTC",
+        "indices": {
+            "NDX": {
+                "asof": "2026-08-14",
+                "LowCorr": {"n": 300, "n_eps": 30, "gate": True,
+                           "p10": {"5": -2.0, "10": -3.5, "21": -6.0},
+                           "p50": {"5": 0.2, "10": 0.8, "21": 2.0},
+                           "p90": {"5": 2.0, "10": 4.0, "21": 9.0},
+                           "mae_q25": -5.3, "touch_m5": 26.0,
+                           "vratio_med": 0.95, "size_q25": 19.0},
+                "LowCorr|DIXLow": {"n": 10, "n_eps": 2, "gate": False},
+            },
+        },
+    }
+
+
+def test_load_envelopes_missing_file_returns_none(tmp_path):
+    assert B.load_envelopes(str(tmp_path / "nope.json")) is None
+    assert B.load_envelopes(None) is None
+
+
+def test_load_envelopes_malformed_file_returns_none(tmp_path):
+    p = tmp_path / "bad.json"
+    p.write_text("{not json", encoding="utf-8")
+    assert B.load_envelopes(str(p)) is None
+
+
+def test_load_envelopes_reads_valid_file(tmp_path):
+    import json as _json
+    p = tmp_path / "env.json"
+    p.write_text(_json.dumps(_envelope_doc()), encoding="utf-8")
+    out = B.load_envelopes(str(p))
+    assert out["schema"] == 1
+
+
+def test_envelope_for_state_marginal_fallback():
+    env = _envelope_doc()
+    state = {"zone": "LowCorr", "dz_roll_l1": "DIXHigh"}   # no LowCorr|DIXHigh cell -> marginal
+    out = B.envelope_for_state(env, "NDX", state)
+    assert out["cell"] == "LowCorr"
+    assert out["mae_q25"] == -5.3
+    assert out["envelope_generated"] == "2026-08-15 03:00 UTC"
+
+
+def test_envelope_for_state_prefers_grid_cell_when_present_and_gated():
+    env = _envelope_doc()
+    env["indices"]["NDX"]["LowCorr|DIXLow"] = {
+        "n": 90, "n_eps": 25, "gate": True,
+        "p10": {"5": -2.5, "10": -4.0, "21": -7.0},
+        "p50": {"5": 0.0, "10": 0.5, "21": 1.0},
+        "p90": {"5": 1.8, "10": 3.5, "21": 8.0},
+        "mae_q25": -6.1, "touch_m5": 30.0, "vratio_med": 1.05, "size_q25": 16.0,
+    }
+    state = {"zone": "LowCorr", "dz_roll_l1": "DIXLow"}
+    out = B.envelope_for_state(env, "NDX", state)
+    assert out["cell"] == "LowCorr|DIXLow"
+    assert out["mae_q25"] == -6.1
+
+
+def test_envelope_for_state_none_when_cell_below_gate():
+    env = _envelope_doc()
+    state = {"zone": "LowCorr", "dz_roll_l1": "DIXLow"}   # LowCorr|DIXLow is gate:False
+    assert B.envelope_for_state(env, "NDX", state) is None
+
+
+def test_envelope_for_state_none_without_envelope_doc():
+    assert B.envelope_for_state(None, "NDX", {"zone": "LowCorr"}) is None
+
+
+def test_envelope_for_state_none_for_unknown_index():
+    env = _envelope_doc()
+    assert B.envelope_for_state(env, "SPX", {"zone": "LowCorr"}) is None
+
+
+def test_render_envelope_line_smoke():
+    env = _envelope_doc()
+    out = B.envelope_for_state(env, "NDX", {"zone": "LowCorr", "dz_roll_l1": "DIXHigh"})
+    line = B.render_envelope_line("NDX", out)
+    assert "NDX" in line and "LowCorr" in line and "MAE q25" in line
+
+
+def test_render_html_includes_envelope_section_when_present():
+    env = _envelope_doc()
+    states = {"NDX": {"asof": "2026-08-14", "avg_corr": 0.3, "corr_pct": 0.4,
+                     "zone": "LowCorr", "zone_age": 5, "dix5": 0.42,
+                     "dz_roll": "DIXLow", "dz_roll_l1": "DIXHigh", "breadth": 0.5}}
+    states["NDX"]["envelope"] = B.envelope_for_state(env, "NDX", states["NDX"])
+    state = {"generated": "now", "rules_hash": "a" * 12, "rules_frozen": "2026-08-20",
+            "indices": states,
+            "rules": {"ndx_tilt_screen_v1": {"active": False, "names": []},
+                      "ndx_dixlow_caution_v1": {"active": False},
+                      "all_dispersed_derisk_v1": {"active": False, "evaluable": True}}}
+    html = B.render_html(state)
+    assert "Expected path (committed envelope)" in html
+    assert "MAE q25" in html
+
+
+def test_render_html_omits_envelope_section_when_absent():
+    states = {"NDX": {"asof": "2026-08-14", "avg_corr": 0.3, "corr_pct": 0.4,
+                     "zone": "LowCorr", "zone_age": 5, "dix5": 0.42,
+                     "dz_roll": "DIXLow", "dz_roll_l1": "DIXHigh", "breadth": 0.5}}
+    state = {"generated": "now", "rules_hash": "a" * 12, "rules_frozen": "2026-08-20",
+            "indices": states,
+            "rules": {"ndx_tilt_screen_v1": {"active": False, "names": []},
+                      "ndx_dixlow_caution_v1": {"active": False},
+                      "all_dispersed_derisk_v1": {"active": False, "evaluable": True}}}
+    html = B.render_html(state)
+    assert "Expected path (committed envelope)" not in html
