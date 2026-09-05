@@ -229,12 +229,17 @@ def run_ids(mask):
 
 
 def cluster_boot_ci(r, ids, B=BOOT_B, seed=0, levels=(2.5, 97.5),
-                    min_clusters=GATE_EPISODES):
-    """Episode-cluster bootstrap 95% CI for the mean of `r`: resample whole
-    contiguous episodes (cluster ids from `run_ids`) with replacement.
+                    min_clusters=GATE_EPISODES, stat=None):
+    """Episode-cluster bootstrap 95% CI for a statistic of `r`: resample
+    whole contiguous episodes (cluster ids from `run_ids`) with replacement.
     Regime days arrive in a handful of multi-week episodes, so this is the
     honest uncertainty; the 21-day moving-block CI understates it whenever
-    episodes run longer than a month. NaN below `min_clusters` episodes."""
+    episodes run longer than a month. NaN below `min_clusters` episodes.
+    `stat` defaults to the mean; pass any callable(1-D array) -> float to
+    get the episode-cluster CI of another statistic (e.g. a quantile) --
+    the path study's risk columns (median/q25 MAE, touch probabilities,
+    vol-ratio medians) reuse this same resampling scheme."""
+    fn = stat if stat is not None else (lambda x: float(np.mean(x)))
     r = np.asarray(r, dtype=float)
     ids = np.asarray(ids)
     ok = np.isfinite(r) & (ids >= 0)
@@ -245,9 +250,9 @@ def cluster_boot_ci(r, ids, B=BOOT_B, seed=0, levels=(2.5, 97.5),
     groups = [r[ids == u] for u in uniq]
     rng = np.random.default_rng(seed)
     draws = rng.integers(0, len(groups), size=(B, len(groups)))
-    means = np.array([np.concatenate([groups[j] for j in row]).mean()
-                      for row in draws])
-    return tuple(float(x) for x in np.percentile(means, levels))
+    vals = np.array([fn(np.concatenate([groups[j] for j in row]))
+                     for row in draws])
+    return tuple(float(x) for x in np.percentile(vals, levels))
 
 
 def ols_cluster(y, X, ids):
@@ -576,7 +581,8 @@ def build_ndx_frame(P, min_valid_corr=0.98):
     sp = tilt_spread(dpan, r21, [n for n in names if n in dpan.columns])
     M[["tilt_q5", "tilt_q1", "tilt_spread"]] = sp[["q5", "q1", "spread"]].reindex(M.index)
     meta = {"names": len(names), "dropped": dropped, "proxy": bench,
-            "note": f"{len(names)} payload grid names"}
+            "note": f"{len(names)} payload grid names",
+            "proxy_close": close[bench]}
     return M, meta
 
 
@@ -635,7 +641,7 @@ def build_basket_frame(P, index_key, basket_n, cache_dir, refresh=False):
     px = px[px.index >= dates.min() - pd.Timedelta(days=60)]
     M = assemble_frame(px, proxy_close, dix, r1m)
     return M, {"names": px.shape[1], "dropped": {}, "proxy": IDX_PROXY[index_key],
-               "note": note}
+               "note": note, "proxy_close": proxy_close}
 
 
 def load_membership(path):
