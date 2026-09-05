@@ -153,6 +153,19 @@ jobs:
           --docs-out docs/comovement.html
           --cache-dir .ndx_dark_cache
 
+      # Regime state strip: rolling-basis comovement/DIX zones per index + the
+      # pre-registered rule readings (frozen_rules.json). Reads the payload just
+      # written into docs/index.html and the same Yahoo/holdings cache as the
+      # study; degrades to NDX-only if the basket build fails. The scoring
+      # workflow (regime_score.yml) appends the JSON to regime-scoring-data.
+      - name: Build regime state strip
+        run: >
+          python build_regime_state.py
+          --html docs/index.html
+          --docs-out docs/regime_state.html
+          --json-out docs/regime_state.json
+          --cache-dir .ndx_dark_cache
+
       # GEX x dispersion barometer: SqueezeMetrics gamma + Cboe COR1M/DSPX + our own realized
       # correlation/dispersion from the top-50 IVV names (same Yahoo cache). With the
       # GEXPLUS_KEY repo secret set (Settings -> Secrets and variables -> Actions) the gamma
