@@ -17,6 +17,21 @@ re-fetch; both the plain and compressed payload encodings are supported); pass
 published as the **Comovement** tab in the dashboard (`docs/comovement.html`),
 rebuilt nightly by the refresh workflow.
 
+**Mean return isn't the whole story.** Everything below scores each regime by
+its 1-month return — it says nothing about whether that month is a calm
+grind or a violent whipsaw. `REGIME_PATHS_FINDINGS.md` adds that layer:
+forward realized volatility, a trend-vs-chop measure, drawdown/run-up, and
+the full quantile fan, per regime, under the same 27-cell framework (plus a
+vol-persistence control and an entry-day lens). The headline: **LLH (the
+requested divergence) earns its return through an already-hot, violent
+month, not a calm one** — forward NDX volatility runs 24% above baseline, and
+it's already elevated on the day the regime forms. HML (NDX High / SPX Mid /
+IWM Low, the best NDX-mean regime below) *looks* hot in the raw numbers too,
+but that mostly evaporates once you control for the vol environment it tends
+to occur in; MHM (NDX Mid / SPX High / IWM Mid) is the one regime that's
+genuinely calm and trending on every axis. It's on the same
+**"How the month unfolds"** section of the Comovement tab.
+
 ## Definitions
 
 - **DIX** = dollar-weighted `Σ($ short volume) / Σ($ off-exchange volume)` across

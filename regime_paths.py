@@ -186,15 +186,15 @@ def _cell_row(sub_metrics, sub_code, code_val, n_episodes, with_ci=False, seed=0
             out[col + "_q25"] = np.nan
             out[col + "_q75"] = np.nan
             continue
-        out[col + "_med"] = float(r.median())
-        out[col + "_q25"] = float(r.quantile(0.25))
-        out[col + "_q75"] = float(r.quantile(0.75))
+        out[col + "_med"] = round(float(r.median()), 2)
+        out[col + "_q25"] = round(float(r.quantile(0.25)), 2)
+        out[col + "_q75"] = round(float(r.quantile(0.75)), 2)
     r21 = sub_metrics["r21"].dropna()
     if len(r21):
-        out["r21_sd"] = float(r21.std(ddof=1)) if len(r21) > 1 else np.nan
-        out["r21_iqr"] = float(r21.quantile(0.75) - r21.quantile(0.25))
-        out["r21_q10"] = float(r21.quantile(0.10))
-        out["r21_q90"] = float(r21.quantile(0.90))
+        out["r21_sd"] = round(float(r21.std(ddof=1)), 2) if len(r21) > 1 else np.nan
+        out["r21_iqr"] = round(float(r21.quantile(0.75) - r21.quantile(0.25)), 2)
+        out["r21_q10"] = round(float(r21.quantile(0.10)), 2)
+        out["r21_q90"] = round(float(r21.quantile(0.90)), 2)
     else:
         out["r21_sd"] = out["r21_iqr"] = out["r21_q10"] = out["r21_q90"] = np.nan
 
