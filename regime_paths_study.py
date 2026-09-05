@@ -80,6 +80,7 @@ def episode_report(A):
     summ = (ep.groupby("code")["length"]
            .agg(episodes="count", days="sum", median_len="median", max_len="max")
            .sort_values("days", ascending=False))
+    missing = R.unobserved_codes(A["code"])
     lines = ["=== SECTION 1: PERSISTENCE -- how long a regime code holds ===",
              f"  {len(A)} scored days, {len(ep)} contiguous episodes across "
              f"{ep['code'].nunique()} of 27 codes.",
@@ -87,8 +88,11 @@ def episode_report(A):
              f"75th pct {ep['length'].quantile(0.75):.0f}d, max {ep['length'].max():.0f}d.",
              "  A regime-conditioned statistic describes an ENVIRONMENT most of the",
              "  time, not a month spent continuously in that regime -- see the entry",
-             "  lens (Section 4) for the closer-to-independent read.\n",
-             summ.head(12).to_string()]
+             "  lens (Section 4) for the closer-to-independent read.",
+             f"  {len(missing)} of 27 codes NEVER observed in this sample: "
+             + (", ".join(missing) if missing else "(none)")
+             + " -- zero evidence, not just rare; see the note below the table.\n",
+             summ.to_string()]
     return "\n".join(lines)
 
 

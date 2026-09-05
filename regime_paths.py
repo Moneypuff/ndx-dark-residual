@@ -166,6 +166,18 @@ def run_length_at(code):
     return pd.Series(out, index=code.index)
 
 
+ALL_CODES = tuple(a + b + c for a in "LMH" for b in "LMH" for c in "LMH")
+
+
+def unobserved_codes(code):
+    """The 3-letter DIX regime codes among the 27 possible (N/S/I each
+    Low/Mid/High) that never occur in `code` -- i.e. combinations the sample
+    has zero evidence for, as opposed to combinations that are merely rare.
+    Distinct from `MIN_N`-style small-n cells, which *did* occur."""
+    seen = set(code.dropna().unique())
+    return [c for c in ALL_CODES if c not in seen]
+
+
 # ----------------------------------------------------------------------------
 # Cell table (§2.4) and classification (§2.3)
 # ----------------------------------------------------------------------------

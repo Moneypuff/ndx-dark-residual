@@ -147,6 +147,37 @@ def test_run_length_at_matches_episodes():
 
 
 # ---------------------------------------------------------------------------
+# unobserved_codes
+# ---------------------------------------------------------------------------
+def test_unobserved_codes_all_27_when_empty():
+    code = pd.Series([], dtype=object)
+    assert set(R.unobserved_codes(code)) == set(R.ALL_CODES)
+    assert len(R.ALL_CODES) == 27
+
+
+def test_unobserved_codes_finds_the_gap():
+    # Every code except "HLM" is observed -- it alone should come back.
+    idx = _dates(len(R.ALL_CODES) - 1)
+    seen = [c for c in R.ALL_CODES if c != "HLM"]
+    code = pd.Series(seen, index=idx)
+    assert R.unobserved_codes(code) == ["HLM"]
+
+
+def test_unobserved_codes_none_missing():
+    idx = _dates(len(R.ALL_CODES))
+    code = pd.Series(list(R.ALL_CODES), index=idx)
+    assert R.unobserved_codes(code) == []
+
+
+def test_unobserved_codes_ignores_nan():
+    idx = _dates(3)
+    code = pd.Series(["MMM", np.nan, "MMM"], index=idx)
+    missing = R.unobserved_codes(code)
+    assert len(missing) == 26
+    assert "MMM" not in missing
+
+
+# ---------------------------------------------------------------------------
 # classify (boundary cases at exactly the thresholds)
 # ---------------------------------------------------------------------------
 BASE = {"rv_med": 20.0, "er_med": 0.20, "r21_med": 0.0}

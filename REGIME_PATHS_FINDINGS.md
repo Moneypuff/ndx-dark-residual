@@ -49,6 +49,17 @@ two lenses for that reason:
   only the first day a regime forms. Closest to independent, small n — the
   honest read on whether a *setup* looks different from the *environment*.
 
+**6 of the 27 possible codes never occur at all** (`regime_paths.unobserved_codes`,
+reported by `regime_paths_study.py`'s Section 1) — zero evidence, not merely
+rare: **LHL, LHM, LHH, HLL, HLM, HLH**. Read the pattern: these are *exactly*
+the six codes where NDX and SPX sit at *opposite* DIX5 deciles (one Low, the
+other High) — for all three IWM values. **NDX and SPX dark flow never
+diverge to opposite extremes on the same day, anywhere in 2020–2026.** Every
+regime in §3–§6 below therefore has at least Mid-level agreement between the
+two large-cap gauges; the comovement study's own large-cap correlation is the
+likely reason, and it means a live reading of "NDX Low, SPX High" (or the
+reverse) has no historical precedent to size against at all.
+
 ## 2. Baseline path profile (the yardstick)
 
 | Index | fwd vol | vol/trailing | max DD | max run-up | efficiency | time above water | r21 IQR |
@@ -65,21 +76,37 @@ in the path, not just the mean.
 
 ## 3. The path map — every-day lens
 
-Selected cells, largest first (NDX shown; SPX/IWM in the CSV and the page).
-`vm rv` is the vol-persistence control (§4) — skip to that section before
-trusting "hot"/"quiet" at face value.
+**All 21 regimes observed in the sample** (NDX shown, largest first; SPX/IWM
+in `regime_paths.csv` and the page — no cell is left out of either). `ER` is
+the efficiency ratio (→1 trend, →0 chop); `vol CI` is the 95% block-bootstrap
+CI on mean forward vol, suppressed below 42 scored days. `vm rv` is the
+vol-persistence control (§4) — skip to that section before trusting
+"hot"/"quiet" at face value. The 6 codes with **no row at all** (never
+observed — see §1) are LHL, LHM, LHH, HLL, HLM, HLH.
 
 | Regime | n | r21 | fwd vol | vol CI | ER | max DD | time above water | label |
 |---|--:|--:|--:|---|--:|--:|--:|---|
 | MMM (all Mid) | 209 | +2.4% | 19.2% | [17.7, 25.1] | 0.19 | −2.3% | 71% | normal mixed up |
 | HHM | 179 | +3.1% | 17.3% | [16.6, 22.9] | 0.27 | −1.8% | 76% | normal trend up |
+| LLL | 174 | +2.0% | 18.9% | [16.8, 28.9] | 0.19 | −3.2% | 71% | normal mixed up |
+| HHH | 163 | +3.4% | 19.4% | [17.9, 26.1] | 0.24 | −1.8% | 81% | normal mixed up |
 | **MML** | 133 | +2.5% | 17.6% | [16.1, 19.2] | **0.15** | −1.5% | 81% | **normal chop up** |
+| MMH | 119 | +0.6% | 21.6% | [17.7, 30.4] | 0.18 | −3.2% | 69% | normal mixed flat |
 | LLM | 104 | +0.5% | 23.8% | [20.4, 33.3] | 0.16 | −3.0% | 62% | hot chop flat |
 | **LLH** (requested) | 96 | +3.6% | **24.0%** | [19.8, 35.9] | 0.23 | −2.1% | 74% | **hot mixed up** |
 | HHL | 80 | +4.1% | 16.8% | [16.1, 25.4] | 0.22 | −1.6% | 86% | normal mixed up |
+| LMM | 69 | −1.1% | 20.1% | [19.6, 25.4] | 0.17 | −3.6% | 48% | normal mixed down |
+| MLL | 48 | +0.3% | 22.2% | [17.4, 44.2] | 0.20 | −2.6% | 74% | normal mixed flat |
+| MLM | 46 | +2.6% | 21.2% | [17.3, 34.3] | 0.21 | −1.8% | 81% | normal mixed up |
 | **MHM** | 43 | +3.8% | **15.7%** | [13.8, 28.5] | **0.30** | −1.6% | 86% | **quiet trend up** |
+| MLH | 34 | +1.1% | 21.2% | — | 0.24 | −2.8% | 64% | normal mixed up |
+| LMH | 33 | +3.5% | 23.7% | — | 0.16 | −5.8% | 33% | hot chop up |
 | **HML** | 30 | +6.7% | 22.3% | — | **0.28** | −0.2% | 95% | **hot trend up** |
 | **HMH** | 30 | −2.8% | **26.3%** | — | 0.23 | **−5.8%** | 43% | **hot mixed down** |
+| LML | 26 | −0.3% | 16.8% | — | 0.09 | −2.8% | 71% | normal chop flat |
+| MHH | 26 | +2.0% | 17.5% | — | 0.27 | −2.4% | 76% | normal trend up |
+| HMM | 20 | +1.8% | 17.2% | — | 0.18 | −2.1% | 79% | normal mixed up |
+| MHL | 11 | +1.8% | 12.9% | — | 0.11 | −0.9% | 90% | quiet chop up |
 
 Four cells worth naming (NDX letters are read N/S/I — e.g. LLH = NDX Low, SPX
 Low, IWM High):
