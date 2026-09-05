@@ -1,0 +1,100 @@
+ticker,sector,bucket_42d,response_42d_pct,t_42d,hit_42d_pct,n_high_days,response_63d_pct,t_63d
+ALAB,Technology,neutral,8.06,1.20,69,110,20.64,2.80
+MSTR,Technology,neutral,5.86,1.18,50,574,3.90,0.53
+PLTR,Technology,responder,5.78,1.98,57,474,6.29,1.46
+PDD,Cons. Discretionary,responder,3.94,1.78,52,567,5.79,1.60
+CRWV,Technology,neutral,2.66,0.60,48,48,5.13,1.35
+TSLA,Cons. Discretionary,neutral,2.61,0.93,53,549,0.36,0.11
+ABNB,Cons. Discretionary,responder,2.28,1.63,50,420,1.79,1.17
+VRTX,Health Care,responder,2.19,2.32,55,630,2.63,2.03
+NFLX,Comm. Services,neutral,1.71,1.18,57,503,1.59,0.71
+AXON,Industrials,neutral,1.49,1.03,57,589,0.64,0.30
+TXN,Technology,responder,1.39,1.90,48,600,1.58,1.66
+ORLY,Cons. Discretionary,neutral,1.38,1.38,59,538,1.23,0.83
+LRCX,Technology,neutral,1.30,1.38,61,560,1.37,1.05
+ODFL,Industrials,responder,1.30,1.52,58,596,1.63,1.48
+TTWO,Comm. Services,responder,1.14,1.64,51,603,0.58,0.78
+AEP,Utilities,neutral,1.11,1.41,44,603,1.62,1.78
+REGN,Health Care,neutral,1.06,0.73,45,586,1.21,0.68
+IDXX,Health Care,neutral,1.04,1.28,52,613,2.56,2.16
+CEG,Utilities,neutral,1.02,0.77,60,356,1.55,1.23
+AMGN,Health Care,neutral,0.89,0.87,45,614,0.34,0.25
+CPRT,Industrials,neutral,0.78,0.79,57,536,0.53,0.41
+MELI,Cons. Discretionary,neutral,0.78,0.76,50,571,0.89,0.66
+FANG,Energy,neutral,0.68,0.51,46,629,-0.51,-0.30
+PYPL,Financials,neutral,0.63,0.60,40,572,-0.33,-0.24
+CTAS,Industrials,neutral,0.60,0.80,58,561,1.17,1.12
+SNPS,Technology,neutral,0.55,0.83,57,581,0.73,0.99
+PAYX,Industrials,neutral,0.55,0.90,46,608,0.53,0.62
+MPWR,Technology,neutral,0.49,0.54,61,587,0.81,0.90
+GILD,Health Care,neutral,0.47,0.42,35,684,0.11,0.08
+ROP,Technology,neutral,0.40,0.45,37,618,0.53,0.56
+CSX,Industrials,neutral,0.36,0.62,44,550,0.21,0.31
+MSFT,Technology,neutral,0.35,0.64,57,538,1.08,1.66
+MCHP,Technology,neutral,0.34,0.35,41,574,0.26,0.21
+INTC,Technology,neutral,0.33,0.14,44,583,2.66,0.72
+MRVL,Technology,neutral,0.32,0.17,52,531,0.80,0.41
+CDNS,Technology,neutral,0.27,0.54,56,610,0.38,0.61
+DASH,Cons. Discretionary,neutral,0.25,0.14,55,388,-0.67,-0.34
+COST,Cons. Staples,neutral,0.21,0.29,60,568,0.52,0.43
+DXCM,Health Care,neutral,0.19,0.15,47,592,-0.52,-0.29
+CSCO,Technology,neutral,0.15,0.19,42,571,0.33,0.28
+ADBE,Technology,neutral,0.09,0.11,44,604,1.35,1.22
+PCAR,Industrials,neutral,0.03,0.05,46,617,0.52,0.61
+QCOM,Technology,neutral,0.00,0.00,45,631,-0.79,-0.56
+WDAY,Technology,neutral,-0.01,-0.01,41,629,-0.81,-0.78
+FAST,Industrials,neutral,-0.09,-0.17,47,540,-0.78,-1.05
+MNST,Cons. Staples,neutral,-0.09,-0.12,41,599,0.08,0.09
+GEHC,Health Care,neutral,-0.11,-0.10,42,279,-0.40,-0.29
+WDC,Technology,neutral,-0.11,-0.05,48,602,-0.74,-0.21
+TMUS,Comm. Services,neutral,-0.16,-0.16,43,569,-0.66,-0.45
+AMD,Technology,neutral,-0.19,-0.11,50,623,-0.06,-0.03
+LIN,Materials,neutral,-0.19,-0.33,44,563,-0.41,-0.73
+AAPL,Technology,neutral,-0.24,-0.43,58,561,-0.42,-0.53
+EA,Comm. Services,neutral,-0.30,-0.42,37,631,0.42,0.57
+MU,Technology,neutral,-0.30,-0.12,45,547,-3.96,-1.26
+ADI,Technology,neutral,-0.31,-0.52,42,584,-0.13,-0.12
+CCEP,Cons. Staples,neutral,-0.37,-0.57,40,588,-0.23,-0.29
+APP,Technology,neutral,-0.39,-0.13,51,355,0.22,0.04
+ADSK,Technology,neutral,-0.55,-1.00,37,641,-1.18,-1.42
+KLAC,Technology,neutral,-0.56,-0.83,63,612,-0.67,-0.79
+RKLB,Industrials,neutral,-0.57,-0.10,62,335,-2.42,-0.28
+AMZN,Cons. Discretionary,neutral,-0.63,-0.70,42,534,-0.78,-0.67
+PEP,Cons. Staples,neutral,-0.66,-1.03,33,624,-0.77,-0.90
+ISRG,Health Care,neutral,-0.68,-0.74,39,561,-1.54,-1.44
+MDLZ,Cons. Staples,neutral,-0.70,-0.84,30,591,-1.71,-1.81
+NVDA,Technology,neutral,-0.70,-0.40,66,559,-1.80,-0.67
+ADP,Industrials,neutral,-0.76,-0.90,39,601,-1.37,-1.38
+ASML,Technology,neutral,-0.80,-0.84,54,579,-0.90,-0.61
+HON,Industrials,neutral,-0.81,-1.36,34,635,-0.53,-0.63
+XEL,Utilities,neutral,-0.82,-1.08,39,592,-0.66,-0.64
+MAR,Cons. Discretionary,neutral,-0.82,-1.16,45,590,-0.99,-1.00
+KHC,Cons. Staples,neutral,-0.84,-1.01,31,685,-1.27,-1.14
+KDP,Cons. Staples,neutral,-0.85,-0.82,37,620,0.11,0.08
+ROST,Cons. Discretionary,neutral,-0.87,-1.20,44,533,-1.39,-1.52
+GOOGL,Comm. Services,neutral,-0.92,-1.12,42,604,-1.31,-1.02
+CMCSA,Comm. Services,neutral,-0.94,-1.48,33,586,-2.63,-2.39
+AVGO,Technology,neutral,-1.04,-1.45,60,546,-0.42,-0.55
+EXC,Utilities,negative,-1.10,-1.67,33,637,-2.18,-2.58
+STX,Technology,neutral,-1.18,-0.80,53,559,-1.83,-0.74
+TER,Technology,neutral,-1.23,-0.83,49,560,-1.20,-0.53
+META,Comm. Services,neutral,-1.34,-1.38,48,636,-1.73,-1.21
+BKR,Energy,neutral,-1.35,-0.82,47,551,0.09,0.04
+BKNG,Cons. Discretionary,negative,-1.37,-1.63,43,590,-1.22,-1.11
+PANW,Technology,negative,-1.39,-2.03,47,600,-1.62,-1.91
+FER,Industrials,neutral,-1.48,-0.93,50,123,-3.36,-1.57
+NXPI,Technology,negative,-1.50,-2.67,41,622,-1.54,-2.26
+WMT,Cons. Staples,negative,-1.52,-1.58,44,627,-3.01,-2.79
+SHOP,Technology,neutral,-1.65,-0.77,52,531,-2.40,-0.82
+CRWD,Technology,neutral,-1.66,-0.91,58,495,-2.06,-0.78
+INTU,Technology,negative,-2.00,-2.13,41,616,-1.20,-1.12
+TRI,Industrials,negative,-2.05,-2.68,37,671,-2.62,-2.21
+NBIS,Technology,neutral,-2.28,-0.47,72,123,-1.70,-0.27
+LITE,Technology,neutral,-2.43,-1.17,50,570,-2.30,-0.76
+SBUX,Cons. Discretionary,negative,-3.00,-3.14,24,621,-4.15,-3.23
+AMAT,Technology,negative,-3.23,-3.45,46,595,-4.25,-3.35
+ALNY,Health Care,negative,-3.60,-2.40,40,561,-3.56,-2.11
+FTNT,Technology,negative,-4.19,-4.26,47,569,-5.42,-4.14
+WBD,Comm. Services,negative,-4.48,-1.97,34,257,-4.36,-1.12
+DDOG,Technology,negative,-5.43,-3.53,37,497,-7.03,-3.40
+ARM,Technology,negative,-8.47,-2.26,43,198,-14.78,-1.66
