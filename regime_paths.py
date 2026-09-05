@@ -348,3 +348,22 @@ def classify(row, base):
         direction = "flat"
 
     return f"{vol_state} {trend_state} {direction}"
+
+
+def entry_cell_table(A, metrics, index_name, codes, min_gap=21):
+    """Same row shape as `cell_table`, scored only at the first day each
+    regime forms (`index_comovement_study.entry_events`, `min_gap`-session
+    cool-down). Unlike `cell_table`, never blanks small cells -- the entry
+    lens is inherently low-n by construction (that's the point of it), and
+    the caller decides which codes are worth showing."""
+    from index_comovement_study import entry_events
+
+    rows = []
+    for code in codes:
+        dates, _ = entry_events(A, code, min_gap=min_gap)
+        dates = [d for d in dates if d in metrics.index]
+        sub = metrics.loc[dates] if dates else metrics.iloc[0:0]
+        row = _cell_row(sub, None, code, len(dates), with_ci=False)
+        row["index"] = index_name
+        rows.append(row)
+    return pd.DataFrame(rows)

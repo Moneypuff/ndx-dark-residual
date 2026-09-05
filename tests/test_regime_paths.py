@@ -254,6 +254,43 @@ def test_vol_matched_baseline_mix_sums_to_one_and_runs():
     assert np.isfinite(out["er"])
 
 
+def _with_dummy_r1m(A, idx, rng):
+    # entry_events (index_comovement_study) loops over all three indices'
+    # *_r1m columns regardless of which one the caller asked about.
+    out = A.copy()
+    for i in ("NDX", "SPX", "IWM"):
+        out[i + "_r1m"] = rng.normal(0, 1, len(idx))
+    return out
+
+
+def test_entry_cell_table_never_blanks_small_n():
+    # Two entries of code "AAA" (21+-session cool-down keeps only the first
+    # of each run), scored regardless of how far below MIN_N that leaves it.
+    idx = _dates(120)
+    code = pd.Series("BBB", index=idx)
+    code.iloc[5:8] = "AAA"     # one run
+    code.iloc[60:64] = "AAA"   # a second, well-separated run
+    rng = np.random.default_rng(4)
+    A = _with_dummy_r1m(pd.DataFrame({"code": code}), idx, rng)
+    metrics = _synthetic_metrics(idx, rng)
+
+    et = R.entry_cell_table(A, metrics, "TEST", ["AAA", "BBB"])
+    by_regime = et.set_index("regime")
+    assert by_regime.loc["AAA", "n"] == 2
+    assert pd.notna(by_regime.loc["AAA", "r21_med"])  # not blanked despite n < MIN_N
+
+
+def test_entry_cell_table_missing_code_reports_zero():
+    idx = _dates(30)
+    code = pd.Series("BBB", index=idx)
+    rng = np.random.default_rng(5)
+    A = _with_dummy_r1m(pd.DataFrame({"code": code}), idx, rng)
+    metrics = _synthetic_metrics(idx, rng)
+    et = R.entry_cell_table(A, metrics, "TEST", ["ZZZ"])
+    assert et.iloc[0]["n"] == 0
+    assert np.isnan(et.iloc[0]["r21_med"])
+
+
 def test_vol_matched_baseline_unknown_code_returns_nan():
     idx = _dates(50)
     rng = np.random.default_rng(3)
