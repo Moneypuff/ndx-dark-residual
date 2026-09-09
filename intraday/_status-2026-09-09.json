@@ -1,6 +1,6 @@
 {
  "date": "2026-09-09",
- "captured_utc": "2026-09-09T16:54:07+00:00",
+ "captured_utc": "2026-09-09T17:53:28+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 8,
-   "rows": 988
+   "rows": 992
   },
   "EEM": {
    "ok": true,
@@ -70,7 +70,7 @@
   "XLV": {
    "ok": true,
    "expiries": 8,
-   "rows": 666
+   "rows": 659
   },
   "XLY": {
    "ok": true,
@@ -85,7 +85,7 @@
   "XLE": {
    "ok": true,
    "expiries": 9,
-   "rows": 671
+   "rows": 664
   },
   "XLI": {
    "ok": true,
@@ -120,27 +120,27 @@
   "FXI": {
    "ok": true,
    "expiries": 11,
-   "rows": 450
+   "rows": 452
   },
   "AAPL": {
    "ok": true,
    "expiries": 11,
-   "rows": 862
+   "rows": 871
   },
   "TSLA": {
    "ok": true,
    "expiries": 10,
-   "rows": 1066
+   "rows": 1062
   },
   "GOOGL": {
    "ok": true,
    "expiries": 11,
-   "rows": 1039
+   "rows": 1043
   },
   "NVDA": {
    "ok": true,
    "expiries": 10,
-   "rows": 828
+   "rows": 825
   },
   "AMZN": {
    "ok": true,
@@ -160,17 +160,17 @@
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1166
+   "rows": 1164
   },
   "MU": {
    "ok": true,
    "expiries": 11,
-   "rows": 1820
+   "rows": 1838
   },
   "CRWV": {
    "ok": true,
    "expiries": 10,
-   "rows": 644
+   "rows": 640
   },
   "IONQ": {
    "ok": true,
@@ -195,12 +195,12 @@
   "SPCX": {
    "ok": true,
    "expiries": 9,
-   "rows": 630
+   "rows": 623
   },
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 1022
+   "rows": 1031
   },
   "USO": {
    "ok": true,
@@ -215,7 +215,7 @@
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1114
+   "rows": 1104
   },
   "IBIT": {
    "ok": true,
@@ -228,13 +228,14 @@
    "rows": 927
   },
   "EWY": {
-   "ok": false,
-   "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+   "ok": true,
+   "expiries": 9,
+   "rows": 830
   },
   "NBIS": {
    "ok": true,
    "expiries": 11,
-   "rows": 713
+   "rows": 712
   },
   "AAOI": {
    "ok": true,
