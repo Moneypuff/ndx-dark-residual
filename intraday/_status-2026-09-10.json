@@ -1,6 +1,6 @@
 {
  "date": "2026-09-10",
- "captured_utc": "2026-09-10T17:53:43+00:00",
+ "captured_utc": "2026-09-10T18:53:45+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -35,12 +35,12 @@
   "KRE": {
    "ok": true,
    "expiries": 8,
-   "rows": 510
+   "rows": 507
   },
   "GDX": {
    "ok": true,
    "expiries": 8,
-   "rows": 995
+   "rows": 987
   },
   "EEM": {
    "ok": true,
@@ -95,12 +95,12 @@
   "XLB": {
    "ok": true,
    "expiries": 7,
-   "rows": 438
+   "rows": 436
   },
   "XLU": {
    "ok": true,
    "expiries": 8,
-   "rows": 458
+   "rows": 457
   },
   "XLRE": {
    "ok": true,
@@ -120,7 +120,7 @@
   "FXI": {
    "ok": true,
    "expiries": 11,
-   "rows": 451
+   "rows": 450
   },
   "AAPL": {
    "ok": true,
@@ -150,12 +150,12 @@
   "MSFT": {
    "ok": true,
    "expiries": 10,
-   "rows": 1155
+   "rows": 1149
   },
   "META": {
    "ok": true,
    "expiries": 10,
-   "rows": 1343
+   "rows": 1336
   },
   "AMD": {
    "ok": true,
@@ -165,17 +165,17 @@
   "MU": {
    "ok": true,
    "expiries": 11,
-   "rows": 1671
+   "rows": 1673
   },
   "CRWV": {
    "ok": true,
    "expiries": 10,
-   "rows": 636
+   "rows": 634
   },
   "IONQ": {
    "ok": true,
    "expiries": 9,
-   "rows": 449
+   "rows": 447
   },
   "OWL": {
    "ok": true,
@@ -185,37 +185,37 @@
   "RKLB": {
    "ok": true,
    "expiries": 8,
-   "rows": 400
+   "rows": 403
   },
   "ONDS": {
    "ok": true,
    "expiries": 9,
-   "rows": 302
+   "rows": 304
   },
   "SPCX": {
    "ok": true,
    "expiries": 9,
-   "rows": 629
+   "rows": 632
   },
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 1002
+   "rows": 988
   },
   "USO": {
    "ok": true,
    "expiries": 10,
-   "rows": 1402
+   "rows": 1406
   },
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1803
+   "rows": 1805
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1049
+   "rows": 1050
   },
   "IBIT": {
    "ok": true,
@@ -225,7 +225,7 @@
   "TLT": {
    "ok": true,
    "expiries": 12,
-   "rows": 900
+   "rows": 891
   },
   "EWY": {
    "ok": true,
