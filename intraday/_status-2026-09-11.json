@@ -1,6 +1,6 @@
 {
  "date": "2026-09-11",
- "captured_utc": "2026-09-11T17:53:35+00:00",
+ "captured_utc": "2026-09-11T18:53:28+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -20,7 +20,7 @@
   "SMH": {
    "ok": true,
    "expiries": 10,
-   "rows": 1516
+   "rows": 1507
   },
   "IGV": {
    "ok": true,
@@ -30,7 +30,7 @@
   "XBI": {
    "ok": true,
    "expiries": 7,
-   "rows": 753
+   "rows": 750
   },
   "KRE": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 8,
-   "rows": 995
+   "rows": 986
   },
   "EEM": {
    "ok": true,
@@ -75,7 +75,7 @@
   "XLY": {
    "ok": true,
    "expiries": 7,
-   "rows": 552
+   "rows": 553
   },
   "XLP": {
    "ok": true,
@@ -95,7 +95,7 @@
   "XLB": {
    "ok": true,
    "expiries": 7,
-   "rows": 438
+   "rows": 437
   },
   "XLU": {
    "ok": true,
@@ -135,7 +135,7 @@
   "GOOGL": {
    "ok": true,
    "expiries": 11,
-   "rows": 1024
+   "rows": 1026
   },
   "NVDA": {
    "ok": true,
@@ -150,7 +150,7 @@
   "MSFT": {
    "ok": true,
    "expiries": 10,
-   "rows": 1148
+   "rows": 1158
   },
   "META": {
    "ok": true,
@@ -165,7 +165,7 @@
   "MU": {
    "ok": true,
    "expiries": 11,
-   "rows": 1664
+   "rows": 1647
   },
   "CRWV": {
    "ok": true,
@@ -185,7 +185,7 @@
   "RKLB": {
    "ok": true,
    "expiries": 8,
-   "rows": 407
+   "rows": 403
   },
   "ONDS": {
    "ok": true,
@@ -200,27 +200,27 @@
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 996
+   "rows": 987
   },
   "USO": {
    "ok": true,
    "expiries": 10,
-   "rows": 1410
+   "rows": 1412
   },
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1708
+   "rows": 1715
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1051
+   "rows": 1047
   },
   "IBIT": {
    "ok": true,
    "expiries": 10,
-   "rows": 766
+   "rows": 760
   },
   "TLT": {
    "ok": true,
@@ -230,17 +230,17 @@
   "EWY": {
    "ok": true,
    "expiries": 9,
-   "rows": 829
+   "rows": 835
   },
   "NBIS": {
    "ok": true,
    "expiries": 11,
-   "rows": 702
+   "rows": 710
   },
   "AAOI": {
    "ok": true,
    "expiries": 7,
-   "rows": 481
+   "rows": 473
   }
  }
 }
