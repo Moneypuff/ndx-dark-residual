@@ -1,6 +1,6 @@
 {
  "date": "2026-09-18",
- "captured_utc": "2026-09-18T14:53:41+00:00",
+ "captured_utc": "2026-09-18T15:53:33+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -25,17 +25,17 @@
   "IGV": {
    "ok": true,
    "expiries": 10,
-   "rows": 862
+   "rows": 859
   },
   "XBI": {
    "ok": true,
    "expiries": 8,
-   "rows": 824
+   "rows": 827
   },
   "KRE": {
    "ok": true,
    "expiries": 9,
-   "rows": 559
+   "rows": 560
   },
   "GDX": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 10,
-   "rows": 1007
+   "rows": 1015
   },
   "XLF": {
    "ok": true,
@@ -70,12 +70,12 @@
   "XLV": {
    "ok": true,
    "expiries": 9,
-   "rows": 730
+   "rows": 727
   },
   "XLY": {
    "ok": true,
    "expiries": 8,
-   "rows": 589
+   "rows": 588
   },
   "XLP": {
    "ok": true,
@@ -125,12 +125,12 @@
   "AAPL": {
    "ok": true,
    "expiries": 11,
-   "rows": 811
+   "rows": 812
   },
   "TSLA": {
    "ok": true,
    "expiries": 10,
-   "rows": 996
+   "rows": 978
   },
   "GOOGL": {
    "ok": true,
@@ -145,27 +145,27 @@
   "AMZN": {
    "ok": true,
    "expiries": 11,
-   "rows": 772
+   "rows": 781
   },
   "MSFT": {
    "ok": true,
    "expiries": 10,
-   "rows": 1145
+   "rows": 1136
   },
   "META": {
    "ok": true,
    "expiries": 10,
-   "rows": 1403
+   "rows": 1399
   },
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1126
+   "rows": 1113
   },
   "MU": {
    "ok": true,
    "expiries": 11,
-   "rows": 1716
+   "rows": 1695
   },
   "CRWV": {
    "ok": true,
@@ -195,17 +195,17 @@
   "SPCX": {
    "ok": true,
    "expiries": 10,
-   "rows": 698
+   "rows": 689
   },
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 994
+   "rows": 982
   },
   "USO": {
    "ok": true,
    "expiries": 10,
-   "rows": 1579
+   "rows": 1577
   },
   "GLD": {
    "ok": true,
@@ -235,12 +235,12 @@
   "NBIS": {
    "ok": true,
    "expiries": 12,
-   "rows": 760
+   "rows": 765
   },
   "AAOI": {
    "ok": true,
    "expiries": 8,
-   "rows": 525
+   "rows": 529
   }
  }
 }
