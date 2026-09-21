@@ -1,6 +1,6 @@
 {
  "date": "2026-09-21",
- "captured_utc": "2026-09-21T16:54:05+00:00",
+ "captured_utc": "2026-09-21T17:53:39+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -15,12 +15,12 @@
   "IWM": {
    "ok": true,
    "expiries": 13,
-   "rows": 1082
+   "rows": 1084
   },
   "SMH": {
    "ok": true,
    "expiries": 12,
-   "rows": 1586
+   "rows": 1574
   },
   "IGV": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 11,
-   "rows": 1013
+   "rows": 1015
   },
   "XLF": {
    "ok": true,
@@ -80,12 +80,12 @@
   "XLP": {
    "ok": true,
    "expiries": 10,
-   "rows": 512
+   "rows": 513
   },
   "XLE": {
    "ok": true,
    "expiries": 10,
-   "rows": 637
+   "rows": 632
   },
   "XLI": {
    "ok": true,
@@ -100,7 +100,7 @@
   "XLU": {
    "ok": true,
    "expiries": 11,
-   "rows": 523
+   "rows": 522
   },
   "XLRE": {
    "ok": true,
@@ -135,12 +135,12 @@
   "GOOGL": {
    "ok": true,
    "expiries": 12,
-   "rows": 1140
+   "rows": 1150
   },
   "NVDA": {
    "ok": true,
    "expiries": 12,
-   "rows": 927
+   "rows": 917
   },
   "AMZN": {
    "ok": true,
@@ -155,17 +155,17 @@
   "META": {
    "ok": true,
    "expiries": 11,
-   "rows": 1506
+   "rows": 1517
   },
   "AMD": {
    "ok": true,
    "expiries": 12,
-   "rows": 1311
+   "rows": 1298
   },
   "MU": {
    "ok": true,
    "expiries": 12,
-   "rows": 1890
+   "rows": 1887
   },
   "CRWV": {
    "ok": true,
@@ -195,7 +195,7 @@
   "SPCX": {
    "ok": true,
    "expiries": 11,
-   "rows": 775
+   "rows": 773
   },
   "DRAM": {
    "ok": true,
@@ -205,7 +205,7 @@
   "USO": {
    "ok": true,
    "expiries": 11,
-   "rows": 1740
+   "rows": 1742
   },
   "GLD": {
    "ok": true,
@@ -215,12 +215,12 @@
   "SLV": {
    "ok": true,
    "expiries": 11,
-   "rows": 1151
+   "rows": 1149
   },
   "IBIT": {
    "ok": true,
    "expiries": 12,
-   "rows": 874
+   "rows": 877
   },
   "TLT": {
    "ok": true,
@@ -235,7 +235,7 @@
   "NBIS": {
    "ok": true,
    "expiries": 13,
-   "rows": 827
+   "rows": 828
   },
   "AAOI": {
    "ok": true,
