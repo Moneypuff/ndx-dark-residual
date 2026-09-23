@@ -135,6 +135,8 @@ BOOT_B = 2000          # bootstrap replications
 BOOT_L = 21            # moving-block length (= the forward-return horizon)
 EXP_MIN = 250          # min history before an expanding-window zone is defined
 ROLL_WIN = 504         # rolling-percentile window for the zone bases (~2 years)
+CORR_EWM_HALFLIFE = 10 # half-life (sessions) of the EW comovement gauge: span ~29,
+                       # a 21-session-window-comparable memory with no window edge
 GATE_DAYS = 42         # print gate: min scored days before a conditional mean prints
 GATE_EPISODES = 5      # print gate: min distinct episodes behind the mean
 GATE_EVENTS = 10       # print gate: min entries before an event-study mean prints
@@ -362,7 +364,7 @@ def series_from(values, dates):
 def daily_returns(close):
     """Per-name daily % returns. A return needs BOTH endpoints present, so a
     gap in the close series never manufactures a multi-day 'daily' move."""
-    ret = close.pct_change() * 100.0
+    ret = close.pct_change(fill_method=None) * 100.0
     ret[close.isna() | close.shift().isna()] = np.nan
     return ret
 
@@ -408,6 +410,51 @@ def avg_pairwise_corr(ret, window=WINDOW, min_names=MIN_NAMES):
         if n < min_names:
             continue
         C = np.corrcoef(b[:, live].T)
+        out[i] = (C.sum() - n) / (n * (n - 1))
+    return pd.Series(out, index=ret.index)
+
+
+def avg_pairwise_corr_ewm(ret, halflife=CORR_EWM_HALFLIFE, window=WINDOW,
+                          min_names=MIN_NAMES):
+    """Exponentially weighted average pairwise correlation of daily returns
+    (half-life `halflife` sessions), per day -- the window-edge-free twin of
+    `avg_pairwise_corr`.
+
+    Why it exists: the rectangular gauge carries a shock day at full weight
+    for exactly `window` sessions and then forgets it in one step, so every
+    index built on it flips comovement zone on the SAME date (the 2026
+    joint LowCorr episode began 2026-04-30 in NDX, SPX and IWM alike: the
+    session the 2026-03-31 shock day left each 21-session window). Here the
+    shock decays instead, so an episode boundary is set by the tape, not by
+    the window length. Same admission rule as the rectangular gauge: a name
+    enters day t's average only with a complete trailing `window` of
+    returns and a non-degenerate EW variance; NaN below `min_names`. The EW
+    second-moment matrix takes a missing return as 0 (no contribution that
+    day); the complete-window rule keeps a gappy name out of the average on
+    the days that would matter. Variances and covariances share one weight
+    schedule, so the warm-up scale cancels in the correlation."""
+    X = ret.to_numpy(dtype=float)
+    n_t, n_n = X.shape
+    lam = 0.5 ** (1.0 / halflife)
+    S = np.zeros((n_n, n_n))
+    x_fill = np.nan_to_num(X, nan=0.0)
+    out = np.full(n_t, np.nan)
+    for i in range(n_t):
+        x = x_fill[i]
+        S = lam * S + (1.0 - lam) * np.outer(x, x)
+        if i < window - 1:
+            continue
+        full = ~np.isnan(X[i - window + 1: i + 1]).any(axis=0)
+        if full.sum() < min_names:
+            continue
+        idx = np.where(full)[0]
+        d = np.sqrt(np.diag(S)[idx])
+        live = d > 1e-9
+        if live.sum() < min_names:
+            continue
+        idx, d = idx[live], d[live]
+        C = S[np.ix_(idx, idx)] / np.outer(d, d)
+        n = len(idx)
         out[i] = (C.sum() - n) / (n * (n - 1))
     return pd.Series(out, index=ret.index)
 
@@ -517,6 +564,7 @@ def assemble_frame(px, proxy_close, dix, r1m):
     ret = daily_returns(px)
     M = pd.DataFrame(index=px.index)
     M["avg_corr"] = avg_pairwise_corr(ret)
+    M["avg_corr_ewm"] = avg_pairwise_corr_ewm(ret)
     M["disp21"] = cross_sectional_dispersion(ret)
     M["breadth"] = breadth_positive(px)
     M["dix5"] = dix.reindex(px.index).rolling(5, min_periods=3).mean()
@@ -542,6 +590,11 @@ def assemble_frame(px, proxy_close, dix, r1m):
     # realized-vol zones (the competing conditioning variable; corr and vol
     # are ~0.8 correlated, so every corr claim owes the reader this parallel)
     M["vz_roll"] = zones_30_40_30(M["rv"], "rolling", VZONES)
+    # EW comovement zone, same rolling 30/40/30 basis: the window-edge-free
+    # twin of cz_roll (see avg_pairwise_corr_ewm). Not the headline axis --
+    # it backs frozen_rules.json's all_dispersed_derisk_v2 and the
+    # cross-index report's window-edge check.
+    M["cz_ewm_roll"] = zones_30_40_30(M["avg_corr_ewm"], "rolling", ZONES)
     # DIX zone on a one-session-lagged signal: FINRA publishes day t's file
     # after the close, so dz_roll_l1 is what a live trader could act on at
     # the close of day t (the conservative timing convention)
@@ -1497,30 +1550,16 @@ def transition_cross_report(frames):
     return "\n".join(lines)
 
 
-def cross_index_report(frames):
-    """Pairwise correlation of the AVG_CORR gauges, regime agreement, and
-    each index's forward return by how many of the three sit in LowCorr
-    (rolling basis, common dates). Cells carry era-adjusted means, episode
-    counts, and (for the contested all-dispersed row) episode-cluster CIs."""
-    lines = ["=== CROSS-INDEX COMOVEMENT-REGIME AGREEMENT (rolling basis) ===",
-             "  ex = era-adjusted mean (diagnostic)   epCI = episode-cluster 95%"]
-    if len(frames) < 2:
-        return lines[0] + "\n  (needs at least two indices)"
-    keys = list(frames)
-    ac = pd.DataFrame({k: frames[k]["avg_corr"] for k in keys}).dropna()
-    cz = pd.DataFrame({k: frames[k]["cz_roll"] for k in keys}).dropna()
+def _nlow_table(frames, keys, zcol, header):
+    """The N-of-k LowCorr forward-return table for one zone column: the
+    rolling rectangular `cz_roll` (headline) or the EW `cz_ewm_roll` (the
+    window-edge check -- rectangular zones flip together when a shock rolls
+    off every index's 21-session window, so a joint-dispersed read owes the
+    reader the same table on a gauge with no window edge)."""
+    cz = pd.DataFrame({k: frames[k][zcol] for k in keys}).dropna()
     cz = cz[(cz != "NA").all(axis=1)]
-    lines.append(f"  common days: {len(cz)}  "
-                 f"[{cz.index.min().date()} -> {cz.index.max().date()}]")
-    for i, a in enumerate(keys):
-        for b in keys[i + 1:]:
-            lines.append(f"  corr(AVG_CORR {a}, {b}) = {ac[a].corr(ac[b]):+.2f}   "
-                         f"same regime {100 * (cz[a] == cz[b]).mean():.0f}% of days")
-    if len(keys) == 3:
-        all_same = (cz.nunique(axis=1) == 1).mean()
-        lines.append(f"  all three in the same regime: {100 * all_same:.0f}% of days")
+    lines = [header]
     nlow = (cz == "LowCorr").sum(axis=1)
-    lines.append("  forward 1m by number of indices in LowCorr:")
     for k in range(len(keys) + 1):
         mask_dates = nlow[nlow == k].index
         if not len(mask_dates):
@@ -1544,6 +1583,38 @@ def cross_index_report(frames):
         eps = int(run_ids(nlow.eq(k).to_numpy()).max() + 1)
         lines.append(f"    {k} of {len(keys)} dispersed: n={len(mask_dates):4d}d/"
                      f"{eps}ep   " + "   ".join(parts))
+    return lines
+
+
+def cross_index_report(frames):
+    """Pairwise correlation of the AVG_CORR gauges, regime agreement, and
+    each index's forward return by how many of the three sit in LowCorr
+    (rolling basis, common dates). Cells carry era-adjusted means, episode
+    counts, and (for the contested all-dispersed row) episode-cluster CIs."""
+    lines = ["=== CROSS-INDEX COMOVEMENT-REGIME AGREEMENT (rolling basis) ===",
+             "  ex = era-adjusted mean (diagnostic)   epCI = episode-cluster 95%"]
+    if len(frames) < 2:
+        return lines[0] + "\n  (needs at least two indices)"
+    keys = list(frames)
+    ac = pd.DataFrame({k: frames[k]["avg_corr"] for k in keys}).dropna()
+    cz = pd.DataFrame({k: frames[k]["cz_roll"] for k in keys}).dropna()
+    cz = cz[(cz != "NA").all(axis=1)]
+    lines.append(f"  common days: {len(cz)}  "
+                 f"[{cz.index.min().date()} -> {cz.index.max().date()}]")
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            lines.append(f"  corr(AVG_CORR {a}, {b}) = {ac[a].corr(ac[b]):+.2f}   "
+                         f"same regime {100 * (cz[a] == cz[b]).mean():.0f}% of days")
+    if len(keys) == 3:
+        all_same = (cz.nunique(axis=1) == 1).mean()
+        lines.append(f"  all three in the same regime: {100 * all_same:.0f}% of days")
+    lines.extend(_nlow_table(frames, keys, "cz_roll",
+                             "  forward 1m by number of indices in LowCorr:"))
+    if all("cz_ewm_roll" in frames[k].columns for k in keys):
+        lines.extend(_nlow_table(
+            frames, keys, "cz_ewm_roll",
+            "  forward 1m by number of indices in LowCorr on the EW gauge "
+            "(cz_ewm_roll; the window-edge check):"))
     return "\n".join(lines)
 
 
@@ -1585,7 +1656,7 @@ def barometer_crosscheck(M, barometer_path):
 # ----------------------------------------------------------------------------
 def report_index(name, M, meta, args):
     proxy = meta["proxy"]
-    with_ci = not args.no_ci
+    with_ci = not getattr(args, "no_ci", False)
     print(f"##### {name}: {meta['note']}  "
           f"({M.index.min().date()} -> {M.index.max().date()}, {len(M)} days) #####")
     if meta["dropped"]:

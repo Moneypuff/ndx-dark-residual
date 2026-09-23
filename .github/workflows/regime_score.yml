@@ -9,8 +9,15 @@ name: Regime scoring log (regime-scoring-data branch)
 #
 # Runs daily after the nightly refresh + catch-up window has settled
 # (refresh fires 22:00 ET, catch-up retries until 06:00 ET; 11:37 UTC is
-# comfortably after both in either DST offset). If the site is unreachable
-# or the state page has not been produced yet, the run skips cleanly.
+# comfortably after both in either DST offset).
+#
+# The state row is taken from the `github-pages` ARTIFACT of the newest
+# refresh run whose build succeeded, not from the live site: the Pages
+# deploy step failed every night from 2026-09-10 to 2026-09-19 while the
+# builds themselves were fine, and a log that only sees the live site would
+# have silently dropped those rows (stretching every open horizon). The
+# live site is the fallback. If neither has a state file yet, the run
+# skips cleanly.
 
 on:
   workflow_dispatch:
@@ -19,6 +26,7 @@ on:
 
 permissions:
   contents: write
+  actions: read      # gh run download of the nightly build artifact
 
 concurrency:
   group: regime-scoring
@@ -39,16 +47,40 @@ jobs:
       - name: Install pandas
         run: pip install pandas
 
-      - name: Fetch the published regime state
+      - name: Fetch the regime state (nightly build artifact first, live site as fallback)
         id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if curl -fsSL "https://moneypuff.github.io/ndx-dark-residual/regime_state.json" \
-               -o regime_state.json; then
-            echo "have=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No published regime_state.json yet -- skipping."
-            echo "have=false" >> "$GITHUB_OUTPUT"
+          have=false
+          # Newest refresh runs on main; the gate-skipped ones carry no artifact and
+          # the artifact expires after a day, so walk a few and take the first hit.
+          for rid in $(gh run list --workflow refresh.yml --branch main --status completed \
+                         -L 12 --json databaseId --jq '.[].databaseId'); do
+            rm -rf pages_artifact
+            if gh run download "$rid" -n github-pages -D pages_artifact 2>/dev/null \
+               && tar -xf pages_artifact/artifact.tar -C pages_artifact 2>/dev/null; then
+              f=$(find pages_artifact -name regime_state.json | head -1)
+              if [ -n "$f" ]; then
+                cp "$f" regime_state.json
+                echo "regime_state.json from the build artifact of run $rid"
+                have=true
+                break
+              fi
+              echo "run $rid: artifact carries no regime_state.json"
+              break   # a real build without the file -- newer than any fallback would be
+            fi
+          done
+          if [ "$have" = false ]; then
+            if curl -fsSL "https://moneypuff.github.io/ndx-dark-residual/regime_state.json" \
+                 -o regime_state.json; then
+              echo "regime_state.json from the live site (fallback)"
+              have=true
+            else
+              echo "No regime_state.json in a recent build artifact or on the live site -- skipping."
+            fi
           fi
+          echo "have=$have" >> "$GITHUB_OUTPUT"
 
       - name: Fetch (or bootstrap) the regime-scoring-data branch
         if: steps.fetch.outputs.have == 'true'

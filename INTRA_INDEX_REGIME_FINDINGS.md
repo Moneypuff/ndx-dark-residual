@@ -73,6 +73,22 @@ low-VOL terciles is +1.0→+2.5 vs +(−0.2)→+2.9 inside low-CORR terciles,
 and in the nested regression neither zRV nor zCORR is separately
 significant).
 
+**Episode boundaries are partly the window's, not the tape's.** The gauge
+is a 21-session rectangular window, so a shock day is carried at full
+weight for exactly 21 sessions and then dropped in one step — and every
+index built on it flips zone on the same date. The current joint LowCorr
+episode is the cleanest example: NDX, SPX and IWM all entered LowCorr on
+2026-04-30, the session the 2026-03-31 shock day left each window (NDX
+AVG_CORR 0.144 → 0.109 in that one step). Read the three "dispersed" flags
+as one event at entry, not three. The script now carries an exponentially
+weighted twin of the gauge (`avg_pairwise_corr_ewm`, half-life 10
+sessions, zone `cz_ewm_roll`; the two gauges correlate 0.95–0.96 and agree
+on the zone 81–86% of days) on which the same episode's entries fall on
+04-24 (SPX), 04-27 (IWM) and 04-29 (NDX). The cross-index table is
+repeated on it below, and `frozen_rules.json`'s `all_dispersed_derisk_v2`
+reads it. Every headline cell in this document stays on the rectangular
+gauge.
+
 ## PRIMARY 1 — the NDX DIX gradient in dispersed tapes (corrected)
 
 QQQ 1-month forward inside the NDX LowCorr regime, rolling basis:
@@ -248,6 +264,21 @@ All three indices have been jointly dispersed since late April 2026;
 current-regime reads carry an as-of date and are computed only on complete
 sessions.
 
+Window-edge check — both gauges on the 2026-09-22 payload (1,437 common
+days, 2020-12-30 → 2026-09-21):
+
+| dispersed | n days/eps | NDX (ex) | SPX (ex) | IWM (ex) |
+|---|---:|---:|---:|---:|
+| 0 of 3, 21d window | 571/32 | +2.19 (+1.72) | +1.99 (+1.31) | +1.85 (+1.49) |
+| 3 of 3, 21d window | 421/36 | +0.31 (−1.86), epCI [−1.1,+2.0] | +0.30 (−1.38), [−0.8,+1.4] | −0.14 (−1.38), [−1.9,+1.7] |
+| 0 of 3, EW gauge | 562/29 | +1.66 (+1.20) | +1.55 (+0.93) | +1.35 (+0.98) |
+| 3 of 3, EW gauge | 497/44 | +0.26 (−1.91), [−0.9,+1.5] | +0.43 (−1.25), [−0.5,+1.3] | +0.35 (−0.84), [−1.1,+1.8] |
+
+The within-year drag survives on a gauge with no window edge (NDX and SPX
+at the same size, IWM smaller), and every episode CI still includes zero.
+`all_dispersed_derisk_v2` (frozen 2026-09-22) is the forward test of
+exactly the last row.
+
 ## Tape structure (kept for its structural facts only)
 
 Selective selloffs barely exist (NDX 2 days, SPX 0, IWM 4): when an index
@@ -284,6 +315,10 @@ The tape×DIX sub-splits duplicate the 3×3s and are no longer quoted.
 - One macro cycle (2018–2026); 9–59 episodes behind any cell; era-adjusted
   columns use within-year future information (diagnostic only).
 - Corr ↔ vol ≈ 0.8: "dispersed" and "quiet" largely overlap in-sample.
+- The 21-session rectangular window sets episode boundaries as much as
+  the tape does (a shock rolls off every index's window on the same
+  date); the EW twin gauge exists for that reason, but it is secondary —
+  every headline cell is on the rectangular gauge.
 - IWM instruments are doubly reconstructed (current-holdings DIX,
   22.6%-coverage winners basket); SPX comovement basket covers 75% of
   index weight (the tilt panel above uses the full point-in-time

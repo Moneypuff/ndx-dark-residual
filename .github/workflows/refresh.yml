@@ -159,6 +159,10 @@ jobs:
       # study; degrades to NDX-only if the basket build fails. The scoring
       # workflow (regime_score.yml) appends the JSON to regime-scoring-data.
       - name: Build regime state strip
+        # A research add-on, not a core page: a failure here must not take the
+        # whole nightly deploy down with it. (The script already degrades to
+        # NDX-only when a basket build fails; this covers everything else.)
+        continue-on-error: true
         run: >
           python build_regime_state.py
           --html docs/index.html

@@ -21,6 +21,13 @@ cache) the page still ships with NDX-only state and says so. All reads
 respect the study's trailing-completeness guard, so the state is never
 computed off a partial session.
 
+Each index row also carries the EW comovement zone (`zone_ewm`, from the
+study's exponentially weighted correlation gauge, which has no window edge
+to flip on -- see `avg_pairwise_corr_ewm`) and the v2 all-dispersed rule
+reads off it. A rule that needs an index this build could not produce
+reads `active: null`, never `false`: a missing-index night must not enter
+the forward log as a genuine 'rule off' observation (schema 2).
+
 Optionally reads a committed operational envelope
 (`regime_path_study.py --envelopes regime_path_envelopes.json`) and, when
 the CURRENT cell (this index's zone / lag-1 DIX zone) has one and clears
@@ -76,6 +83,12 @@ def index_state(M, proxy_close=None):
         "corr_pct": round(float(pct), 2) if np.isfinite(pct) else None,
         "zone": str(last["cz_roll"]),
         "zone_age": zone_age(M["cz_roll"]),
+        # EW twin of the zone (no window edge; backs all_dispersed_derisk_v2)
+        "avg_corr_ewm": (round(float(last["avg_corr_ewm"]), 3)
+                         if "avg_corr_ewm" in M.columns and np.isfinite(last["avg_corr_ewm"])
+                         else None),
+        "zone_ewm": str(last["cz_ewm_roll"]) if "cz_ewm_roll" in M.columns else None,
+        "zone_ewm_age": zone_age(M["cz_ewm_roll"]) if "cz_ewm_roll" in M.columns else 0,
         "dix5": round(float(last["dix5"]), 4),
         "dz_roll": str(last["dz_roll"]),
         "dz_roll_l1": str(last["dz_roll_l1"]),
@@ -148,9 +161,15 @@ def envelope_for_state(envelopes, index_name, state):
 
 
 def eval_rules(states, screen):
-    """Evaluate frozen_rules.json against the state dicts."""
+    """Evaluate frozen_rules.json against the state dicts. A rule that needs
+    an index this build could not produce reads `active: None` (with
+    `evaluable: False`) rather than False, so the scoring log can keep such
+    nights out of BOTH the on and the off group."""
     ndx = states.get("NDX") or {}
     low = {k: (v or {}).get("zone") == "LowCorr" for k, v in states.items()}
+    low_ewm = {k: (v or {}).get("zone_ewm") == "LowCorr" for k, v in states.items()}
+    three = ("NDX", "SPX", "IWM")
+    evaluable = all(k in states for k in three)
     return {
         "ndx_tilt_screen_v1": {
             "active": bool(low.get("NDX")),
@@ -160,8 +179,12 @@ def eval_rules(states, screen):
             "active": bool(low.get("NDX")) and ndx.get("dz_roll_l1") == "DIXLow",
         },
         "all_dispersed_derisk_v1": {
-            "active": all(low.get(k, False) for k in ("NDX", "SPX", "IWM")),
-            "evaluable": all(k in states for k in ("NDX", "SPX", "IWM")),
+            "active": all(low.get(k, False) for k in three) if evaluable else None,
+            "evaluable": evaluable,
+        },
+        "all_dispersed_derisk_v2": {
+            "active": all(low_ewm.get(k, False) for k in three) if evaluable else None,
+            "evaluable": evaluable,
         },
     }
 
@@ -181,7 +204,7 @@ def render_html(state):
     for k in ("NDX", "SPX", "IWM"):
         s = state["indices"].get(k)
         if not s:
-            rows.append(f"<tr><td>{k}</td><td colspan=7 class=dim>"
+            rows.append(f"<tr><td>{k}</td><td colspan=8 class=dim>"
                         "unavailable this build</td></tr>")
             continue
         rows.append(
@@ -189,6 +212,8 @@ def render_html(state):
             f"<td><span class=dot style='background:{dot.get(s['zone'], '#888')}'>"
             f"</span>{s['zone']}</td>"
             f"<td>{s['zone_age']}d</td>"
+            f"<td><span class=dot style='background:{dot.get(s.get('zone_ewm'), '#888')}'>"
+            f"</span>{s.get('zone_ewm') or '--'} ({s.get('zone_ewm_age', 0)}d)</td>"
             f"<td>{s['avg_corr']:.2f} (p{'' if s['corr_pct'] is None else int(100 * s['corr_pct'])})</td>"
             f"<td>{s['breadth']:.2f}</td>"
             f"<td>{s['dix5']:.3f}</td>"
@@ -206,11 +231,14 @@ def render_html(state):
     flags.append("<li><b>ndx_dixlow_caution_v1</b>: "
                  + ("ACTIVE" if ru["ndx_dixlow_caution_v1"]["active"] else "inactive")
                  + "</li>")
-    a3 = ru["all_dispersed_derisk_v1"]
-    flags.append("<li><b>all_dispersed_derisk_v1</b>: "
-                 + ("ACTIVE" if a3["active"] else
-                    ("inactive" if a3.get("evaluable", True) else
-                     "not evaluable (missing an index this build)")) + "</li>")
+    for key in ("all_dispersed_derisk_v1", "all_dispersed_derisk_v2"):
+        a3 = ru.get(key)
+        if a3 is None:
+            continue
+        flags.append(f"<li><b>{key}</b>: "
+                     + ("ACTIVE" if a3.get("active") else
+                        ("inactive" if a3.get("active") is False else
+                         "not evaluable (missing an index this build)")) + "</li>")
     env_lines = [render_envelope_line(k, s["envelope"])
                 for k in ("NDX", "SPX", "IWM")
                 for s in [state["indices"].get(k)] if s and s.get("envelope")]
@@ -237,10 +265,11 @@ th{{color:#8a8f98;font-weight:500}}
 </style>
 <h1>Intra-index regime state</h1>
 <p class=dim>Rolling-basis (504-session) comovement and DIX zones; DIX zone on the
-one-session-lagged signal. Generated {state["generated"]} &middot;
+one-session-lagged signal. EW zone: the same split on an exponentially weighted
+correlation (half-life 10 sessions), which has no window edge to flip on. Generated {state["generated"]} &middot;
 <a href="regime_log.html">&larr; regime log</a></p>
 <table>
-<tr><th>index</th><th>comovement zone</th><th>age</th><th>avg corr (pct)</th>
+<tr><th>index</th><th>comovement zone</th><th>age</th><th>EW zone (age)</th><th>avg corr (pct)</th>
 <th>breadth</th><th>DIX5</th><th>DIX zone (lag-1)</th><th>as of</th></tr>
 {''.join(rows)}
 </table>
@@ -309,7 +338,7 @@ def main():
 
     screen = ndx_tilt_screen(P, states["NDX"]["asof"])
     state = {
-        "schema": 1,
+        "schema": 2,
         "generated": pd.Timestamp.now("UTC").strftime("%Y-%m-%d %H:%M UTC"),
         "rules_hash": hashlib.sha256(rules_text.encode()).hexdigest(),
         "rules_frozen": rules.get("frozen_utc"),
@@ -319,10 +348,9 @@ def main():
     Path(args.json_out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.json_out).write_text(json.dumps(state, indent=1), encoding="utf-8")
     Path(args.docs_out).write_text(render_html(state), encoding="utf-8")
+    active = [k for k, v in state["rules"].items() if v.get("active")]
     print(f"regime_state: {len(states)}/3 indices; "
-          f"rules active: "
-          + ", ".join(k for k, v in state["rules"].items() if v.get("active"))
-          or "none", file=sys.stderr)
+          f"rules active: {', '.join(active) or 'none'}", file=sys.stderr)
 
 
 if __name__ == "__main__":

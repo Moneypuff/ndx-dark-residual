@@ -988,3 +988,62 @@ def test_build_envelopes_schema_and_json_roundtrip(tmp_path):
     out.write_text(json.dumps(env, indent=1), encoding="utf-8")
     back = json.loads(out.read_text())
     assert back == env
+
+
+# ---------------------------------------------------------------------------
+# --no-ci / --horizon plumbing (both flags were accepted and ignored before)
+# ---------------------------------------------------------------------------
+def test_cell_stats_with_ci_false_skips_cluster_cis_only():
+    n = 400
+    idx = _bdays(n)
+    rng = np.random.default_rng(3)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    rv = pd.Series(20.0, index=idx)
+    mask = pd.Series(False, index=idx)
+    for s in (10, 60, 120, 180, 240, 300):
+        mask.iloc[s:s + 10] = True
+    P = S.forward_path_panel(close, horizon=S.H)
+    st = S.cell_stats(P, rv, mask, seed=7, with_ci=False)
+    assert st["gate"] is True
+    assert st["ci"] == {}
+    assert np.isfinite(st["exc"]["mae_med"])          # point estimates still there
+    assert S.hold_stats(P, mask, with_ci=False).get("ci_term") is None
+
+
+def test_cell_stats_secondary_horizon_joins_fan_checkpoints():
+    n = 300
+    idx = _bdays(n)
+    rng = np.random.default_rng(4)
+    close = pd.Series(100.0 * np.cumprod(1 + rng.normal(0, 0.01, n)), index=idx)
+    rv = pd.Series(20.0, index=idx)
+    mask = pd.Series(False, index=idx)
+    mask.iloc[10:100] = True
+    P = S.forward_path_panel(close, horizon=30)
+    st = S.cell_stats(P, rv, mask, h2=30, with_ci=False)
+    assert 30 in set(st["fan"]["h"])
+    assert st["exc2"]["n"] > 0                         # secondary excursion at 30d
+
+
+def test_report_index_honours_horizon_and_no_ci(capsys):
+    import intra_index_regime_study as R
+
+    rng = np.random.default_rng(1)
+    n = 700
+    idx = _bdays(n, start="2020-01-02")
+    names = [f"N{i:02d}" for i in range(30)]
+    px = pd.DataFrame({t: 100.0 * np.cumprod(1 + rng.normal(0, 0.015, n)) for t in names},
+                      index=idx)
+    proxy = pd.Series(100.0 * np.cumprod(1 + rng.normal(0.0003, 0.012, n)), index=idx)
+    dix = pd.Series(rng.normal(0.42, 0.05, n), index=idx)
+    r1m = (proxy.shift(-21) / proxy - 1) * 100
+    M = R.assemble_frame(px, proxy, dix, r1m)
+    meta = {"proxy": "QQQ", "proxy_close": proxy, "note": "smoke", "dropped": {}}
+    args = type("A", (), {"horizon": 30, "no_ci": True})()
+    P, all_stats = S.report_index("SYN", M, meta, args)
+    assert P.shape[1] == 31                            # columns 0..30 follow --horizon
+    assert all(st.get("ci", {}) == {} for st in all_stats.values())
+    assert all(30 in set(st["fan"]["h"]) for st in all_stats.values() if st.get("gate"))
+    out = capsys.readouterr().out
+    assert "secondary horizon 30d" in out and "--no-ci" in out
+    assert "excursion (30d" in out
+    assert "  epCI: " not in out                       # no per-cell CI lines

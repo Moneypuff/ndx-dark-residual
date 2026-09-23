@@ -666,3 +666,46 @@ def test_block_boot_ci_degenerate_and_coverage():
     lo, hi = S.block_boot_ci(r, seed=1)
     assert lo < 1.0 < hi
     assert hi - lo < 1.0
+
+
+# ---------------------------------------------------------------------------
+# avg_pairwise_corr_ewm (the window-edge-free gauge behind all_dispersed_derisk_v2)
+# ---------------------------------------------------------------------------
+def test_avg_pairwise_corr_ewm_known_values():
+    rng = np.random.default_rng(0)
+    base = rng.normal(0, 1, 40)
+    ret = _panel_from_cols({f"N{i}": base * (i + 1) for i in range(5)})
+    out = S.avg_pairwise_corr_ewm(ret, window=21, min_names=5)
+    assert np.isnan(out.iloc[19])                     # same admission rule: full window
+    assert out.iloc[-1] == pytest.approx(1.0)
+    ret = _panel_from_cols({"A": base, "B": base, "C": -base})
+    out = S.avg_pairwise_corr_ewm(ret, window=21, min_names=3)
+    assert out.iloc[-1] == pytest.approx(-1.0 / 3.0)
+    thin = _panel_from_cols({"A": base, "B": base})
+    assert S.avg_pairwise_corr_ewm(thin, window=21, min_names=3).isna().all()
+
+
+def test_avg_pairwise_corr_ewm_decays_instead_of_dropping_at_window_exit():
+    # One shock day lifts every name together. The rectangular gauge carries it at
+    # full weight for exactly WINDOW sessions and then drops it in one step -- which
+    # is why every index built on it flips zone on the same date. The EW gauge must
+    # let it decay: no step at the window exit, and still above the rectangular
+    # gauge right after it.
+    rng = np.random.default_rng(4)
+    n, n_names, shock = 90, 40, 30
+    ret = _panel_from_cols({f"N{i:02d}": rng.normal(0, 1, n) for i in range(n_names)})
+    ret.iloc[shock] += 8.0
+    rect = S.avg_pairwise_corr(ret, window=21, min_names=n_names)
+    ewm = S.avg_pairwise_corr_ewm(ret, window=21, min_names=n_names)
+    exit_ = shock + 21                                # first day the shock is out of the window
+    assert rect.iloc[exit_ - 1] > 0.5 and rect.iloc[exit_] < 0.2
+    assert abs(ewm.iloc[exit_] - ewm.iloc[exit_ - 1]) < 0.1
+    assert ewm.iloc[exit_] > rect.iloc[exit_]
+
+
+def test_assemble_frame_carries_ew_zone_and_cross_index_reports_it():
+    M = _synthetic_frame(40)
+    assert set(M["cz_ewm_roll"].unique()) <= set(S.ZONES) | {"NA"}
+    assert M["avg_corr_ewm"].notna().all()
+    out = S.cross_index_report({"NDX": M, "SPX": _synthetic_frame(41)})
+    assert "EW gauge" in out

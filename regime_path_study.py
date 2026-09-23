@@ -300,7 +300,8 @@ def cell_masks(M):
     return masks
 
 
-def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0, implied=None):
+def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0, implied=None,
+               with_ci=True):
     """One flat stats dict (fan, excursion at h and h2, barriers, brackets,
     volatility, sizing, episode-cluster CIs) for one cell's ENV anchors:
     every day `mask` holds. `P` is the forward-path panel on the PROXY's
@@ -312,7 +313,10 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0, implied=None):
     implied-vol Series (`load_cboe_vol`'s output, same annualized-points
     scale as `rv`) aligned to anchor dates via `.reindex` -- when given,
     adds the implied-vs-realized comparison to the volatility block;
-    omitted or empty, the block silently carries NaN (a clean skip)."""
+    omitted or empty, the block silently carries NaN (a clean skip).
+    `h2` (the secondary horizon, `--horizon`) joins the fan checkpoints when
+    it is not one already; `with_ci=False` skips the episode-cluster CIs
+    (the `--no-ci` fast path -- point estimates and gates are unchanged)."""
     m = mask.to_numpy(dtype=bool)
     ids_all = R.run_ids(m)
     dates = mask.index[m]
@@ -325,7 +329,7 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0, implied=None):
         return out
     sub = P.reindex(dates)
 
-    out["fan"] = fan_quantiles(sub)
+    out["fan"] = fan_quantiles(sub, checkpoints=tuple(sorted(set(CHECKPOINTS) | {h, h2})))
     exc = excursion_stats(sub, h)
     out["exc"] = {k: v for k, v in exc.items() if not k.startswith("_")}
     exc2 = excursion_stats(sub, h2)
@@ -375,7 +379,7 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0, implied=None):
             vol["z_gt1"] = float(np.mean(np.abs(z_full[zok]) > 1) * 100)
             vol["z_gt2"] = float(np.mean(np.abs(z_full[zok]) > 2) * 100)
 
-        if gate:
+        if gate and with_ci:
             ids_ok = ids[ok]
             ci["mean_r"] = R.cluster_boot_ci(term21, ids_ok, seed=seed)
             ci["mae_q25"] = R.cluster_boot_ci(
@@ -405,7 +409,7 @@ def cell_stats(P, rv, mask, family="ENV", h=HOLD, h2=H, seed=0, implied=None):
 # ----------------------------------------------------------------------------
 # ENTRY family: first day the cell's condition forms, cool-down apart
 # ----------------------------------------------------------------------------
-def entry_stats(M, P, mask, min_gap=HOLD, h=HOLD, seed=0):
+def entry_stats(M, P, mask, min_gap=HOLD, h=HOLD, seed=0, with_ci=True):
     """ENTRY family: first-day-of-condition events (`min_gap`-session
     cool-down -- unchanged semantics from `intra_index_regime_study.
     entry_events`, so ENTRY numbers here are directly comparable to the
@@ -428,7 +432,7 @@ def entry_stats(M, P, mask, min_gap=HOLD, h=HOLD, seed=0):
         term = exc["_term"]
         out["mean_r"] = float(np.mean(term))
         out["hit"] = float(np.mean(term > 0) * 100)
-        if out["gate"]:
+        if out["gate"] and with_ci:
             rng = np.random.default_rng(seed)
             draws = rng.integers(0, len(term), size=(R.BOOT_B, len(term)))
             means = term[draws].mean(axis=1)
@@ -492,7 +496,7 @@ def episode_hold_paths(P, mask, confirm=3, cap=H):
     return pd.DataFrame(rows)
 
 
-def hold_stats(P, mask, confirm=3, cap=H, seed=0):
+def hold_stats(P, mask, confirm=3, cap=H, seed=0, with_ci=True):
     """EPISODE-HOLD family summary: confirmed, variable-duration holds
     (`episode_hold_paths`). Each row IS its own episode, so the
     episode-cluster CI on the terminal return degenerates to a standard
@@ -516,7 +520,7 @@ def hold_stats(P, mask, confirm=3, cap=H, seed=0):
         post_exit_med=float(np.median(post)) if len(post) else np.nan,
         post_exit_hit=float(np.mean(post > 0) * 100) if len(post) else np.nan,
     )
-    if out["gate"]:
+    if out["gate"] and with_ci:
         ids = holds["episode"].to_numpy()
         out["ci_term"] = R.cluster_boot_ci(term, ids, seed=seed)
     return out
@@ -613,7 +617,7 @@ def daily_microstructure(proxy_close, mask):
 GAUSSIAN_Z1, GAUSSIAN_Z2 = 31.7, 4.6   # Gaussian |z|>1 / |z|>2 benchmarks, percent
 
 
-def vol_parallel_comparison(P, M, seed=9000):
+def vol_parallel_comparison(P, M, seed=9000, with_ci=True):
     """One comparison block per index: for each DIX(lag-1) zone, contrasts
     the comovement cell (LowCorr x DIX) against the vol-regime cell
     (VolLow x DIX) on MAE q25 (21d), the -5% touch probability and the
@@ -625,9 +629,9 @@ def vol_parallel_comparison(P, M, seed=9000):
     lines = []
     for dz in R.DZONES:
         cst = cell_stats(P, M["rv"], (M["cz_roll"] == "LowCorr") & (M["dz_roll_l1"] == dz),
-                         seed=seed)
+                         seed=seed, with_ci=with_ci)
         vst = cell_stats(P, M["rv"], (M["vz_roll"] == "VolLow") & (M["dz_roll_l1"] == dz),
-                         seed=seed + 1)
+                         seed=seed + 1, with_ci=with_ci)
         seed += 2
 
         def cell_line(tag, st):
@@ -834,7 +838,7 @@ def fmt_gate(st):
     return f"n={st['n_days']}d/{st['n_eps']}ep{tag}"
 
 
-def render_cell(label, st, proxy):
+def render_cell(label, st, proxy, h2=H):
     """One cell's report block. Below the print gate only the header with
     counts prints -- no conditional statistic is printed below the gate
     (Rule 5 of the design plan, matching the regime study's own gate)."""
@@ -844,7 +848,7 @@ def render_cell(label, st, proxy):
     lines = [header]
     fan = st.get("fan")
     if fan is not None and len(fan):
-        hs = [h for h in CHECKPOINTS if h in set(fan["h"])]
+        hs = sorted(int(h) for h in set(fan["h"]))
         lines.append(f"  fan ({proxy} %, cum. return)   " + "  ".join(f"h={h:>3d}" for h in hs))
         for q in list(FAN_QUANTILES) + ["mean", "hit"]:
             row = fan[fan["q"] == q]
@@ -867,9 +871,9 @@ def render_cell(label, st, proxy):
             f"    dips <-3/-5/-8/-12%: {exc['dip3']:.0f}% {exc['dip5']:.0f}% "
             f"{exc['dip8']:.0f}% {exc['dip12']:.0f}%")
     exc2 = st.get("exc2", {})
-    if exc2.get("n") and H != HOLD:
+    if exc2.get("n") and h2 != HOLD:
         lines.append(
-            f"  excursion ({H}d, n={exc2['n']}): MAE med {exc2['mae_med']:+.1f}  "
+            f"  excursion ({h2}d, n={exc2['n']}): MAE med {exc2['mae_med']:+.1f}  "
             f"q25 {exc2['mae_q25']:+.1f}   MFE med {exc2['mfe_med']:+.1f}")
     bar = st.get("bar", {})
     if bar.get("n"):
@@ -1005,7 +1009,7 @@ def cross_index_masks(M, nlow, n_indices):
     return masks
 
 
-def cross_index_section(name, M, P, nlow, n_indices, proxy, seed=9700):
+def cross_index_section(name, M, P, nlow, n_indices, proxy, seed=9700, with_ci=True):
     """ENV cell_stats for `name`'s own proxy by N-of-`n_indices` indices
     simultaneously in LowCorr (common-dates mask, reindexed to this
     index's own calendar) -- the path-study sibling of
@@ -1013,12 +1017,12 @@ def cross_index_section(name, M, P, nlow, n_indices, proxy, seed=9700):
     lines = [f"=== {name} BY N-OF-{n_indices} INDICES DISPERSED (common dates) ==="]
     for k, mask in cross_index_masks(M, nlow, n_indices).items():
         seed += 1
-        st = cell_stats(P, M["rv"], mask, seed=seed)
+        st = cell_stats(P, M["rv"], mask, seed=seed, with_ci=with_ci)
         lines.append(render_cell(f"{name} {k} dispersed", st, proxy))
     return "\n\n".join(lines)
 
 
-def rule_row_ndx_dixlow_caution(M, P, ndx_dixlow_cell, seed=9800):
+def rule_row_ndx_dixlow_caution(M, P, ndx_dixlow_cell, seed=9800, with_ci=True):
     """Path-study version of `frozen_rules.json`'s ndx_dixlow_caution_v1:
     active (NDX LowCorr & DIX-Low, lag-1 -- the `LowCorrxDIXLow(l1)` cell
     already computed in the per-index loop, passed in to avoid a
@@ -1027,12 +1031,13 @@ def rule_row_ndx_dixlow_caution(M, P, ndx_dixlow_cell, seed=9800):
     lines.append(render_cell("active (LowCorr & DIXLow, lag-1)", ndx_dixlow_cell, "QQQ"))
     not_active = ((M["cz_roll"] == "LowCorr") & (M["dz_roll_l1"] != "DIXLow")
                  & (M["dz_roll_l1"] != "NA"))
-    st_not = cell_stats(P, M["rv"], not_active, seed=seed)
+    st_not = cell_stats(P, M["rv"], not_active, seed=seed, with_ci=with_ci)
     lines.append(render_cell("LowCorr-not-active (DIX Mid/High, lag-1)", st_not, "QQQ"))
     return "\n\n".join(lines)
 
 
-def rule_row_all_dispersed(frames, paths, metas, nlow, n_indices, seed=9900):
+def rule_row_all_dispersed(frames, paths, metas, nlow, n_indices, seed=9900,
+                           with_ci=True):
     """Path-study version of `frozen_rules.json`'s all_dispersed_derisk_v1:
     active (all `n_indices` indices LowCorr simultaneously) vs not (fewer
     than `n_indices`), one row per proxy."""
@@ -1044,8 +1049,8 @@ def rule_row_all_dispersed(frames, paths, metas, nlow, n_indices, seed=9900):
         not_active = pd.Series(False, index=M.index)
         not_active.loc[not_active.index.intersection(nlow.index[nlow < n_indices])] = True
         proxy = metas[name]["proxy"]
-        st_a = cell_stats(paths[name], M["rv"], active, seed=seed)
-        st_n = cell_stats(paths[name], M["rv"], not_active, seed=seed + 1)
+        st_a = cell_stats(paths[name], M["rv"], active, seed=seed, with_ci=with_ci)
+        st_n = cell_stats(paths[name], M["rv"], not_active, seed=seed + 1, with_ci=with_ci)
         lines.append(render_cell(f"{name} active (all {n_indices} dispersed)", st_a, proxy))
         lines.append(render_cell(f"{name} not-active", st_n, proxy))
     return "\n\n".join(lines)
@@ -1054,7 +1059,12 @@ def rule_row_all_dispersed(frames, paths, metas, nlow, n_indices, seed=9900):
 def report_index(name, M, meta, args):
     proxy = meta["proxy"]
     proxy_close = meta["proxy_close"]
-    P = forward_path_panel(proxy_close, horizon=H)
+    # --horizon / --no-ci, read defensively so a lightweight test double (no
+    # argparse Namespace) gets the module defaults. The path panel must always
+    # reach the primary hold window, whatever the secondary horizon is.
+    h2 = int(getattr(args, "horizon", None) or H)
+    with_ci = not getattr(args, "no_ci", False)
+    P = forward_path_panel(proxy_close, horizon=max(h2, HOLD))
     masks = cell_masks(M)
     # implied-vol leg: skip by default for any caller that doesn't explicitly opt in via a
     # real argparse Namespace (no_implied=False there) -- a lightweight test double lacking
@@ -1066,14 +1076,16 @@ def report_index(name, M, meta, args):
           f"({M.index.min().date()} -> {M.index.max().date()}, {len(M)} days) #####")
     print(f"NOTE: barriers/brackets are close-only (a floor on true intraday touch "
           f"rates); print gate {GATE_DAYS}d AND {GATE_EPISODES} episodes (ENTRY: "
-          f"{GATE_EVENTS} events).\n")
+          f"{GATE_EVENTS} events); secondary horizon {h2}d"
+          + ("" if with_ci else "; episode-cluster CIs skipped (--no-ci)") + ".\n")
     seed = 200
     all_stats = {}
     for label, mask in masks.items():
         seed += 1
-        st = cell_stats(P, M["rv"], mask, family="ENV", seed=seed, implied=implied)
+        st = cell_stats(P, M["rv"], mask, family="ENV", h2=h2, seed=seed, implied=implied,
+                        with_ci=with_ci)
         all_stats[label] = st
-        lines = [render_cell(f"{name} {label}", st, proxy)]
+        lines = [render_cell(f"{name} {label}", st, proxy, h2=h2)]
         if st.get("gate"):
             micro_line = render_microstructure(daily_microstructure(proxy_close, mask))
             if micro_line:
@@ -1086,8 +1098,10 @@ def report_index(name, M, meta, args):
                 tline = render_transition(hit, valid, sub_all, HOLD)
                 if tline:
                     lines.append(tline)
-        lines.append(render_entry(entry_stats(M, P, mask, seed=seed + 1000), proxy))
-        lines.append(render_hold(hold_stats(P, mask, seed=seed + 2000)))
+        lines.append(render_entry(entry_stats(M, P, mask, seed=seed + 1000,
+                                              with_ci=with_ci), proxy))
+        lines.append(render_hold(hold_stats(P, mask, cap=h2, seed=seed + 2000,
+                                            with_ci=with_ci)))
         print("\n".join(lines))
         print()
 
@@ -1096,7 +1110,7 @@ def report_index(name, M, meta, args):
         prim += "\n" + p2_report(M, P)
     print(prim)
     print()
-    vp_lines = vol_parallel_comparison(P, M)
+    vp_lines = vol_parallel_comparison(P, M, with_ci=with_ci)
     if vp_lines:
         print(f"=== {name} CORR-VS-VOL COMPARISON (LowCorr vs VolLow, by DIX(lag-1) zone) ===")
         print("\n".join(vp_lines))
@@ -1199,7 +1213,7 @@ def envelope_cell(P, M, mask, seed=9999):
     mae_q25, touch_m5, vratio_med, size_q25} -- the numbers
     `build_regime_state.py` shows for the CURRENT cell on the nightly
     strip. Gate-respecting: an ungated cell carries only its counts."""
-    st = cell_stats(P, M["rv"], mask, seed=seed)
+    st = cell_stats(P, M["rv"], mask, seed=seed, with_ci=False)   # CIs are not part of the envelope
     cell = {"n": st["n_days"], "n_eps": st["n_eps"], "gate": bool(st["gate"])}
     if not st.get("gate"):
         return cell
@@ -1304,9 +1318,10 @@ def main():
         n_indices = len(frames)
         for name, M in frames.items():
             print(cross_index_section(name, M, paths[name], nlow, n_indices,
-                                      metas[name]["proxy"]))
+                                      metas[name]["proxy"], with_ci=not args.no_ci))
             print()
-        print(rule_row_all_dispersed(frames, paths, metas, nlow, n_indices))
+        print(rule_row_all_dispersed(frames, paths, metas, nlow, n_indices,
+                                     with_ci=not args.no_ci))
         print()
     else:
         print("=== cross-index cells and all_dispersed_derisk_v1: skipped "
@@ -1314,7 +1329,8 @@ def main():
 
     ndx_dixlow_cell = ndx_all_stats.get("LowCorrxDIXLow(l1)")
     if "NDX" in frames and ndx_dixlow_cell:
-        print(rule_row_ndx_dixlow_caution(frames["NDX"], paths["NDX"], ndx_dixlow_cell))
+        print(rule_row_ndx_dixlow_caution(frames["NDX"], paths["NDX"], ndx_dixlow_cell,
+                                          with_ci=not args.no_ci))
         print()
 
     if args.csv and long_rows:

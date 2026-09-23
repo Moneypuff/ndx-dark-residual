@@ -40,20 +40,30 @@ def test_zone_age_counts_current_run_only():
 
 
 def test_eval_rules_activation_matrix():
-    ndx_low = {"zone": "LowCorr", "dz_roll_l1": "DIXLow"}
-    ndx_low_mid = {"zone": "LowCorr", "dz_roll_l1": "DIXMid"}
-    low = {"zone": "LowCorr"}
-    mid = {"zone": "MidCorr"}
+    ndx_low = {"zone": "LowCorr", "dz_roll_l1": "DIXLow", "zone_ewm": "LowCorr"}
+    ndx_low_mid = {"zone": "LowCorr", "dz_roll_l1": "DIXMid", "zone_ewm": "LowCorr"}
+    low = {"zone": "LowCorr", "zone_ewm": "LowCorr"}
+    mid = {"zone": "MidCorr", "zone_ewm": "MidCorr"}
     r = B.eval_rules({"NDX": ndx_low, "SPX": low, "IWM": low}, ["AAA"])
     assert r["ndx_tilt_screen_v1"]["active"] and r["ndx_tilt_screen_v1"]["names"] == ["AAA"]
     assert r["ndx_dixlow_caution_v1"]["active"]
-    assert r["all_dispersed_derisk_v1"]["active"]
+    assert r["all_dispersed_derisk_v1"]["active"] is True
+    assert r["all_dispersed_derisk_v2"]["active"] is True
     r2 = B.eval_rules({"NDX": ndx_low_mid, "SPX": mid, "IWM": low}, ["AAA"])
     assert not r2["ndx_dixlow_caution_v1"]["active"]
-    assert not r2["all_dispersed_derisk_v1"]["active"]
-    # missing index -> the 3-index rule reports not-evaluable, screen still works
+    assert r2["all_dispersed_derisk_v1"]["active"] is False
+    assert r2["all_dispersed_derisk_v2"]["active"] is False
+    # v2 reads the EW zone: rectangular all-Low but one EW zone Mid -> v1 on, v2 off
+    low_ewm_mid = {"zone": "LowCorr", "zone_ewm": "MidCorr"}
+    r2b = B.eval_rules({"NDX": ndx_low, "SPX": low, "IWM": low_ewm_mid}, [])
+    assert r2b["all_dispersed_derisk_v1"]["active"] is True
+    assert r2b["all_dispersed_derisk_v2"]["active"] is False
+    # missing index -> the 3-index rules report not-evaluable as None (NOT False),
+    # so a missing-index night never lands in the log's "rule off" group
     r3 = B.eval_rules({"NDX": ndx_low}, [])
     assert not r3["all_dispersed_derisk_v1"]["evaluable"]
+    assert r3["all_dispersed_derisk_v1"]["active"] is None
+    assert r3["all_dispersed_derisk_v2"]["active"] is None
     # NDX not dispersed -> the screen emits no names even if some were passed
     r4 = B.eval_rules({"NDX": {"zone": "MidCorr", "dz_roll_l1": "DIXLow"},
                        "SPX": low, "IWM": low}, ["AAA"])
@@ -84,17 +94,20 @@ def test_ndx_tilt_screen_picks_recently_hot_names():
 # ---------------------------------------------------------------------------
 # scoring log: append idempotency + outcome resolution
 # ---------------------------------------------------------------------------
-def _state_json(date, qqq=100.0, active=False):
+def _state_json(date, qqq=100.0, active=False, ruleC=False):
     return {"generated": f"{date} 03:00 UTC", "rules_hash": "abc",
-            "indices": {"NDX": {"asof": date, "zone": "LowCorr",
+            "indices": {"NDX": {"asof": date, "zone": "LowCorr", "zone_ewm": "LowCorr",
                                 "dz_roll_l1": "DIXLow", "proxy_close": qqq},
-                        "SPX": {"asof": date, "zone": "MidCorr",
+                        "SPX": {"asof": date, "zone": "MidCorr", "zone_ewm": "MidCorr",
                                 "proxy_close": 2 * qqq},
-                        "IWM": {"asof": date, "zone": "MidCorr",
+                        "IWM": {"asof": date, "zone": "MidCorr", "zone_ewm": "MidCorr",
                                 "proxy_close": 3 * qqq}},
             "rules": {"ndx_tilt_screen_v1": {"active": active, "names": ["AAA"]},
                       "ndx_dixlow_caution_v1": {"active": active},
-                      "all_dispersed_derisk_v1": {"active": False}}}
+                      "all_dispersed_derisk_v1": {"active": ruleC,
+                                                  "evaluable": ruleC is not None},
+                      "all_dispersed_derisk_v2": {"active": ruleC,
+                                                  "evaluable": ruleC is not None}}}
 
 
 def test_append_state_replaces_same_date_and_sorts():
@@ -250,3 +263,54 @@ def test_render_html_omits_envelope_section_when_absent():
                       "all_dispersed_derisk_v1": {"active": False, "evaluable": True}}}
     html = B.render_html(state)
     assert "Expected path (committed envelope)" not in html
+
+
+# ---------------------------------------------------------------------------
+# not-evaluable nights: None survives the CSV round trip and joins neither group
+# ---------------------------------------------------------------------------
+def test_state_row_keeps_not_evaluable_as_none():
+    row = score.state_row(_state_json("2026-01-05", ruleC=None))
+    assert row["ruleC_active"] is None and row["ruleD_active"] is None
+    assert row["ndx_zone_ewm"] == "LowCorr"
+    row = score.state_row(_state_json("2026-01-05", ruleC=True))
+    assert row["ruleC_active"] is True
+
+
+def test_not_evaluable_night_round_trips_and_is_excluded_from_both_groups(tmp_path):
+    dates = [d.strftime("%Y-%m-%d") for d in _bdays(30)]
+    df = pd.DataFrame(columns=score.STATE_COLS)
+    for i, d in enumerate(dates):
+        ruleC = None if i == 1 else (i == 0)
+        df = score.append_state(df, score.state_row(_state_json(d, ruleC=ruleC)))
+    path = tmp_path / "state.csv"
+    df.to_csv(path, index=False)
+    back = score.read_state_log(path)
+    assert back["ruleC_active"].iloc[0] is True
+    assert back["ruleC_active"].iloc[1] is None
+    assert back["ruleC_active"].iloc[2] is False
+    out = score.resolve_outcomes(back, horizon=21)
+    on, off = score.split_by_flag(out, "ruleC_active")
+    assert len(on) == 1 and len(off) == len(out) - 2   # the None row is in neither
+
+
+def test_append_state_onto_empty_log_keeps_columns():
+    df = score.append_state(pd.DataFrame(columns=score.STATE_COLS),
+                            score.state_row(_state_json("2026-01-05")))
+    assert list(df.columns) == score.STATE_COLS and len(df) == 1
+
+
+def test_render_html_shows_ew_zone_and_v2_rule():
+    states = {"NDX": {"asof": "2026-08-14", "avg_corr": 0.3, "corr_pct": 0.4,
+                     "zone": "LowCorr", "zone_age": 5, "zone_ewm": "MidCorr",
+                     "zone_ewm_age": 12, "dix5": 0.42, "dz_roll": "DIXLow",
+                     "dz_roll_l1": "DIXHigh", "breadth": 0.5}}
+    state = {"generated": "now", "rules_hash": "a" * 12, "rules_frozen": "2026-08-20",
+            "indices": states,
+            "rules": {"ndx_tilt_screen_v1": {"active": False, "names": []},
+                      "ndx_dixlow_caution_v1": {"active": False},
+                      "all_dispersed_derisk_v1": {"active": None, "evaluable": False},
+                      "all_dispersed_derisk_v2": {"active": True, "evaluable": True}}}
+    html = B.render_html(state)
+    assert "MidCorr (12d)" in html
+    assert "all_dispersed_derisk_v1</b>: not evaluable" in html
+    assert "all_dispersed_derisk_v2</b>: ACTIVE" in html
