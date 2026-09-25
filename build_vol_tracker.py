@@ -32,6 +32,7 @@ the pressure index is worth reading after ~5.
 """
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -102,13 +103,29 @@ def recompute_iv(df):
 def load_snapshots(snap_dir):
     """All daily snapshots concatenated, sorted by date, iv recomputed by
     our own Black-Scholes solver (recompute_iv). Empty frame when no
-    capture exists yet (the docs page renders a stub in that case)."""
+    capture exists yet (the docs page renders a stub in that case).
+
+    A single truncated/empty capture (a failed optsnap.yml run that still
+    committed a near-zero-byte .csv.gz) must not crash the whole read --
+    that one bad day would otherwise take down every OTHER page this
+    build produces, since refresh.yml runs the whole pipeline as one job.
+    Unreadable files are skipped and logged to stderr instead."""
     files = sorted(Path(snap_dir).glob("????-??-??.csv.gz"))
     if not files:
         return pd.DataFrame(columns=["date", "symbol", "expiry", "right",
                                      "strike", "iv", "oi", "volume", "bid",
                                      "ask", "last", "spot"])
-    df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+    frames = []
+    for f in files:
+        try:
+            frames.append(pd.read_csv(f))
+        except (pd.errors.EmptyDataError, pd.errors.ParserError, OSError) as e:
+            print(f"  ! skipping unreadable snapshot {f}: {e}", file=sys.stderr)
+    if not frames:
+        return pd.DataFrame(columns=["date", "symbol", "expiry", "right",
+                                     "strike", "iv", "oi", "volume", "bid",
+                                     "ask", "last", "spot"])
+    df = pd.concat(frames, ignore_index=True)
     df = df.sort_values(["date", "symbol", "expiry", "right", "strike"])
     return recompute_iv(df)
 
