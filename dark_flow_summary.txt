@@ -1,0 +1,193 @@
+RELATIVE-DARKNESS STUDY -- universe spx_ndx (518 names), FINRA 2018-08-01 -> 2026-09-25
+
+1. INDEX LEVEL -- does the dark gauge predict the index? (pp of forward return per 1 SD of the 5d gauge; Newey-West t, lags = horizon)
+   Split-basis check vs SqueezeMetrics' published DIX (same S&P-style universe):
+     old: as-traded shares x split-adjusted price   level MAE 0.0063   corr of daily changes 0.945   (n=2048)
+     fixed: shares on Yahoo's split basis           level MAE 0.0038   corr of daily changes 0.975   (n=2048)
+   reconstructed dollar-DIX vs SPY  [2018-08-03 -> 2026-09-17]
+       h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
+       5    +0.090 (+0.8)   +0.063 (+0.6)   -0.027 (-0.2)   -0.105 (-0.8)   +1.4
+      21    +0.331 (+0.9)   +0.222 (+0.6)   -0.160 (-0.5)   -0.526 (-1.7)   +3.8
+      63    +0.194 (+0.2)   -0.264 (-0.3)   -1.389 (-1.5)   -2.362 (-3.0)   +4.4
+   SqueezeMetrics DIX vs SPX, full history  [2011-05-04 -> 2026-09-17]
+       h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
+       5    +0.103 (+1.4)   +0.061 (+0.8)   +0.029 (+0.4)   -0.033 (-0.4)   +1.1
+      21    +0.420 (+1.8)   +0.229 (+0.9)   +0.168 (+0.8)   -0.119 (-0.6)   +2.3
+      63    +0.651 (+1.2)   +0.077 (+0.1)   -0.369 (-0.6)   -1.117 (-2.1)   +3.8
+   SqueezeMetrics DIX vs SPX, FINRA window (2018-08->)  [2018-08-03 -> 2026-09-17]
+       h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
+       5    +0.101 (+0.8)   +0.079 (+0.7)   -0.012 (-0.1)   -0.085 (-0.7)   +1.4
+      21    +0.430 (+1.0)   +0.349 (+0.8)   -0.018 (-0.1)   -0.341 (-1.1)   +3.8
+      63    +0.360 (+0.4)   -0.020 (-0.0)   -1.116 (-1.2)   -1.981 (-2.5)   +4.5
+
+2. STRUCTURE -- what per-name DPI is made of
+   1,004,069 name-days, 518 names. Variance shares: structural level 13.4% | common (market) 6.7% | idiosyncratic 80.6%
+   SDs: structural 0.053, common 0.0372, idio 0.1294. Idio ACF lag1 +0.54, lag2 +0.44, lag5 +0.33, lag10 +0.25, lag20 +0.19, lag60 +0.12
+   AR(1)+noise fit: 66% of idio variance persistent, rho 0.81 (half-life 3.3 sessions); the rest is day-to-day flow-composition noise
+   Price echo -- xs rank corr of abnormal DPI_t with the name's own return at t+k:  k=-5: +0.021  k=-2: +0.064  k=-1: +0.117  k=+0: +0.112  k=+1: -0.018  k=+2: -0.001  k=+5: +0.001
+   Common component vs equal-weight market return, same day: -0.245  (the index-level relation has the OPPOSITE sign)
+
+3. SIGNALS -- weekly Fama-MacBeth, forward log return entered at the close of t+1.
+   Cell = return spread (pp) from the lowest- to the highest-ranked name, Newey-West t;
+   '+ctrl' adds 5d/21d reversal, 12-1 momentum, 21d vol, $ADV and volume surprise.
+   signal                 h5 alone        h5 +ctrl       h21 alone       h21 +ctrl    h21 +ctrl 1st half    h21 +ctrl 2nd half        Q5-Q1 h5
+   dpi_1d            -0.110 (-2.2)   -0.141 (-3.1)   -0.265 (-2.0)   -0.372 (-2.9)         -0.130 (-0.8)         -0.589 (-3.2)   -0.076 (-1.7)
+   d_5d              -0.083 (-1.5)   -0.113 (-2.3)   -0.329 (-2.0)   -0.406 (-2.5)         -0.079 (-0.3)         -0.700 (-3.5)   -0.073 (-1.6)
+   resid_reg         -0.009 (-0.2)   -0.015 (-0.4)   -0.023 (-0.2)   +0.045 (+0.4)         +0.189 (+1.2)         -0.084 (-0.6)   -0.032 (-0.8)
+   rel_expanding     -0.104 (-2.2)   -0.116 (-2.8)   -0.261 (-2.3)   -0.265 (-2.5)         -0.073 (-0.5)         -0.437 (-2.8)   -0.090 (-2.2)
+   dpi_level         -0.096 (-1.7)   -0.130 (-2.4)   -0.349 (-1.8)   -0.546 (-2.7)         -0.223 (-0.7)         -0.837 (-3.4)   -0.088 (-1.8)
+   dpi_z             -0.003 (-0.1)   -0.037 (-0.9)   +0.025 (+0.2)   -0.009 (-0.1)         +0.154 (+0.9)         -0.155 (-1.1)   -0.008 (-0.2)
+   dark_share_abn    -0.024 (-0.5)   -0.082 (-1.9)   +0.057 (+0.4)   -0.140 (-1.2)         -0.330 (-2.0)         +0.030 (+0.2)   -0.014 (-0.3)
+   dark_imbalance    -0.016 (-0.4)   -0.037 (-0.9)   -0.001 (-0.0)   -0.003 (-0.0)         +0.190 (+1.0)         -0.176 (-1.3)   -0.014 (-0.4)
+   dpi_hidden        -0.035 (-0.7)   -0.040 (-1.0)   -0.018 (-0.1)   -0.015 (-0.1)         +0.141 (+0.8)         -0.155 (-1.1)   -0.032 (-0.7)
+   (381 weekly dates 2019-03-01 -> 2026-09-22; halves split at 2022-12-06)
+     dpi_1d          [current] raw 1-day DPI (dashboard scatter / decile x-axis)
+     d_5d            [current] D = 5-day mean of daily DPI (the repo's D)
+     resid_reg       [current] grid residual: rolling OLS of D on the dollar-DIX
+     rel_expanding   [current] L/S tab 'name-specific': DPI minus expanding mean
+     dpi_level       [new] structural level: trailing 126-session mean DPI
+     dpi_z           [new] abnormal 5d volume-weighted DPI, own-sigma units
+     dark_share_abn  [new] abnormal off-exchange share of volume (log)
+     dark_imbalance  [new] abnormal dark buying in ADV units
+     dpi_hidden      [new] dpi_z minus its price echo (dark buying price hasn't shown)
+
+3b. ROBUSTNESS -- giving the flow signals every chance
+   window  1 sessions, +ctrl: dpi_z h5 -0.078 (-1.8) | dpi_z h21 -0.068 (-0.7) | dark_imbalance h5 -0.088 (-2.1) | dark_imbalance h21 -0.087 (-0.9)
+   window 10 sessions, +ctrl: dpi_z h5 -0.061 (-1.5) | dpi_z h21 -0.058 (-0.5) | dark_imbalance h5 -0.041 (-1.0) | dark_imbalance h21 -0.050 (-0.4)
+   window 20 sessions, +ctrl: dpi_z h5 -0.036 (-0.9) | dpi_z h21 -0.108 (-0.8) | dark_imbalance h5 -0.026 (-0.7) | dark_imbalance h21 -0.117 (-0.9)
+   tails of dpi_z, h5 market-relative return: z<-2 +0.036 (+0.4) | -2..-1 -0.017 (-0.6) | -1..1 +0.000 (+0.0) | 1..2 -0.002 (-0.1) | z>2 +0.003 (+0.0)
+   tails of dpi_z, h21 market-relative return: z<-2 -0.111 (-0.6) | -2..-1 +0.064 (+0.9) | -1..1 -0.032 (-1.7) | 1..2 +0.052 (+0.8) | z>2 -0.132 (-0.8)
+   high-minus-low dpi_z within past-5d-return terciles, h5: losers -0.038 (-0.7) | middle +0.020 (+0.5) | winners -0.017 (-0.3)
+   high-minus-low dpi_z within past-5d-return terciles, h21: losers -0.065 (-0.5) [halves -0.006 (-0.0) / -0.122 (-0.8)] | middle -0.021 (-0.2) [halves -0.028 (-0.2) / -0.014 (-0.1)] | winners +0.179 (+1.5) [halves +0.315 (+1.8) / +0.049 (+0.3)]
+
+4. VOLATILITY -- signals vs FUTURE log realized vol (sessions t+2..t+1+h), controls: 5d & 21d log RV, volume surprise, $ADV, |1d| and |5d| return, 5d return
+   d_5d            h5: +0.022 (+4.5)  h21: +0.022 (+4.3)   (log-RV spread, lowest -> highest ranked)
+   dpi_z           h5: -0.013 (-2.9)  h21: -0.019 (-4.4)   (log-RV spread, lowest -> highest ranked)
+   dark_share_abn  h5: -0.037 (-7.8)  h21: -0.038 (-7.7)   (log-RV spread, lowest -> highest ranked)
+   dark_imbalance  h5: -0.016 (-3.5)  h21: -0.018 (-4.4)   (log-RV spread, lowest -> highest ranked)
+   resid_reg       h5: -0.013 (-2.8)  h21: -0.015 (-3.7)   (log-RV spread, lowest -> highest ranked)
+
+5. ATS SPLIT -- abnormal dark-POOL activity (FINRA weekly OTC transparency), entered at the first close after FINRA publishes the week; weekly Fama-MacBeth, spread pp (NW t)
+   median ATS share of off-exchange volume 0.55 (mega-caps ~0.1-0.2: retail internalization dominates), of all volume 0.21; 518 names, weeks 2021-12-06 -> 2026-08-31
+   ats_share_z       h5 -0.002 (-0.0) +ctrl +0.033 (+0.7) | h21 +0.043 (+0.2) +ctrl +0.016 (+0.1) | h21 +ctrl halves +0.169 (+1.1) / -0.125 (-0.7) (split 2024-05-21)
+   ats_of_volume_z   h5 -0.019 (-0.3) +ctrl +0.014 (+0.2) | h21 +0.097 (+0.5) +ctrl +0.094 (+0.6) | h21 +ctrl halves +0.047 (+0.3) / +0.137 (+0.6) (split 2024-05-21)
+   ats_vol_surprise  h5 +0.084 (+1.1) +ctrl +0.168 (+2.5) | h21 +0.168 (+0.7) +ctrl +0.357 (+1.9) | h21 +ctrl halves +0.066 (+0.3) / +0.626 (+2.4) (split 2024-05-21)
+
+
+==================================================================================
+
+RELATIVE-DARKNESS STUDY -- universe russell (1972 names), FINRA 2018-08-01 -> 2026-09-25
+
+1. INDEX LEVEL -- does the dark gauge predict the index? (pp of forward return per 1 SD of the 5d gauge; Newey-West t, lags = horizon)
+   reconstructed dollar-DIX vs IWM  [2018-08-03 -> 2026-09-17]
+       h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
+       5    +0.096 (+0.7)   +0.155 (+1.0)   -0.003 (-0.0)   +0.013 (+0.1)   +2.5
+      21    +0.784 (+1.3)   +0.969 (+1.6)   +0.425 (+0.8)   +0.433 (+0.7)   +5.4
+      63    +1.614 (+1.2)   +1.690 (+1.4)   +0.336 (+0.3)   +0.118 (+0.1)   +4.7
+
+2. STRUCTURE -- what per-name DPI is made of
+   3,125,828 name-days, 1972 names. Variance shares: structural level 10.6% | common (market) 3.4% | idiosyncratic 87.8%
+   SDs: structural 0.058, common 0.0327, idio 0.1657. Idio ACF lag1 +0.43, lag2 +0.35, lag5 +0.26, lag10 +0.21, lag20 +0.16, lag60 +0.09
+   AR(1)+noise fit: 52% of idio variance persistent, rho 0.82 (half-life 3.5 sessions); the rest is day-to-day flow-composition noise
+   Price echo -- xs rank corr of abnormal DPI_t with the name's own return at t+k:  k=-5: +0.000  k=-2: +0.013  k=-1: +0.038  k=+0: +0.044  k=+1: +0.002  k=+2: +0.003  k=+5: +0.002
+   Common component vs equal-weight market return, same day: -0.482  (the index-level relation has the OPPOSITE sign)
+
+3. SIGNALS -- weekly Fama-MacBeth, forward log return entered at the close of t+1.
+   Cell = return spread (pp) from the lowest- to the highest-ranked name, Newey-West t;
+   '+ctrl' adds 5d/21d reversal, 12-1 momentum, 21d vol, $ADV and volume surprise.
+   signal                 h5 alone        h5 +ctrl       h21 alone       h21 +ctrl    h21 +ctrl 1st half    h21 +ctrl 2nd half        Q5-Q1 h5
+   dpi_1d            +0.036 (+0.5)   +0.018 (+0.3)   +0.108 (+0.6)   +0.062 (+0.4)         +0.185 (+0.7)         -0.049 (-0.2)   -0.029 (-0.5)
+   d_5d              +0.019 (+0.2)   -0.005 (-0.1)   +0.126 (+0.6)   +0.001 (+0.0)         +0.098 (+0.3)         -0.086 (-0.3)   +0.021 (+0.3)
+   resid_reg         +0.025 (+0.4)   +0.019 (+0.4)   +0.162 (+1.1)   +0.207 (+1.4)         +0.371 (+1.9)         +0.059 (+0.3)   +0.033 (+0.6)
+   rel_expanding     +0.064 (+1.0)   +0.028 (+0.5)   +0.229 (+1.5)   +0.157 (+1.1)         +0.208 (+1.0)         +0.111 (+0.6)   +0.036 (+0.6)
+   dpi_level         +0.018 (+0.2)   -0.006 (-0.1)   +0.013 (+0.1)   -0.184 (-0.7)         -0.302 (-0.7)         -0.079 (-0.3)   +0.068 (+0.9)
+   dpi_z             +0.101 (+1.6)   +0.038 (+0.7)   +0.417 (+2.3)   +0.263 (+1.6)         +0.454 (+2.1)         +0.092 (+0.4)   +0.081 (+1.5)
+   dark_share_abn    +0.039 (+0.5)   +0.016 (+0.3)   +0.139 (+0.8)   +0.088 (+0.7)         +0.111 (+0.6)         +0.067 (+0.4)   +0.046 (+0.7)
+   dark_imbalance    +0.069 (+1.1)   +0.040 (+0.7)   +0.258 (+1.6)   +0.245 (+1.5)         +0.487 (+2.3)         +0.027 (+0.1)   +0.042 (+0.8)
+   dpi_hidden        +0.081 (+1.4)   +0.037 (+0.7)   +0.370 (+2.1)   +0.253 (+1.6)         +0.451 (+2.1)         +0.075 (+0.3)   +0.059 (+1.2)
+   (381 weekly dates 2019-03-01 -> 2026-09-22; halves split at 2022-12-06)
+     dpi_1d          [current] raw 1-day DPI (dashboard scatter / decile x-axis)
+     d_5d            [current] D = 5-day mean of daily DPI (the repo's D)
+     resid_reg       [current] grid residual: rolling OLS of D on the dollar-DIX
+     rel_expanding   [current] L/S tab 'name-specific': DPI minus expanding mean
+     dpi_level       [new] structural level: trailing 126-session mean DPI
+     dpi_z           [new] abnormal 5d volume-weighted DPI, own-sigma units
+     dark_share_abn  [new] abnormal off-exchange share of volume (log)
+     dark_imbalance  [new] abnormal dark buying in ADV units
+     dpi_hidden      [new] dpi_z minus its price echo (dark buying price hasn't shown)
+
+3b. ROBUSTNESS -- giving the flow signals every chance
+   window  1 sessions, +ctrl: dpi_z h5 +0.062 (+1.2) | dpi_z h21 +0.239 (+1.9) | dark_imbalance h5 +0.037 (+0.7) | dark_imbalance h21 +0.261 (+2.1)
+   window 10 sessions, +ctrl: dpi_z h5 +0.021 (+0.4) | dpi_z h21 +0.251 (+1.4) | dark_imbalance h5 +0.003 (+0.0) | dark_imbalance h21 +0.216 (+1.2)
+   window 20 sessions, +ctrl: dpi_z h5 +0.032 (+0.6) | dpi_z h21 +0.169 (+0.9) | dark_imbalance h5 +0.003 (+0.1) | dark_imbalance h21 +0.070 (+0.4)
+   tails of dpi_z, h5 market-relative return: z<-2 -0.035 (-0.3) | -2..-1 +0.003 (+0.1) | -1..1 -0.013 (-1.4) | 1..2 +0.055 (+1.5) | z>2 -0.036 (-0.4)
+   tails of dpi_z, h21 market-relative return: z<-2 +0.045 (+0.2) | -2..-1 -0.157 (-1.5) | -1..1 -0.031 (-1.4) | 1..2 +0.129 (+1.7) | z>2 +0.366 (+1.7)
+   high-minus-low dpi_z within past-5d-return terciles, h5: losers +0.045 (+0.7) | middle -0.004 (-0.1) | winners +0.099 (+1.4)
+   high-minus-low dpi_z within past-5d-return terciles, h21: losers +0.360 (+2.3) [halves +0.494 (+2.0) / +0.232 (+1.2)] | middle +0.071 (+0.5) [halves +0.104 (+0.6) / +0.039 (+0.2)] | winners +0.305 (+1.8) [halves +0.667 (+2.9) / -0.043 (-0.2)]
+
+4. VOLATILITY -- signals vs FUTURE log realized vol (sessions t+2..t+1+h), controls: 5d & 21d log RV, volume surprise, $ADV, |1d| and |5d| return, 5d return
+   d_5d            h5: -0.012 (-2.5)  h21: -0.031 (-6.3)   (log-RV spread, lowest -> highest ranked)
+   dpi_z           h5: -0.003 (-0.9)  h21: -0.017 (-4.5)   (log-RV spread, lowest -> highest ranked)
+   dark_share_abn  h5: -0.035 (-7.9)  h21: -0.035 (-7.9)   (log-RV spread, lowest -> highest ranked)
+   dark_imbalance  h5: -0.001 (-0.2)  h21: -0.014 (-3.8)   (log-RV spread, lowest -> highest ranked)
+   resid_reg       h5: +0.001 (+0.2)  h21: -0.012 (-3.3)   (log-RV spread, lowest -> highest ranked)
+
+
+==================================================================================
+
+RELATIVE-DARKNESS STUDY -- universe ndx (103 names), FINRA 2018-08-01 -> 2026-09-25
+
+1. INDEX LEVEL -- does the dark gauge predict the index? (pp of forward return per 1 SD of the 5d gauge; Newey-West t, lags = horizon)
+   reconstructed dollar-DIX vs QQQ  [2018-08-03 -> 2026-09-17]
+       h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
+       5    +0.118 (+0.9)   +0.105 (+0.7)   +0.015 (+0.1)   -0.018 (-0.1)   +0.9
+      21    +0.439 (+1.1)   +0.349 (+0.9)   -0.028 (-0.1)   -0.190 (-0.5)   +1.5
+      63    -0.101 (-0.1)   -0.701 (-0.6)   -1.563 (-1.2)   -2.210 (-1.8)   +2.3
+
+2. STRUCTURE -- what per-name DPI is made of
+   190,847 name-days, 103 names. Variance shares: structural level 14.7% | common (market) 6.4% | idiosyncratic 81.0%
+   SDs: structural 0.050, common 0.0328, idio 0.1171. Idio ACF lag1 +0.54, lag2 +0.44, lag5 +0.33, lag10 +0.26, lag20 +0.20, lag60 +0.12
+   AR(1)+noise fit: 67% of idio variance persistent, rho 0.81 (half-life 3.3 sessions); the rest is day-to-day flow-composition noise
+   Price echo -- xs rank corr of abnormal DPI_t with the name's own return at t+k:  k=-5: +0.018  k=-2: +0.066  k=-1: +0.126  k=+0: +0.128  k=+1: -0.017  k=+2: -0.000  k=+5: +0.002
+   Common component vs equal-weight market return, same day: -0.079  (the index-level relation has the OPPOSITE sign)
+
+3. SIGNALS -- weekly Fama-MacBeth, forward log return entered at the close of t+1.
+   Cell = return spread (pp) from the lowest- to the highest-ranked name, Newey-West t;
+   '+ctrl' adds 5d/21d reversal, 12-1 momentum, 21d vol, $ADV and volume surprise.
+   signal                 h5 alone        h5 +ctrl       h21 alone       h21 +ctrl    h21 +ctrl 1st half    h21 +ctrl 2nd half        Q5-Q1 h5
+   dpi_1d            -0.138 (-1.5)   -0.153 (-1.7)   +0.203 (+0.7)   +0.228 (+0.7)         +1.133 (+3.3)         -0.585 (-1.1)   -0.081 (-1.0)
+   d_5d              -0.047 (-0.5)   -0.080 (-0.8)   +0.099 (+0.3)   +0.117 (+0.3)         +0.955 (+2.1)         -0.635 (-1.1)   -0.013 (-0.2)
+   resid_reg         -0.120 (-1.2)   -0.099 (-1.1)   -0.009 (-0.0)   +0.276 (+1.0)         +0.330 (+0.9)         +0.227 (+0.5)   -0.072 (-0.8)
+   rel_expanding     -0.221 (-2.4)   -0.181 (-2.0)   -0.134 (-0.5)   +0.085 (+0.3)         +0.643 (+1.9)         -0.416 (-0.8)   -0.143 (-1.7)
+   dpi_level         +0.049 (+0.4)   -0.013 (-0.1)   +0.322 (+0.7)   -0.111 (-0.3)         +1.096 (+1.7)         -1.195 (-2.2)   +0.037 (+0.4)
+   dpi_z             -0.016 (-0.2)   -0.085 (-0.9)   +0.329 (+1.2)   +0.340 (+1.2)         +0.446 (+1.2)         +0.245 (+0.6)   +0.012 (+0.1)
+   dark_share_abn    +0.128 (+1.2)   +0.026 (+0.3)   +0.545 (+1.9)   +0.036 (+0.1)         +0.264 (+0.7)         -0.170 (-0.5)   +0.125 (+1.4)
+   dark_imbalance    -0.060 (-0.6)   -0.087 (-0.9)   +0.180 (+0.6)   +0.295 (+1.0)         +0.399 (+1.0)         +0.202 (+0.5)   -0.006 (-0.1)
+   dpi_hidden        -0.069 (-0.7)   -0.086 (-1.0)   +0.290 (+1.1)   +0.318 (+1.2)         +0.425 (+1.2)         +0.222 (+0.6)   -0.012 (-0.1)
+   (381 weekly dates 2019-03-01 -> 2026-09-22; halves split at 2022-12-06)
+     dpi_1d          [current] raw 1-day DPI (dashboard scatter / decile x-axis)
+     d_5d            [current] D = 5-day mean of daily DPI (the repo's D)
+     resid_reg       [current] grid residual: rolling OLS of D on the dollar-DIX
+     rel_expanding   [current] L/S tab 'name-specific': DPI minus expanding mean
+     dpi_level       [new] structural level: trailing 126-session mean DPI
+     dpi_z           [new] abnormal 5d volume-weighted DPI, own-sigma units
+     dark_share_abn  [new] abnormal off-exchange share of volume (log)
+     dark_imbalance  [new] abnormal dark buying in ADV units
+     dpi_hidden      [new] dpi_z minus its price echo (dark buying price hasn't shown)
+
+3b. ROBUSTNESS -- giving the flow signals every chance
+   window  1 sessions, +ctrl: dpi_z h5 -0.153 (-1.7) | dpi_z h21 +0.266 (+1.0) | dark_imbalance h5 -0.148 (-1.6) | dark_imbalance h21 +0.242 (+0.9)
+   window 10 sessions, +ctrl: dpi_z h5 -0.093 (-1.0) | dpi_z h21 +0.392 (+1.2) | dark_imbalance h5 -0.055 (-0.6) | dark_imbalance h21 +0.342 (+1.0)
+   window 20 sessions, +ctrl: dpi_z h5 +0.062 (+0.6) | dpi_z h21 +0.488 (+1.4) | dark_imbalance h5 +0.056 (+0.6) | dark_imbalance h21 +0.446 (+1.2)
+   tails of dpi_z, h5 market-relative return: z<-2 +0.084 (+0.4) | -2..-1 +0.016 (+0.2) | -1..1 -0.009 (-0.4) | 1..2 +0.023 (+0.4) | z>2 -0.022 (-0.1)
+   tails of dpi_z, h21 market-relative return: z<-2 -0.702 (-1.6) | -2..-1 -0.056 (-0.3) | -1..1 -0.005 (-0.1) | 1..2 +0.177 (+1.1) | z>2 -0.102 (-0.2)
+   high-minus-low dpi_z within past-5d-return terciles, h5: losers +0.057 (+0.5) | middle -0.065 (-0.6) | winners -0.046 (-0.4)
+   high-minus-low dpi_z within past-5d-return terciles, h21: losers +0.038 (+0.1) [halves +0.141 (+0.4) / -0.061 (-0.1)] | middle +0.111 (+0.5) [halves +0.068 (+0.2) / +0.151 (+0.5)] | winners +0.409 (+1.6) [halves +0.374 (+1.1) / +0.443 (+1.1)]
+
+4. VOLATILITY -- signals vs FUTURE log realized vol (sessions t+2..t+1+h), controls: 5d & 21d log RV, volume surprise, $ADV, |1d| and |5d| return, 5d return
+   d_5d            h5: +0.030 (+2.9)  h21: +0.035 (+3.3)   (log-RV spread, lowest -> highest ranked)
+   dpi_z           h5: -0.026 (-2.5)  h21: -0.022 (-2.3)   (log-RV spread, lowest -> highest ranked)
+   dark_share_abn  h5: -0.053 (-5.1)  h21: -0.055 (-6.6)   (log-RV spread, lowest -> highest ranked)
+   dark_imbalance  h5: -0.028 (-2.7)  h21: -0.023 (-2.4)   (log-RV spread, lowest -> highest ranked)
+   resid_reg       h5: -0.025 (-2.4)  h21: -0.019 (-2.1)   (log-RV spread, lowest -> highest ranked)
+

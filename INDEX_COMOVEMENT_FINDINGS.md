@@ -1,5 +1,17 @@
 # Cross-index DIX comovement → 1-month forward returns
 
+> **Correction (2026-09-25) — the tables below were computed on mis-weighted gauges.**
+> The dollar-DIX paired Yahoo's split-adjusted prices with FINRA's as-traded share
+> counts, under-weighting every name by its split factor before each split (e.g. AMZN
+> at 1.4% of the 2019 NDX gauge instead of 14.3%). With the corrected gauges (see
+> `DARK_FLOW_FINDINGS.md` §1a) the surviving "large-cap DIX firm / small-cap Low"
+> family no longer survives — N=High,S=Mid,I=Low entries: NDX +6.80% (hit 100%) →
+> **+0.80% (hit 60%)**; N=Mid,S=Mid,I=Low: +4.98% → **+1.95%** vs a +1.76% baseline —
+> and the two-factor SPREAD coefficient on NDX goes from +0.63 (t = 1.76) to
+> **−0.12 (t = −0.23)**. Level still carries nothing. Re-run
+> `python index_comovement_study.py` against the next nightly build (which uses the
+> fixed gauges) before relying on any number below.
+
 When the three index dark-flow gauges — **NDX-100 DIX**, **S&P 500 DIX** and
 **Russell 2000 / IWM DIX** — line up vs. pull apart, what do the indices do over
 the following month? Study of the **5-day moving average** of each dollar-DIX

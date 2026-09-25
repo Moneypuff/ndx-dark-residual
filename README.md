@@ -9,8 +9,9 @@ key**.
 For every constituent the dark-pool indicator **`D`** = 5-day MA of
 `ShortVolume / off-exchange TotalVolume`, computed directly from **FINRA's** daily
 consolidated off-exchange (CNMSshvol) files — the same construction SqueezeMetrics
-uses for DIX. Prices come from **Yahoo Finance** (raw close for dollar weighting,
-adjusted close for split-safe forward returns).
+uses for DIX. Prices come from **Yahoo Finance** (split-adjusted close for dollar
+weighting — FINRA's as-traded volumes are put on the same split basis with Yahoo's
+split events — and adjusted close for forward returns).
 
 Each name's *name-specific* dark flow is isolated by residualizing its `D` against
 a reconstructed index dollar-DIX benchmark, two ways:
@@ -25,8 +26,11 @@ a reconstructed index dollar-DIX benchmark, two ways:
   `*_template.html` pairs build the individual tabs.
 - **Data plumbing**: `ndx_dark_residual.py` (core builder), `snapshot_option_chains.py`,
   `backfill_optsnap_from_orats.py`, `sync_watchlist.py`, `fetch_earnings_edgar.py`.
+- **Relative-darkness toolkit**: `dark_flow.py` (name-level dark-flow measures and
+  the cross-sectional statistics to test them) + `dark_flow_study.py` — see
+  `DARK_FLOW_FINDINGS.md`.
 - **Studies**: standalone analyses, each with a `*_study.py` and a `*_FINDINGS.md`
-  writeup — e.g. `EARNINGS_DPI_FINDINGS.md`, `EXPECTED_MOVE_FINDINGS.md`,
+  writeup — e.g. `DARK_FLOW_FINDINGS.md`, `EARNINGS_DPI_FINDINGS.md`, `EXPECTED_MOVE_FINDINGS.md`,
   `INDEX_COMOVEMENT_FINDINGS.md`, `GDX_CHASE_FINDINGS.md`, `GEX_DISPERSION_GUIDE.md`,
   `ETF_PATH_PLAYBOOK.md`, `VOL_TRACKER.md`.
 - `tests/`, `pytest.ini`, `requirements.txt` / `requirements-dev.txt`.
@@ -38,6 +42,12 @@ pip install -r requirements.txt
 python build_report.py        # build the dashboard from freshly fetched data
 ```
 
-> **Research verdict so far:** across multiple studies here, the reconstructed
-> DIX / `D` signal shows **no robust beta-adjusted, name-level predictive edge**.
-> Read this as a well-documented negative result, not a live trading signal.
+> **Research verdict** (methodology review: `DARK_FLOW_FINDINGS.md`): name-level
+> dark flow — the `D`-vs-DIX residual and five better-built "relative darkness"
+> measures — shows **no robust directional edge** across the S&P 500, NDX-100 or
+> Russell 2000. At the index level the DIX behaves like a stress gauge (nothing
+> survives detrending or a realized-vol control), and the one index result that
+> looked tradeable (the comovement study's "large-cap firm / small-cap Low" family)
+> was an artifact of a split-weighting bug in the dollar-DIX, now fixed. Dark flow
+> does carry a little volatility information. Read the dashboard as a descriptive
+> monitor, not a live trading signal.
