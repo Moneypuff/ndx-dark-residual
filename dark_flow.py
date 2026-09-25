@@ -58,6 +58,18 @@ echo_profile        mean per-date rank correlation of a signal with returns at
 index_predictability  time-series tests of an index DIX on its index's forward
                     returns: level and detrended, with realized-vol and past-return
                     controls.
+
+Per-name ("does DPI work better on certain names?")
+---------------------------------------------------
+per_name_slopes     each name's own time-series slope of forward return on its signal
+                    (per 1 SD) with a Newey-West t.
+placebo_slope_t     the same t-stats with each name's signal circularly shifted in time
+                    -- the null distribution for "how many names look like DPI works
+                    here by chance". Overlapping 1-month returns put ~8% of names past
+                    |t| = 2 even under this null.
+selection_pnl       the honest test of name picking: select names on an estimation
+                    window, trade each in its own estimated direction in a later window.
+shift_names         independent circular shift per name (placebo helper for the above).
 """
 import numpy as np
 import pandas as pd
@@ -329,3 +341,88 @@ def index_predictability(dix, price, horizons=(5, 21, 63), smooth=5, trend=252):
                     row.update({"t_rv21": t[2], "t_past21": t[3]})
                 rows.append(row)
     return pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------
+# Per-name heterogeneity
+# --------------------------------------------------------------------------
+def nw_slope(x, y, lags):
+    """Time-series OLS slope of y on x -- x standardized to 1 SD, so the slope is the outcome's
+    move per 1 SD of the signal -- with a Newey-West (Bartlett) t. Pairs with a NaN on either
+    side are dropped. Returns (slope, t, n); (nan, nan, n) when n < 30 or x is constant."""
+    x, y = np.asarray(x, float), np.asarray(y, float)
+    m = np.isfinite(x) & np.isfinite(y)
+    x, y = x[m], y[m]
+    n = len(x)
+    if n < 30 or x.std() == 0:
+        return np.nan, np.nan, n
+    x = (x - x.mean()) / x.std()
+    yd = y - y.mean()
+    sxx = x @ x
+    b = (x @ yd) / sxx
+    g = x * (yd - b * x)
+    s = g @ g
+    for lag in range(1, lags + 1):
+        s += 2.0 * (1.0 - lag / (lags + 1.0)) * (g[lag:] @ g[:-lag])
+    se = np.sqrt(s) / sxx
+    return float(b), (float(b / se) if se > 0 else np.nan), n
+
+
+def per_name_slopes(X, Y, lags, min_obs=150):
+    """DataFrame [b, t, n] indexed by name: each column of X (signal) against the same column
+    of Y (outcome), both dates x names on the same (e.g. weekly) dates. Names with fewer than
+    `min_obs` paired observations are left out."""
+    rows = {}
+    for c in X.columns:
+        if c not in Y.columns:
+            continue
+        b, t, n = nw_slope(X[c].to_numpy(float), Y[c].to_numpy(float), lags)
+        if n >= min_obs and np.isfinite(t):
+            rows[c] = (b, t, n)
+    return pd.DataFrame.from_dict(rows, orient="index", columns=["b", "t", "n"])
+
+
+def shift_names(X, rng, min_shift=26):
+    """Copy of X with each column circularly shifted by its own random offset of at least
+    `min_shift` rows from the true alignment (keeps each series' autocorrelation, breaks its
+    timing relation to anything else)."""
+    a = X.to_numpy(float)
+    n = a.shape[0]
+    if n <= 2 * min_shift:
+        raise ValueError("series too short for the requested minimum shift")
+    sh = rng.integers(min_shift, n - min_shift, size=a.shape[1])
+    return pd.DataFrame(np.column_stack([np.roll(a[:, j], sh[j]) for j in range(a.shape[1])]),
+                        index=X.index, columns=X.columns)
+
+
+def placebo_slope_t(X, Y, lags, k=40, min_obs=150, min_shift=26, seed=0):
+    """Null distribution of per-name t-stats: `k` independent circular shifts of every name's
+    signal. Compare the real per_name_slopes t's against it -- tail counts under this null are
+    what 'DPI works on this name' looks like by chance."""
+    rng = np.random.default_rng(seed)
+    ts = [per_name_slopes(shift_names(X, rng, min_shift), Y, lags, min_obs)["t"].to_numpy()
+          for _ in range(k)]
+    return np.concatenate(ts) if ts else np.array([])
+
+
+def selection_pnl(X, Y, est_mask, test_mask, lags, sel_t=1.5, min_obs=80, demean=False,
+                  orient="own"):
+    """Out-of-sample test of "trade DPI only on the names where it worked".
+
+    Names whose estimation-window slope has |t| > `sel_t` are traded in the test window: each
+    position is the name's signal standardized with ESTIMATION-window mean/SD (no look-ahead),
+    times the sign of its own estimated slope (`orient="own"`) or of the average slope across
+    all names (`orient="pooled"` -- separates name-specific direction from a common tilt).
+    `demean=True` removes each name's test-window mean position (timing only; attribution, not
+    tradeable). Returns (per-date P&L = mean over selected names of position x outcome, number
+    of names selected)."""
+    est = per_name_slopes(X[est_mask], Y[est_mask], lags, min_obs=min_obs)
+    sel = est[est["t"].abs() > sel_t]
+    if sel.empty:
+        return pd.Series(dtype=float), 0
+    xe = X[est_mask][sel.index]
+    z = (X[test_mask][sel.index] - xe.mean()) / xe.std()
+    if demean:
+        z = z - z.mean()
+    sign = np.sign(sel["b"]) if orient == "own" else np.sign(est["b"].mean())
+    return (z * sign * Y[test_mask][sel.index]).mean(axis=1).dropna(), len(sel)

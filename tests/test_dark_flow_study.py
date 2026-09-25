@@ -104,3 +104,77 @@ def test_fetch_otc_weekly_reuses_fresh_cache_with_numeric_dtypes(tmp_path, monke
     assert len(out) == 2
     assert pd.api.types.is_float_dtype(out["shares"])
     assert pd.api.types.is_datetime64_any_dtype(out["week"])
+
+
+def test_by_name_section_runs_offline_and_reports_against_chance():
+    P, names, idx = _synthetic_panels(n_names=80, n_days=1300, seed=3)
+    sig, ctl, dix, dpi1, ret_1d, adj, adv_dollar, close, vols = S.build_signals(P, names)
+    dates = idx[idx >= idx[260]][::5]
+    lines = []
+    S.section_by_name(lines, sig, ctl, adj, dates, names, dpi1, ret_1d, vols, min_names=40,
+                      k_placebo=3)
+    text = "\\n".join(lines)
+    assert text.startswith("6. BY NAME")
+    for key in ("d_5d h5", "dpi_z h21", "persistence:", "beats", "interaction t",
+                "structurally dark tercile"):
+        assert key in text
+    assert "NDX-100" not in text          # synthetic names are not NDX members
+
+
+def test_market_relative_fwd_is_demeaned_over_names_with_a_signal():
+    idx = pd.bdate_range("2024-01-01", periods=8)
+    adj = pd.DataFrame({"A": np.exp(np.arange(8) * 0.01), "B": np.ones(8), "C": np.exp(np.arange(8) * 0.05)},
+                       index=idx)
+    sig = pd.DataFrame({"A": 1.0, "B": 1.0, "C": np.nan}, index=idx)     # C has no signal
+    y = S.market_relative_fwd(adj, sig, 2, idx[:3])
+    assert y["C"].isna().all()
+    assert (y[["A", "B"]].sum(axis=1).abs() < 1e-9).all()
+    assert y["A"].iloc[0] == pytest.approx(1.0)                        # (+2% - 0%) / 2, in pp
+
+
+def test_by_name_section_declines_short_samples():
+    P, names, idx = _synthetic_panels(n_names=40, n_days=460, seed=4)
+    sig, ctl, dix, dpi1, ret_1d, adj, adv_dollar, close, vols = S.build_signals(P, names)
+    lines = []
+    S.section_by_name(lines, sig, ctl, adj, idx[260:][::5], names, dpi1, ret_1d, vols, min_names=20)
+    assert "too few for per-name tests" in lines[1]
+
+
+def _ss(rows):
+    cell = lambda v: f'<Cell><Data ss:Type="String">{v}</Data></Cell>'  # noqa: E731
+    body = "".join("<Row>" + "".join(cell(v) for v in r) + "</Row>\n" for r in rows)
+    return ('<?xml version="1.0"?>\n<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n'
+            '          xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n'
+            ' <Worksheet ss:Name="Holdings"><Table>\n' + body + ' </Table></Worksheet>\n</Workbook>')
+
+
+def test_sectors_from_spreadsheetml_equity_rows_and_bare_ampersands():
+    doc = _ss([["Fund Holdings as of", "Sep 24, 2026"],
+               ["Ticker", "Name", "Sector", "Asset Class"],
+               ["T", "AT&T INC", "Communication", "Equity"],          # bare '&' must not break parsing
+               ["XOM", "EXXON MOBIL CORP", "Energy", "Equity"],
+               ["USD", "USD CASH", "Cash and/or Derivatives", "Cash"],
+               ["BRK.B", "BERKSHIRE HATHAWAY INC CLASS B", "Financials", "Equity"]])
+    assert S.sectors_from_spreadsheetml(doc) == {"T": "Communication", "XOM": "Energy",
+                                                  "BRK.B": "Financials"}
+    assert S.sectors_from_spreadsheetml("<html>consent gate</html>") == {}
+    assert S.sectors_from_spreadsheetml(_ss([["Ticker", "Name"], ["AAPL", "APPLE"]])) == {}
+
+
+def test_universe_sectors_ndx_uses_static_map_with_gics_names():
+    out = S.universe_sectors("ndx")                                  # no network for ndx
+    assert out["NVDA"] == "Information Technology"
+    assert out["COST"] == "Consumer Staples"
+    assert out["AMGN"] == "Health Care"
+
+
+def test_by_name_section_reports_sectors_when_mapped():
+    P, names, idx = _synthetic_panels(n_names=60, n_days=1300, seed=5)
+    sig, ctl, dix, dpi1, ret_1d, adj, adv_dollar, close, vols = S.build_signals(P, names)
+    dates = idx[idx >= idx[260]][::5]
+    smap = {t: ("Alpha" if i < 30 else "Beta") for i, t in enumerate(names)}
+    lines = []
+    S.section_by_name(lines, sig, ctl, adj, dates, names, dpi1, ret_1d, vols, min_names=30,
+                      k_placebo=2, sector_map=smap)
+    sector_lines = [ln for ln in lines if "by sector" in ln]
+    assert len(sector_lines) == 2 and "Alpha (30)" in sector_lines[0] and "Beta (30)" in sector_lines[0]

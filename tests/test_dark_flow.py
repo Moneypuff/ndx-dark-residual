@@ -275,3 +275,84 @@ def test_index_predictability_shapes_and_planted_signal():
     lvl = R[(R.signal == "level") & ~R.controls].iloc[0]
     assert lvl["coef_pp_per_sd"] > 0 and lvl["t"] > 3
     assert {"t_rv21", "t_past21"} <= set(R.columns)
+
+
+# ===========================================================================
+# per-name heterogeneity
+# ===========================================================================
+def test_nw_slope_is_ols_on_standardized_x_with_hc_t():
+    rng = np.random.default_rng(10)
+    x = rng.normal(2.0, 3.0, 400)
+    y = 0.7 * (x - x.mean()) / x.std() + rng.normal(0, 1, 400)
+    b, t, n = F.nw_slope(x, y, lags=0)
+    xs = (x - x.mean()) / x.std()
+    assert b == pytest.approx(np.polyfit(xs, y, 1)[0])
+    u = (y - y.mean()) - b * xs
+    assert t == pytest.approx(b / (np.sqrt(np.sum((xs * u) ** 2)) / np.sum(xs * xs)))
+    assert n == 400 and t > 10
+
+
+def test_nw_slope_guards_short_constant_and_nan():
+    assert np.isnan(F.nw_slope(np.arange(10.0), np.arange(10.0), 1)[1])
+    assert np.isnan(F.nw_slope(np.ones(100), np.arange(100.0), 1)[1])
+    x = np.r_[np.arange(50.0), [np.nan] * 5]
+    y = np.r_[np.arange(50.0), np.arange(5.0)]
+    assert F.nw_slope(x, y, 1)[2] == 50
+
+
+def test_per_name_slopes_signs_and_min_obs():
+    rng = np.random.default_rng(11)
+    idx = _idx(300)
+    x = pd.DataFrame(rng.normal(size=(300, 3)), index=idx, columns=["UP", "FLAT", "SHORT"])
+    y = pd.DataFrame({"UP": 0.5 * x["UP"] + rng.normal(0, 1, 300),
+                      "FLAT": rng.normal(0, 1, 300),
+                      "SHORT": x["SHORT"]}, index=idx)
+    x.iloc[:250, 2] = np.nan                                  # only 50 obs -> excluded
+    out = F.per_name_slopes(x, y, lags=1, min_obs=100)
+    assert set(out.index) == {"UP", "FLAT"}
+    assert out.loc["UP", "t"] > 4 and abs(out.loc["FLAT", "t"]) < 3
+
+
+def test_shift_names_rotates_each_column_independently():
+    idx = _idx(100)
+    X = pd.DataFrame({"a": np.arange(100.0), "b": np.arange(100.0) * 2}, index=idx)
+    Xs = F.shift_names(X, np.random.default_rng(0), min_shift=10)
+    for c in X:
+        assert sorted(Xs[c]) == sorted(X[c])                   # same values, rotated
+        k = next(s for s in range(100) if np.array_equal(np.roll(X[c].to_numpy(), s), Xs[c].to_numpy()))
+        assert 10 <= k <= 90                                   # at least min_shift from alignment
+    with pytest.raises(ValueError):
+        F.shift_names(X.iloc[:15], np.random.default_rng(0), min_shift=10)
+
+
+def test_placebo_slope_t_is_centred_even_when_real_relation_exists():
+    rng = np.random.default_rng(12)
+    idx, cols = _idx(400), [f"n{i}" for i in range(20)]
+    X = pd.DataFrame(rng.normal(size=(400, 20)), index=idx, columns=cols)
+    Y = 0.4 * X + pd.DataFrame(rng.normal(size=(400, 20)), index=idx, columns=cols)
+    real = F.per_name_slopes(X, Y, lags=1)["t"]
+    null = F.placebo_slope_t(X, Y, lags=1, k=5, seed=1)
+    assert real.mean() > 5
+    assert abs(null.mean()) < 0.5 and 0.6 < null.std() < 1.5
+    assert len(null) == 5 * 20
+
+
+def test_selection_pnl_rewards_persistent_name_directions_only():
+    rng = np.random.default_rng(13)
+    idx, n = _idx(600), 40
+    cols = [f"n{i}" for i in range(n)]
+    X = pd.DataFrame(rng.normal(size=(600, n)), index=idx, columns=cols)
+    direction = np.where(np.arange(n) % 2 == 0, 1.0, -1.0)      # half the names up, half down
+    Y = X * (0.5 * direction) + pd.DataFrame(rng.normal(size=(600, n)), index=idx, columns=cols)
+    est, test = np.arange(600) < 300, np.arange(600) >= 300
+    pnl, nsel = F.selection_pnl(X, Y, est, test, lags=1)
+    assert nsel == n and pnl.mean() > 0.3                      # own direction carries over
+    pooled, _ = F.selection_pnl(X, Y, est, test, lags=1, orient="pooled")
+    assert abs(pooled.mean()) < 0.1                            # one common direction does not
+    timing, _ = F.selection_pnl(X, Y, est, test, lags=1, demean=True)
+    assert timing.mean() > 0.3
+    noise = pd.DataFrame(rng.normal(size=(600, n)), index=idx, columns=cols)
+    p0, _ = F.selection_pnl(X, noise, est, test, lags=1, sel_t=0.0)
+    assert abs(p0.mean()) < 0.1
+    none, k = F.selection_pnl(X, noise, est, test, lags=1, sel_t=99)
+    assert none.empty and k == 0

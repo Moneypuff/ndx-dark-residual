@@ -26,6 +26,11 @@ Sections
                  and the conditional "dark accumulation into weakness" double sort.
 4. Volatility    the same signals against FUTURE realized volatility, controlling for
                  past volatility, volume and absolute returns.
+6. By name       (--by-name) does DPI work better on certain names? Each name's own
+                 time-series slope vs a circular-shift placebo, persistence across halves,
+                 out-of-sample name selection (with its own placebo), characteristic
+                 interactions (size, off-exchange share, structural DPI level, volatility,
+                 DPI persistence, price echo), and an NDX-100 name table.
 5. ATS (--ats)   FINRA's weekly OTC-transparency totals split off-exchange volume into
                  ATS dark pools (institutional) vs wholesaler internalization (retail):
                  the most literal "relative darkness". Abnormal ATS share / volume vs
@@ -40,6 +45,7 @@ Usage
     python dark_flow_study.py --universe russell    # IWM holdings, liquid names only
     python dark_flow_study.py --no-sqz              # skip the SqueezeMetrics DIX download
     python dark_flow_study.py --ats                 # add the ATS-vs-internalizer section
+    python dark_flow_study.py --by-name             # add the per-name heterogeneity section
 
 Universes use CURRENT index membership (survivorship: names that left the index are
 missing), which flatters average returns but matters far less for the cross-sectional
@@ -47,7 +53,9 @@ signal spreads tested here.
 """
 import argparse
 import io
+import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import numpy as np
@@ -102,6 +110,68 @@ def load_sqz_dix(timeout=60):
         return df if {"price", "dix"} <= set(df.columns) else None
     except Exception:  # noqa: BLE001
         return None
+
+
+_SS_NS = "{urn:schemas-microsoft-com:office:spreadsheet}"
+# the dashboard's static NDX labels -> iShares' GICS sector names
+_NDX_SECTOR_ALIASES = {"Technology": "Information Technology", "Cons. Discretionary": "Consumer Discretionary",
+                       "Cons. Staples": "Consumer Staples", "Comm. Services": "Communication"}
+
+
+def sectors_from_spreadsheetml(text):
+    """{ticker: sector} from an iShares SpreadsheetML holdings document's 'Sector' column
+    (equity rows only); {} when the body isn't parseable or has no such column."""
+    text = re.sub(r"&(?!amp;|lt;|gt;|quot;|apos;|#)", "&amp;", text or "")
+    try:
+        root = ET.fromstring(text)
+    except Exception:  # noqa: BLE001
+        return {}
+
+    def cells(row):
+        out, col = {}, 0
+        for c in row.findall(_SS_NS + "Cell"):
+            i = c.get(_SS_NS + "Index")
+            col = int(i) if i else col + 1
+            d = c.find(_SS_NS + "Data")
+            out[col] = d.text if d is not None else None
+        return out
+    rows = [cells(r) for r in root.iter(_SS_NS + "Row")]
+    hi = next((i for i, r in enumerate(rows) if "Ticker" in r.values()), None)
+    if hi is None:
+        return {}
+    hdr = rows[hi]
+    tcol = next(k for k, v in hdr.items() if v == "Ticker")
+    scol = next((k for k, v in hdr.items() if v == "Sector"), None)
+    acol = next((k for k, v in hdr.items() if v == "Asset Class"), None)
+    if scol is None:
+        return {}
+    out = {}
+    for r in rows[hi + 1:]:
+        t = (r.get(tcol) or "").strip().upper()
+        if not N._TICKER_RE.match(t) or (acol and (r.get(acol) or "").strip().lower() != "equity"):
+            continue
+        if (r.get(scol) or "").strip():
+            out[t] = r[scol].strip()
+    return out
+
+
+def universe_sectors(universe):
+    """{ticker: GICS sector} for the universe: iShares holdings' Sector column, with the
+    dashboard's static NDX map filling any NDX-only names. {} if the holdings can't be read."""
+    out = {}
+    pid = {"spx_ndx": N.IVV_PORTFOLIO_ID, "russell": N.IWM_PORTFOLIO_ID}.get(universe)
+    if pid:
+        try:
+            r = N.make_session(1).get(N.ISHARES_DOC_TMPL.format(pid=pid), timeout=60,
+                                      headers={"User-Agent": N._YF_UA})
+            if r.status_code == 200:
+                out = sectors_from_spreadsheetml(r.text)
+        except Exception:  # noqa: BLE001
+            out = {}
+    if universe in ("spx_ndx", "ndx"):
+        for t, sec in N.TICKER_SECTOR.items():
+            out.setdefault(t, _NDX_SECTOR_ALIASES.get(sec, sec))
+    return out
 
 
 def build_signals(P, names, window=WINDOW, base=BASE):
@@ -346,6 +416,128 @@ def section_vol(lines, sig, base_ctl, adj, dates, min_names):
 
 
 # ----------------------------------------------------------------------------
+# 6. By name -- does DPI work better on certain names?
+# ----------------------------------------------------------------------------
+def market_relative_fwd(adj, sig, h, dates):
+    """Forward log return (entered at t+1) minus that date's mean over the names that have a
+    signal -- the per-name outcome, free of the market's move."""
+    y = F.forward_log_return(adj, h, lag=1).where(sig.notna())
+    return y.sub(y.mean(axis=1), axis=0).reindex(dates)
+
+
+def section_by_name(lines, sig, ctl, adj, dates, names, dpi1, ret_1d, vols, min_names,
+                    k_placebo=100, seed=0, sector_map=None):
+    lines.append("6. BY NAME -- does DPI work better on certain names? Each name's own weekly time-series "
+                 "slope of market-relative forward return on its signal (pp per 1 SD, Newey-West t)")
+    if len(dates) < 200:          # per-name slopes need ~3 years; halves ~80 weeks each
+        lines.append(f"   (only {len(dates)} weekly dates -- too few for per-name tests)\n")
+        return
+    mid = dates[len(dates) // 2]
+    H1, H2 = np.asarray(dates < mid), np.asarray(dates >= mid)
+    rng = np.random.default_rng(seed)
+    tables = {}
+    for skey in ("d_5d", "dpi_z"):
+        X = sig[skey].reindex(dates)
+        for h in HORIZONS:
+            lags = max(1, h // 5)
+            Y = market_relative_fwd(adj, sig[skey], h, dates)
+            full = F.per_name_slopes(X, Y, lags)
+            null = F.placebo_slope_t(X, Y, lags, k=40, seed=seed)
+            t = full["t"].to_numpy()
+            h1 = F.per_name_slopes(X[H1], Y[H1], lags, min_obs=80)
+            h2 = F.per_name_slopes(X[H2], Y[H2], lags, min_obs=80)
+            both = h1.join(h2, lsuffix="_1", rsuffix="_2", how="inner")
+            rho = both["b_1"].corr(both["b_2"], method="spearman")
+            top = both[both["t_1"].rank(pct=True) > 0.8]
+            lines.append(f"   {skey} h{h}: {len(full)} names | SD of t: real {t.std():.2f} vs placebo {null.std():.2f} | "
+                         f"|t|>2 real {np.mean(np.abs(t) > 2):.1%} vs placebo {np.mean(np.abs(null) > 2):.1%} | "
+                         f"|t|>3 {int((np.abs(t) > 3).sum())} names vs {np.mean(np.abs(null) > 3) * len(t):.0f} by chance")
+            lines.append(f"      persistence: Spearman(slope 1st half, slope 2nd half) {rho:+.3f} (n={len(both)}); "
+                         f"top-quintile-by-1st-half-t names: t {top['t_1'].mean():+.2f} -> {top['t_2'].mean():+.2f}")
+            cells = []
+            for dm in (False, True):
+                pnl, nsel = F.selection_pnl(X, Y, H1, H2, lags, demean=dm)
+                m, tt, _ = F.newey_west_t(pnl, lags)
+                nt = [F.newey_west_t(F.selection_pnl(F.shift_names(X, rng), Y, H1, H2, lags, demean=dm)[0],
+                                     lags)[1] for _ in range(k_placebo)]
+                beat = float(np.nanmean(np.array(nt) < tt)) if np.isfinite(tt) else np.nan
+                cells.append(f"{'timing-only' if dm else 'as traded'} {fmt(m, tt).strip()} beats {beat:.0%} of placebo")
+            pooled, _ = F.selection_pnl(X, Y, H1, H2, lags, orient="pooled")
+            pm, pt, _ = F.newey_west_t(pooled, lags)
+            lines.append(f"      trade 1st-half |t|>1.5 names ({nsel}) in their own direction in the 2nd half: "
+                         + "; ".join(cells) + f"; same names, one common direction {fmt(pm, pt).strip()}")
+            tables[(skey, h)] = (full, both, null)
+    # characteristic interactions: signal x characteristic in the full cross-section
+    sh, tv, vol = vols
+    abn = dpi1 - dpi1.rolling(60, min_periods=20).mean()
+    chars = {"size ($ADV)": ctl["log_dollar_adv"], "off-exchange share": F.dark_share(tv, vol, window=126),
+             "structural DPI level": sig["dpi_level"], "volatility": ctl["rv_21d"],
+             "DPI persistence": abn.rolling(252, min_periods=126).corr(abn.shift(1)),
+             "price echo": abn.rolling(252, min_periods=126).corr(ret_1d)}
+    C = {k: F.xs_rank(v) for k, v in ctl.items()}
+    lines.append("   characteristic x signal interaction t (full cross-section, +ctrl):")
+    for skey in ("d_5d", "dpi_z"):
+        for h in HORIZONS:
+            Yf = F.forward_log_return(adj, h, lag=1)
+            S_ = F.xs_rank(sig[skey])
+            cells = []
+            for cname, ch in chars.items():
+                Cr = F.xs_rank(ch.where(sig[skey].notna()))
+                res, _ = F.fama_macbeth(Yf, {"s": S_, "c": Cr, "sxc": S_ * Cr, **C}, dates,
+                                        min_names=min_names, nw_lags=max(1, h // 5))
+                cells.append(f"{cname} {res.loc['sxc', 't']:+.1f}")
+            lines.append(f"      {skey} h{h}: " + " | ".join(cells))
+    lvl = sig["dpi_level"].where(sig["dpi_z"].notna()).rank(axis=1, pct=True)
+    for h in HORIZONS:
+        Yf = F.forward_log_return(adj, h, lag=1)
+        cells = []
+        for lab, (lo, hi) in (("structurally lit tercile", (0, 1 / 3)), ("structurally dark tercile", (2 / 3, 1.01))):
+            m = (lvl > lo) & (lvl <= hi)
+            Xs = {"s": F.xs_rank(sig["dpi_z"].where(m)), **{k: F.xs_rank(ctl[k].where(m)) for k in ctl}}
+            parts = []
+            for dd in (dates, dates[dates < mid], dates[dates >= mid]):
+                res, _ = F.fama_macbeth(Yf, Xs, dd, min_names=max(20, min_names // 3), nw_lags=max(1, h // 5))
+                parts.append(fmt(res.loc["s", "coef"], res.loc["s", "t"]).strip())
+            cells.append(f"{lab}: {parts[0]} [halves {parts[1]} / {parts[2]}]")
+        lines.append(f"   dpi_z h{h} within " + " | ".join(cells))
+    groups = {}
+    for t in names:
+        if (sector_map or {}).get(t):
+            groups.setdefault(sector_map[t], []).append(t)
+    groups = {k: v for k, v in sorted(groups.items()) if len(v) >= 20}
+    if groups:
+        h = max(HORIZONS)
+        Yf = F.forward_log_return(adj, h, lag=1)
+        for skey in ("d_5d", "dpi_z"):
+            cells, n2 = [], 0
+            for secname, cols in groups.items():
+                m = pd.DataFrame(False, index=sig[skey].index, columns=sig[skey].columns)
+                m[[c for c in cols if c in m.columns]] = True
+                Xs = {"s": F.xs_rank(sig[skey].where(m)), **{k: F.xs_rank(ctl[k].where(m)) for k in ctl}}
+                res, _ = F.fama_macbeth(Yf, Xs, dates, min_names=12, nw_lags=max(1, h // 5))
+                c, t = res.loc["s", "coef"], res.loc["s", "t"]
+                n2 += int(abs(t) >= 2) if np.isfinite(t) else 0
+                cells.append(f"{secname} ({len(cols)}) {fmt(c, t).strip()}")
+            lines.append(f"   {skey} h{h} by sector (+ctrl), {n2} of {len(groups)} at |t|>=2: " + " | ".join(cells))
+    ndx = [t for t in N.NDX100 if t in names]
+    if len(ndx) >= 50:
+        full, both, null = tables[("dpi_z", max(HORIZONS))]
+        d = full.join(both[["t_1", "t_2"]], how="left").reindex([t for t in ndx if t in full.index])
+        p_up, p_dn = np.mean(null > 1), np.mean(null < -1)
+        agree = d.dropna(subset=["t_1", "t_2"])
+        same = int(((agree["t_1"] > 1) & (agree["t_2"] > 1)).sum() + ((agree["t_1"] < -1) & (agree["t_2"] < -1)).sum())
+        d = d.sort_values("t")
+        pick = pd.concat([d.head(4), d.tail(4)])
+        lines.append(f"   NDX-100, dpi_z h{max(HORIZONS)}: {len(d)} names, |t|>2: {int((d['t'].abs() > 2).sum())} "
+                     f"(chance {np.mean(np.abs(null) > 2) * len(d):.1f}); |t|>1 the same way in both halves: {same} "
+                     f"(chance {len(agree) * (p_up ** 2 + p_dn ** 2):.1f})")
+        tf = lambda v: f"{v:+.1f}" if np.isfinite(v) else "--"  # noqa: E731
+        lines.append("      strongest either way (t full / 1st half / 2nd half): " + ", ".join(
+            f"{i} {tf(r.t)}/{tf(r.t_1)}/{tf(r.t_2)}" for i, r in pick.iterrows()))
+    lines.append("")
+
+
+# ----------------------------------------------------------------------------
 # 5. ATS vs internalizer split (FINRA OTC transparency, weekly)
 # ----------------------------------------------------------------------------
 def fetch_otc_weekly(symbols, cache_dir=None, workers=4, retries=5):
@@ -475,6 +667,10 @@ def main():
     ap.add_argument("--ats", action="store_true",
                     help="add the FINRA OTC-transparency ATS-vs-internalizer section (~1,000 API calls "
                          "on first run, cached after)")
+    ap.add_argument("--by-name", action="store_true",
+                    help="add the per-name heterogeneity section (placebo loops: a few minutes)")
+    ap.add_argument("--placebo-k", type=int, default=100,
+                    help="placebo draws for the --by-name name-selection test")
     ap.add_argument("--summary-out", default="")
     ap.add_argument("--csv-out", default="", help="per-signal results table")
     args = ap.parse_args()
@@ -517,6 +713,9 @@ def main():
     if args.ats:
         A = fetch_otc_weekly(names, cache_dir=args.cache_dir or None)
         section_ats(lines, A, P, names, ctl, min_names)
+    if args.by_name:
+        section_by_name(lines, sig, ctl, adj, dates, names, dpi1, ret_1d, vols, min_names,
+                        k_placebo=args.placebo_k, sector_map=universe_sectors(args.universe))
     text = "\n".join(lines)
     print(text)
     if args.summary_out:
