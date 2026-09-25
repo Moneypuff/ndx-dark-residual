@@ -38,14 +38,20 @@ flow recover it?
    a bullish ATS-volume surprise appears only in 2024–26, and a *bearish*
    structural-darkness effect only in 2023–26. All sit within what several hundred
    correlated tests produce by chance — a watch list, not a strategy.
-5. **Dark flow does carry volatility information** — abnormal off-exchange share
+5. **It does not work better on particular large-cap or NDX names.** Per-name results
+   match a placebo almost exactly — about one name in twelve looks significant at one
+   month from noise alone — and 2019–22's "working" names stop working in 2023–26.
+   Small caps are the exception: names picked on 2019–22 and traded in their own
+   direction beat every placebo run in 2023–26 (t = 3.0), and abnormal dark buying
+   leans bullish in *structurally dark* names in both universes (§5f).
+6. **Dark flow does carry volatility information** — abnormal off-exchange share
    predicts lower future realized vol (t ≈ −8) — but the effect is ~4% of vol,
    too small to trade on its own.
 
 Reproduce (FINRA + Yahoo, no key; ~5 min per universe with a warm cache):
 ```
-python dark_flow_study.py --ats --summary-out dark_flow_summary.txt --csv-out dark_flow_signals.csv
-python dark_flow_study.py --universe russell --no-sqz     # IWM holdings, liquid names
+python dark_flow_study.py --ats --by-name --summary-out dark_flow_summary.txt --csv-out dark_flow_signals.csv
+python dark_flow_study.py --universe russell --no-sqz --by-name   # IWM holdings, liquid names
 python dark_flow_study.py --universe ndx --no-sqz         # NDX-100 only
 ```
 `dark_flow.py` holds the measures and statistics (tested in `tests/test_dark_flow.py`);
@@ -162,7 +168,7 @@ could be expected to carry.
 
 ## 3. Anatomy of name-level DPI — why the residual can't inherit it
 
-518 S&P/NDX names, 1,004,069 name-days, daily DPI = FINRA short / total off-exchange:
+518 S&P/NDX names, 1,004,585 name-days, daily DPI = FINRA short / total off-exchange:
 
 | component | share of variance | SD |
 |---|---:|---:|
@@ -332,6 +338,82 @@ Shifting flow into or out of dark pools carries nothing. Unusually *heavy* dark-
 volume has leaned bullish, but only in the last two years — before May 2024 it was
 flat — so it too is a watch-list item rather than a finding.
 
+### 5f. Does DPI work better on certain names?
+
+Two ways to ask it: pick **names** (each name's own history), or pick
+**characteristics** (what kind of name). `python dark_flow_study.py --by-name` runs
+both.
+
+**Picking names.** Each name gets its own weekly time-series slope of
+market-relative forward return on its own signal, with a Newey-West t — the question
+the dashboard's per-name decile bars answer by eye. The baseline is a placebo: every
+name's signal circularly shifted in time 40 times (its autocorrelation kept, its
+alignment with returns destroyed). Then the practical test: select the names with
+|t| > 1.5 in 2019–22 and trade each *in its own direction* in 2023–26, scored against
+100 placebo runs of the same procedure.
+
+| universe, signal, horizon | SD of per-name t, real / placebo | names past \|t\| = 2, real / placebo | rank-corr of slopes, 2019–22 vs 2023–26 | trade 2019–22's names in their own direction in 2023–26 |
+|---|---:|---:|---:|---|
+| S&P ∪ NDX, D, 1 month | 1.15 / 1.14 | 8.7% / 8.1% | +0.06 | +0.25 (t 1.5) — the same names in *one common* direction do +0.19: it's the bearish level effect, not name picking |
+| S&P ∪ NDX, `dpi_z`, 1 week | 0.99 / 1.01 | 4.5% / 4.9% | −0.11 | −0.00 (t −0.0), beats 47% of placebo runs |
+| S&P ∪ NDX, `dpi_z`, 1 month | 1.15 / 1.15 | 8.0% / 8.2% | +0.05 | +0.10 (t 1.2), beats 77% |
+| Russell, D, 1 month | 1.23 / 1.18 | 10.5% / 8.7% | +0.07 | +0.19 (t 1.5); timing only +0.24 (t 2.8), beats 99% |
+| Russell, `dpi_z`, 1 week | 1.06 / 1.00 | 5.5% / 4.6% | +0.04 | +0.06 (t 1.4), beats 87% |
+| **Russell, `dpi_z`, 1 month** | 1.19 / 1.13 | 9.6% / 7.4% | +0.02 | **+0.29 (t 3.0), beats all 100 placebo runs**; timing only t 3.3; one common direction −0.04 |
+
+- **Large caps: no.** How many names "work" matches the placebo almost exactly, and
+  the names that worked in 2019–22 were back to zero in 2023–26 (top quintile's
+  average t: +1.6 → +0.2). Mind the base rate: with overlapping one-month returns,
+  about **one name in twelve clears |t| = 2 under the placebo** — ~40 S&P names that
+  look like DPI works on them from noise alone.
+- **NDX-100:** 6 names clear |t| = 2 on abnormal DPI at one month (chance: 7.6), and 8
+  keep |t| > 1 the same way in both halves (chance: 6.3). The most consistent-looking
+  — XEL, INTU and BKR negative; ROP and FAST positive; NFLX, +4.2 in 2019–22 and −0.2
+  since — are the names chance would hand you.
+- **Small caps: yes, modestly.** Per-name dispersion runs a little above chance, and
+  picking the names where abnormal DPI predicted returns in 2019–22 — long or short,
+  each in its own direction — earned +0.29pp per 1-SD position per month in 2023–26
+  (t = 3.0), better than every placebo run. It is name-specific (one common direction
+  earns −0.04) and not a static tilt (timing only, t = 3.3). But slope ranks barely
+  correlate across halves (+0.02), so it lives in a minority of names, and it is a
+  few percent a year gross on small caps whose positions turn over weekly.
+
+**Picking characteristics.** Signal × characteristic interaction t-stats in the full
+cross-section (with the usual controls; each characteristic measured on trailing
+data), one week / one month:
+
+| interaction t | size | off-exchange share | **structural DPI level** | volatility | DPI persistence | price echo |
+|---|---:|---:|---:|---:|---:|---:|
+| S&P ∪ NDX, `dpi_z` | −0.2 / −0.3 | +1.1 / +0.7 | **+2.2 / +2.3** | +0.7 / +1.5 | +1.1 / +0.3 | −2.0 / −1.2 |
+| S&P ∪ NDX, D | −1.8 / −1.3 | +0.6 / +0.4 | **+1.9 / +1.4** | −0.4 / −0.2 | +1.6 / +1.0 | −1.2 / −0.3 |
+| Russell, `dpi_z` | +2.6 / +1.0 | +0.9 / +2.0 | **+1.7 / +2.3** | +1.6 / +2.5 | +1.0 / −0.3 | −0.2 / −0.9 |
+| Russell, D | +1.1 / +0.7 | −0.1 / +0.5 | **+2.1 / +2.0** | −0.0 / −0.3 | +0.4 / −0.5 | −0.4 / −0.3 |
+
+In large caps, 3 of 24 interactions reach |t| ≈ 2 (two of them the structural-level
+one below); in small caps, 6 of 24 do, against ~1 expected at 5%. The one
+characteristic that lines up in *every* cell of both universes
+is **structural darkness** — how dark the name normally is (its trailing 126-session
+DPI level). Abnormal dark buying leans bullish in structurally dark names and
+neutral-to-bearish in structurally lit ones:
+
+| `dpi_z`, 1 month, +ctrl | structurally lit tercile | structurally dark tercile | dark tercile, 2019–22 / 2023–26 |
+|---|---:|---:|---:|
+| S&P ∪ NDX | −0.10 (−0.6) | +0.27 (+1.6) | +0.50 (+1.7) / +0.07 (+0.4) |
+| Russell | −0.13 (−0.6) | **+0.65 (+2.9)** | +0.98 (+2.9) / +0.35 (+1.2) |
+
+**Sectors add nothing.** At one month, abnormal DPI reaches |t| = 2 in 0 of 11 S&P
+sectors and 1 of 11 Russell sectors (small-cap utilities: 30 names, −0.81, t = −2.4)
+— what chance gives. The level signal is negative in 9 of 11 large-cap sectors
+(strongest in Staples and Financials, t ≈ −2.5): the broad bearish level effect of
+§5a, not a sector story.
+
+**Bottom line.** DPI does not work better on particular large-cap or NDX names. The
+dashboard's per-name decile bars will always show some names with striking patterns,
+because about one in twelve clears |t| = 2 at a one-month horizon by chance, and
+those names don't keep working. In small caps there is a real but modest name-level
+component. Its best describable form is structural darkness: abnormal dark buying in
+names that are normally dark. Like everything else here, it was strongest in 2019–22.
+
 ---
 
 ## 6. What dark flow *does* carry: volatility
@@ -361,7 +443,9 @@ standalone trade.
 
 1. **Retire the name-level dark residual as a directional signal.** Keep the grid as
    a descriptive monitor if it is useful, but plot `dpi_z` (own-σ abnormal,
-   volume-weighted DPI) rather than `D − DIX`, and say what the echo is.
+   volume-weighted DPI) rather than `D − DIX`, and say what the echo is. Don't read a
+   single name's decile bars as evidence: at one month, ~1 name in 12 looks like DPI
+   works on it by chance (§5f).
 2. **Re-run the index studies on corrected gauges.** The next nightly build uses the
    fixed dollar-DIX; `INDEX_COMOVEMENT_FINDINGS.md`'s tables were computed on
    mis-weighted gauges and its surviving family does not survive correction (§1a).
@@ -373,7 +457,10 @@ standalone trade.
    Oct 2026 → Dec 2027 before it is taken seriously: (a) small-cap "accumulation into
    weakness" (high − low `dpi_z` among past-week Russell losers, bullish, both halves),
    (b) Russell abnormal flow (`dpi_z`, bullish, 2019–22 only), (c) ATS volume surprise
-   (bullish, 2024–26 only), (d) structural darkness (bearish, 2023–26 only).
+   (bullish, 2024–26 only), (d) structural darkness (bearish, 2023–26 only), (e)
+   small-cap name selection — Russell names picked on their own `dpi_z` history and
+   traded in their own direction, rolled forward yearly — and (f) `dpi_z` within the
+   structurally dark tercile.
 5. **Better data, not better transforms, is what would move this.** Daily FINRA short
    ratios mix market-maker inventory mechanics with customer flow and cannot separate
    informed from uninformed orders. Trade-level retail identification (sub-penny price

@@ -2,26 +2,26 @@ RELATIVE-DARKNESS STUDY -- universe spx_ndx (518 names), FINRA 2018-08-01 -> 202
 
 1. INDEX LEVEL -- does the dark gauge predict the index? (pp of forward return per 1 SD of the 5d gauge; Newey-West t, lags = horizon)
    Split-basis check vs SqueezeMetrics' published DIX (same S&P-style universe):
-     old: as-traded shares x split-adjusted price   level MAE 0.0063   corr of daily changes 0.945   (n=2048)
-     fixed: shares on Yahoo's split basis           level MAE 0.0038   corr of daily changes 0.975   (n=2048)
-   reconstructed dollar-DIX vs SPY  [2018-08-03 -> 2026-09-17]
+     old: as-traded shares x split-adjusted price   level MAE 0.0063   corr of daily changes 0.945   (n=2049)
+     fixed: shares on Yahoo's split basis           level MAE 0.0038   corr of daily changes 0.975   (n=2049)
+   reconstructed dollar-DIX vs SPY  [2018-08-03 -> 2026-09-18]
        h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
-       5    +0.090 (+0.8)   +0.063 (+0.6)   -0.027 (-0.2)   -0.105 (-0.8)   +1.4
+       5    +0.091 (+0.8)   +0.064 (+0.6)   -0.026 (-0.2)   -0.104 (-0.8)   +1.4
       21    +0.331 (+0.9)   +0.222 (+0.6)   -0.160 (-0.5)   -0.526 (-1.7)   +3.8
-      63    +0.194 (+0.2)   -0.264 (-0.3)   -1.389 (-1.5)   -2.362 (-3.0)   +4.4
-   SqueezeMetrics DIX vs SPX, full history  [2011-05-04 -> 2026-09-17]
+      63    +0.193 (+0.2)   -0.265 (-0.3)   -1.390 (-1.5)   -2.362 (-3.0)   +4.4
+   SqueezeMetrics DIX vs SPX, full history  [2011-05-04 -> 2026-09-18]
        h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
-       5    +0.103 (+1.4)   +0.061 (+0.8)   +0.029 (+0.4)   -0.033 (-0.4)   +1.1
+       5    +0.103 (+1.4)   +0.061 (+0.8)   +0.029 (+0.4)   -0.032 (-0.4)   +1.1
       21    +0.420 (+1.8)   +0.229 (+0.9)   +0.168 (+0.8)   -0.119 (-0.6)   +2.3
-      63    +0.651 (+1.2)   +0.077 (+0.1)   -0.369 (-0.6)   -1.117 (-2.1)   +3.8
-   SqueezeMetrics DIX vs SPX, FINRA window (2018-08->)  [2018-08-03 -> 2026-09-17]
+      63    +0.651 (+1.2)   +0.077 (+0.1)   -0.370 (-0.6)   -1.117 (-2.1)   +3.8
+   SqueezeMetrics DIX vs SPX, FINRA window (2018-08->)  [2018-08-03 -> 2026-09-18]
        h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
-       5    +0.101 (+0.8)   +0.079 (+0.7)   -0.012 (-0.1)   -0.085 (-0.7)   +1.4
-      21    +0.430 (+1.0)   +0.349 (+0.8)   -0.018 (-0.1)   -0.341 (-1.1)   +3.8
-      63    +0.360 (+0.4)   -0.020 (-0.0)   -1.116 (-1.2)   -1.981 (-2.5)   +4.5
+       5    +0.102 (+0.8)   +0.079 (+0.7)   -0.011 (-0.1)   -0.084 (-0.7)   +1.4
+      21    +0.429 (+1.0)   +0.349 (+0.8)   -0.018 (-0.1)   -0.341 (-1.1)   +3.8
+      63    +0.359 (+0.4)   -0.021 (-0.0)   -1.117 (-1.2)   -1.980 (-2.5)   +4.5
 
 2. STRUCTURE -- what per-name DPI is made of
-   1,004,069 name-days, 518 names. Variance shares: structural level 13.4% | common (market) 6.7% | idiosyncratic 80.6%
+   1,004,585 name-days, 518 names. Variance shares: structural level 13.4% | common (market) 6.7% | idiosyncratic 80.6%
    SDs: structural 0.053, common 0.0372, idio 0.1294. Idio ACF lag1 +0.54, lag2 +0.44, lag5 +0.33, lag10 +0.25, lag20 +0.19, lag60 +0.12
    AR(1)+noise fit: 66% of idio variance persistent, rho 0.81 (half-life 3.3 sessions); the rest is day-to-day flow-composition noise
    Price echo -- xs rank corr of abnormal DPI_t with the name's own return at t+k:  k=-5: +0.021  k=-2: +0.064  k=-1: +0.117  k=+0: +0.112  k=+1: -0.018  k=+2: -0.001  k=+5: +0.001
@@ -73,20 +73,45 @@ RELATIVE-DARKNESS STUDY -- universe spx_ndx (518 names), FINRA 2018-08-01 -> 202
    ats_of_volume_z   h5 -0.019 (-0.3) +ctrl +0.014 (+0.2) | h21 +0.097 (+0.5) +ctrl +0.094 (+0.6) | h21 +ctrl halves +0.047 (+0.3) / +0.137 (+0.6) (split 2024-05-21)
    ats_vol_surprise  h5 +0.084 (+1.1) +ctrl +0.168 (+2.5) | h21 +0.168 (+0.7) +ctrl +0.357 (+1.9) | h21 +ctrl halves +0.066 (+0.3) / +0.626 (+2.4) (split 2024-05-21)
 
+6. BY NAME -- does DPI work better on certain names? Each name's own weekly time-series slope of market-relative forward return on its signal (pp per 1 SD, Newey-West t)
+   d_5d h5: 496 names | SD of t: real 0.99 vs placebo 0.99 | |t|>2 real 4.2% vs placebo 4.3% | |t|>3 3 names vs 1 by chance
+      persistence: Spearman(slope 1st half, slope 2nd half) -0.016 (n=483); top-quintile-by-1st-half-t names: t +1.33 -> -0.09
+      trade 1st-half |t|>1.5 names (68) in their own direction in the 2nd half: as traded +0.050 (+1.0) beats 92% of placebo; timing-only +0.010 (+0.3) beats 62% of placebo; same names, one common direction -0.018 (-0.3)
+   d_5d h21: 494 names | SD of t: real 1.15 vs placebo 1.14 | |t|>2 real 8.7% vs placebo 8.1% | |t|>3 3 names vs 3 by chance
+      persistence: Spearman(slope 1st half, slope 2nd half) +0.058 (n=483); top-quintile-by-1st-half-t names: t +1.55 -> +0.00
+      trade 1st-half |t|>1.5 names (105) in their own direction in the 2nd half: as traded +0.251 (+1.5) beats 97% of placebo; timing-only +0.072 (+0.7) beats 90% of placebo; same names, one common direction +0.191 (+1.3)
+   dpi_z h5: 490 names | SD of t: real 0.99 vs placebo 1.01 | |t|>2 real 4.5% vs placebo 4.9% | |t|>3 0 names vs 2 by chance
+      persistence: Spearman(slope 1st half, slope 2nd half) -0.112 (n=476); top-quintile-by-1st-half-t names: t +1.45 -> -0.15
+      trade 1st-half |t|>1.5 names (70) in their own direction in the 2nd half: as traded -0.000 (-0.0) beats 47% of placebo; timing-only +0.002 (+0.1) beats 49% of placebo; same names, one common direction -0.007 (-0.2)
+   dpi_z h21: 490 names | SD of t: real 1.15 vs placebo 1.15 | |t|>2 real 8.0% vs placebo 8.2% | |t|>3 4 names vs 5 by chance
+      persistence: Spearman(slope 1st half, slope 2nd half) +0.049 (n=476); top-quintile-by-1st-half-t names: t +1.63 -> +0.17
+      trade 1st-half |t|>1.5 names (92) in their own direction in the 2nd half: as traded +0.099 (+1.2) beats 77% of placebo; timing-only +0.096 (+1.2) beats 70% of placebo; same names, one common direction -0.028 (-0.3)
+   characteristic x signal interaction t (full cross-section, +ctrl):
+      d_5d h5: size ($ADV) -1.8 | off-exchange share +0.6 | structural DPI level +1.9 | volatility -0.4 | DPI persistence +1.6 | price echo -1.2
+      d_5d h21: size ($ADV) -1.3 | off-exchange share +0.4 | structural DPI level +1.4 | volatility -0.2 | DPI persistence +1.0 | price echo -0.3
+      dpi_z h5: size ($ADV) -0.2 | off-exchange share +1.1 | structural DPI level +2.2 | volatility +0.7 | DPI persistence +1.1 | price echo -2.0
+      dpi_z h21: size ($ADV) -0.3 | off-exchange share +0.7 | structural DPI level +2.3 | volatility +1.5 | DPI persistence +0.3 | price echo -1.2
+   dpi_z h5 within structurally lit tercile: -0.044 (-0.7) [halves +0.030 (+0.4) / -0.110 (-1.2)] | structurally dark tercile: +0.068 (+1.1) [halves +0.025 (+0.3) / +0.105 (+1.2)]
+   dpi_z h21 within structurally lit tercile: -0.096 (-0.6) [halves +0.174 (+0.7) / -0.339 (-1.5)] | structurally dark tercile: +0.274 (+1.6) [halves +0.498 (+1.7) / +0.073 (+0.4)]
+   d_5d h21 by sector (+ctrl), 2 of 11 at |t|>=2: Communication (24) -0.559 (-0.9) | Consumer Discretionary (49) -0.320 (-0.6) | Consumer Staples (33) -0.921 (-2.4) | Energy (21) +0.029 (+0.1) | Financials (75) -0.561 (-2.5) | Health Care (62) -0.380 (-1.2) | Industrials (87) -0.528 (-1.7) | Information Technology (81) -0.337 (-0.9) | Materials (25) -0.865 (-1.9) | Real Estate (30) -0.575 (-1.7) | Utilities (31) +0.247 (+0.8)
+   dpi_z h21 by sector (+ctrl), 0 of 11 at |t|>=2: Communication (24) +0.372 (+0.7) | Consumer Discretionary (49) -0.179 (-0.5) | Consumer Staples (33) -0.210 (-0.7) | Energy (21) +0.883 (+1.1) | Financials (75) +0.104 (+0.6) | Health Care (62) -0.470 (-1.8) | Industrials (87) +0.077 (+0.3) | Information Technology (81) -0.160 (-0.5) | Materials (25) -0.625 (-1.8) | Real Estate (30) -0.251 (-0.9) | Utilities (31) +0.328 (+1.2)
+   NDX-100, dpi_z h21: 93 names, |t|>2: 6 (chance 7.6); |t|>1 the same way in both halves: 8 (chance 6.3)
+      strongest either way (t full / 1st half / 2nd half): XEL -2.0/-1.9/-1.0, INTU -2.0/-1.0/-1.8, BKR -1.9/-1.4/-1.3, LITE -1.8/-0.8/-1.7, PLTR +2.0/--/--, ROP +2.2/+1.3/+1.9, NFLX +2.3/+4.2/-0.2, FAST +2.3/+1.0/+2.2
+
 
 ==================================================================================
 
 RELATIVE-DARKNESS STUDY -- universe russell (1972 names), FINRA 2018-08-01 -> 2026-09-25
 
 1. INDEX LEVEL -- does the dark gauge predict the index? (pp of forward return per 1 SD of the 5d gauge; Newey-West t, lags = horizon)
-   reconstructed dollar-DIX vs IWM  [2018-08-03 -> 2026-09-17]
+   reconstructed dollar-DIX vs IWM  [2018-08-03 -> 2026-09-18]
        h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
-       5    +0.096 (+0.7)   +0.155 (+1.0)   -0.003 (-0.0)   +0.013 (+0.1)   +2.5
-      21    +0.784 (+1.3)   +0.969 (+1.6)   +0.425 (+0.8)   +0.433 (+0.7)   +5.4
-      63    +1.614 (+1.2)   +1.690 (+1.4)   +0.336 (+0.3)   +0.118 (+0.1)   +4.7
+       5    +0.095 (+0.7)   +0.154 (+1.0)   -0.004 (-0.0)   +0.012 (+0.1)   +2.5
+      21    +0.778 (+1.3)   +0.964 (+1.6)   +0.420 (+0.7)   +0.429 (+0.7)   +5.4
+      63    +1.608 (+1.2)   +1.684 (+1.4)   +0.331 (+0.3)   +0.113 (+0.1)   +4.7
 
 2. STRUCTURE -- what per-name DPI is made of
-   3,125,828 name-days, 1972 names. Variance shares: structural level 10.6% | common (market) 3.4% | idiosyncratic 87.8%
+   3,127,791 name-days, 1972 names. Variance shares: structural level 10.6% | common (market) 3.4% | idiosyncratic 87.7%
    SDs: structural 0.058, common 0.0327, idio 0.1657. Idio ACF lag1 +0.43, lag2 +0.35, lag5 +0.26, lag10 +0.21, lag20 +0.16, lag60 +0.09
    AR(1)+noise fit: 52% of idio variance persistent, rho 0.82 (half-life 3.5 sessions); the rest is day-to-day flow-composition noise
    Price echo -- xs rank corr of abnormal DPI_t with the name's own return at t+k:  k=-5: +0.000  k=-2: +0.013  k=-1: +0.038  k=+0: +0.044  k=+1: +0.002  k=+2: +0.003  k=+5: +0.002
@@ -132,20 +157,43 @@ RELATIVE-DARKNESS STUDY -- universe russell (1972 names), FINRA 2018-08-01 -> 20
    dark_imbalance  h5: -0.001 (-0.2)  h21: -0.014 (-3.8)   (log-RV spread, lowest -> highest ranked)
    resid_reg       h5: +0.001 (+0.2)  h21: -0.012 (-3.3)   (log-RV spread, lowest -> highest ranked)
 
+6. BY NAME -- does DPI work better on certain names? Each name's own weekly time-series slope of market-relative forward return on its signal (pp per 1 SD, Newey-West t)
+   d_5d h5: 960 names | SD of t: real 1.03 vs placebo 1.01 | |t|>2 real 4.9% vs placebo 4.7% | |t|>3 2 names vs 3 by chance
+      persistence: Spearman(slope 1st half, slope 2nd half) +0.029 (n=702); top-quintile-by-1st-half-t names: t +1.44 -> +0.00
+      trade 1st-half |t|>1.5 names (104) in their own direction in the 2nd half: as traded +0.018 (+0.3) beats 66% of placebo; timing-only +0.055 (+1.3) beats 85% of placebo; same names, one common direction -0.068 (-1.1)
+   d_5d h21: 955 names | SD of t: real 1.23 vs placebo 1.18 | |t|>2 real 10.5% vs placebo 8.7% | |t|>3 13 names vs 12 by chance
+      persistence: Spearman(slope 1st half, slope 2nd half) +0.067 (n=699); top-quintile-by-1st-half-t names: t +1.79 -> +0.01
+      trade 1st-half |t|>1.5 names (175) in their own direction in the 2nd half: as traded +0.192 (+1.5) beats 88% of placebo; timing-only +0.235 (+2.8) beats 99% of placebo; same names, one common direction +0.054 (+0.3)
+   dpi_z h5: 919 names | SD of t: real 1.06 vs placebo 1.00 | |t|>2 real 5.5% vs placebo 4.6% | |t|>3 5 names vs 2 by chance
+      persistence: Spearman(slope 1st half, slope 2nd half) +0.035 (n=659); top-quintile-by-1st-half-t names: t +1.46 -> +0.09
+      trade 1st-half |t|>1.5 names (98) in their own direction in the 2nd half: as traded +0.063 (+1.4) beats 87% of placebo; timing-only +0.050 (+1.1) beats 88% of placebo; same names, one common direction -0.048 (-0.9)
+   dpi_z h21: 912 names | SD of t: real 1.19 vs placebo 1.13 | |t|>2 real 9.6% vs placebo 7.4% | |t|>3 5 names vs 8 by chance
+      persistence: Spearman(slope 1st half, slope 2nd half) +0.017 (n=657); top-quintile-by-1st-half-t names: t +1.64 -> +0.00
+      trade 1st-half |t|>1.5 names (133) in their own direction in the 2nd half: as traded +0.294 (+3.0) beats 100% of placebo; timing-only +0.307 (+3.3) beats 100% of placebo; same names, one common direction -0.037 (-0.2)
+   characteristic x signal interaction t (full cross-section, +ctrl):
+      d_5d h5: size ($ADV) +1.1 | off-exchange share -0.1 | structural DPI level +2.1 | volatility -0.0 | DPI persistence +0.4 | price echo -0.4
+      d_5d h21: size ($ADV) +0.7 | off-exchange share +0.5 | structural DPI level +2.0 | volatility -0.3 | DPI persistence -0.5 | price echo -0.3
+      dpi_z h5: size ($ADV) +2.6 | off-exchange share +0.9 | structural DPI level +1.7 | volatility +1.6 | DPI persistence +1.0 | price echo -0.2
+      dpi_z h21: size ($ADV) +1.0 | off-exchange share +2.0 | structural DPI level +2.3 | volatility +2.5 | DPI persistence -0.3 | price echo -0.9
+   dpi_z h5 within structurally lit tercile: -0.080 (-1.0) [halves -0.072 (-0.6) / -0.088 (-0.8)] | structurally dark tercile: +0.157 (+1.9) [halves +0.265 (+2.0) / +0.062 (+0.6)]
+   dpi_z h21 within structurally lit tercile: -0.129 (-0.6) [halves -0.038 (-0.1) / -0.210 (-0.7)] | structurally dark tercile: +0.648 (+2.9) [halves +0.982 (+2.9) / +0.349 (+1.2)]
+   d_5d h21 by sector (+ctrl), 0 of 11 at |t|>=2: Communication (75) +0.504 (+0.7) | Consumer Discretionary (202) +0.136 (+0.4) | Consumer Staples (55) +0.156 (+0.3) | Energy (106) -0.614 (-1.0) | Financials (402) +0.081 (+0.2) | Health Care (435) -0.301 (-0.7) | Industrials (262) -0.210 (-0.6) | Information Technology (221) -0.327 (-0.8) | Materials (90) +0.820 (+1.4) | Real Estate (94) -0.377 (-1.4) | Utilities (30) -0.113 (-0.2)
+   dpi_z h21 by sector (+ctrl), 1 of 11 at |t|>=2: Communication (75) -0.016 (-0.0) | Consumer Discretionary (202) +0.630 (+1.9) | Consumer Staples (55) +0.429 (+0.8) | Energy (106) +0.139 (+0.3) | Financials (402) +0.269 (+1.1) | Health Care (435) +0.049 (+0.1) | Industrials (262) +0.075 (+0.2) | Information Technology (221) +0.132 (+0.3) | Materials (90) -0.295 (-0.6) | Real Estate (94) -0.324 (-1.2) | Utilities (30) -0.812 (-2.4)
+
 
 ==================================================================================
 
 RELATIVE-DARKNESS STUDY -- universe ndx (103 names), FINRA 2018-08-01 -> 2026-09-25
 
 1. INDEX LEVEL -- does the dark gauge predict the index? (pp of forward return per 1 SD of the 5d gauge; Newey-West t, lags = horizon)
-   reconstructed dollar-DIX vs QQQ  [2018-08-03 -> 2026-09-17]
+   reconstructed dollar-DIX vs QQQ  [2018-08-03 -> 2026-09-18]
        h            level      level+ctrl       detrended       detr+ctrl   rv21 t (ctrl)
-       5    +0.118 (+0.9)   +0.105 (+0.7)   +0.015 (+0.1)   -0.018 (-0.1)   +0.9
-      21    +0.439 (+1.1)   +0.349 (+0.9)   -0.028 (-0.1)   -0.190 (-0.5)   +1.5
-      63    -0.101 (-0.1)   -0.701 (-0.6)   -1.563 (-1.2)   -2.210 (-1.8)   +2.3
+       5    +0.119 (+0.9)   +0.107 (+0.7)   +0.018 (+0.1)   -0.014 (-0.1)   +0.9
+      21    +0.438 (+1.1)   +0.348 (+0.9)   -0.028 (-0.1)   -0.189 (-0.5)   +1.5
+      63    -0.101 (-0.1)   -0.699 (-0.6)   -1.563 (-1.2)   -2.208 (-1.8)   +2.3
 
 2. STRUCTURE -- what per-name DPI is made of
-   190,847 name-days, 103 names. Variance shares: structural level 14.7% | common (market) 6.4% | idiosyncratic 81.0%
+   190,949 name-days, 103 names. Variance shares: structural level 14.7% | common (market) 6.4% | idiosyncratic 81.0%
    SDs: structural 0.050, common 0.0328, idio 0.1171. Idio ACF lag1 +0.54, lag2 +0.44, lag5 +0.33, lag10 +0.26, lag20 +0.20, lag60 +0.12
    AR(1)+noise fit: 67% of idio variance persistent, rho 0.81 (half-life 3.3 sessions); the rest is day-to-day flow-composition noise
    Price echo -- xs rank corr of abnormal DPI_t with the name's own return at t+k:  k=-5: +0.018  k=-2: +0.066  k=-1: +0.126  k=+0: +0.128  k=+1: -0.017  k=+2: -0.000  k=+5: +0.002
