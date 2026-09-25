@@ -1,0 +1,170 @@
+{
+ "date": "2026-09-24",
+ "captured_utc": "2026-09-25T00:44:38+00:00",
+ "symbols": {
+  "SPY": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "QQQ": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "IWM": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "SMH": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "IGV": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XBI": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "KRE": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "GDX": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "EEM": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "VTV": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "VUG": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLK": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLF": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLV": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLY": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLP": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLE": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLI": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLB": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLU": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLRE": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "XLC": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "KWEB": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "FXI": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "IBIT": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "AAPL": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "TSLA": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "GOOGL": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "NVDA": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "AMZN": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "MSFT": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "META": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "AMD": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "MU": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "CRWV": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "IONQ": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "OWL": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "RKLB": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "ONDS": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "SPCX": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  },
+  "DRAM": {
+   "ok": false,
+   "error": "KeyError: 'optionChain'"
+  }
+ }
+}
