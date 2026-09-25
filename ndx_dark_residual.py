@@ -10,8 +10,10 @@ entirely from free public data -- NO paid API, NO key:
                   Per-name D = 5-day MA of ShortVolume / off-exchange TotalVolume
                   -- the dark-pool indicator (DPI), the same construction
                   SqueezeMetrics uses, computed here directly.
-  * prices      : Yahoo Finance daily bars (raw close for as-traded dollar
-                  weighting, adjusted close for split-safe forward returns).
+  * prices      : Yahoo Finance daily bars (split-adjusted close for dollar
+                  weighting -- FINRA's as-traded volumes are put on the same
+                  split-adjusted basis using Yahoo's split events -- adjusted
+                  close for forward returns).
 
 Each name's *name-specific* dark-flow is isolated by residualizing its D against
 a reconstructed NDX-100 dollar-DIX benchmark (sum(price*short)/sum(price*total)
@@ -824,10 +826,34 @@ def apply_split_factors(panel, factors):
 
 def split_adjust_finra_panel(finra_panel, volume_panel):
     """Rescale each symbol's FINRA off-exchange volume onto SqueezeMetrics' split-
-    adjusted basis, so the dark ratio is continuous across splits."""
+    adjusted basis, so the dark ratio is continuous across splits.
+
+    Heuristic fallback only: it infers splits from steps in the FINRA/Yahoo volume ratio, so it
+    deliberately ignores 2:1 splits (below SPLIT_JUMP_THR) and can mistake a genuine dark-share
+    regime shift for one. The pipeline now uses Yahoo's exact split events instead -- see
+    finra_to_price_basis / build_universe_panels."""
     if finra_panel.empty:
         return finra_panel
     return apply_split_factors(finra_panel, panel_split_factors(finra_panel, volume_panel))
+
+
+def finra_to_price_basis(short_panel, total_panel, splits):
+    """Put FINRA's AS-TRADED short/total share volumes on Yahoo's SPLIT-ADJUSTED share basis.
+
+    Yahoo's `close` (and `volume`) are split-adjusted over the whole history, but FINRA reports
+    the shares that actually printed that day. Pairing the two directly -- the old
+    `compute_dollar_dix(short, total, close)` -- understated every pre-split day's dollar volume
+    by the split factor: NVDA by 40x before its 2021 4:1 (then 10:1) splits, AMZN and GOOGL by
+    20x before mid-2022, AAPL by 4x before Aug 2020 -- so the "dollar-weighted" DIX gave those
+    names a sliver of their true weight for years. Rescaling each pre-split row by the
+    cumulative factor of the splits after it makes `close x volume` true dollars again (and
+    makes FINRA volume directly comparable to Yahoo's volume). DPI = short/total is unchanged.
+
+    `splits` is {symbol: {ex-date: ratio}} as returned by load_yahoo_panels (Yahoo's own
+    events: exact dates and ratios, including 2:1 and reverse splits). Symbols absent from it
+    are left as-is."""
+    splits = splits or {}
+    return apply_split_factors(short_panel, splits), apply_split_factors(total_panel, splits)
 
 
 def compute_aggregate_dark_ratio(finra_offexchange_panel, volume_panel, exclude=(), min_names=20):
@@ -5137,11 +5163,16 @@ function wireDecileHover(barsId, scatterId){
 # ==========================================================================
 # FINRA + Yahoo data layer -- replaces the SqueezeMetrics API entirely.
 #   dark signal : FINRA off-exchange short/total volumes -> per-name DPI (= D)
-#   prices      : Yahoo Finance daily raw close (for as-traded dollar weighting),
-#                 adjusted close (split-safe forward returns) and volume. Free, no key.
+#   prices      : Yahoo Finance daily close (SPLIT-ADJUSTED -- Yahoo re-bases the whole
+#                 history on every split), adjusted close (split + dividend adjusted, for
+#                 forward returns), volume (split-adjusted) and the split events themselves.
+#                 FINRA volumes are as-traded, so build_universe_panels puts them on Yahoo's
+#                 split-adjusted share basis with those events before any price x volume
+#                 dollar weighting. Free, no key.
 # ==========================================================================
+# `events=split` returns the split history alongside the bars at no extra request cost.
 YAHOO_CHART = ("https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
-               "?period1={p1}&period2={p2}&interval=1d")
+               "?period1={p1}&period2={p2}&interval=1d&events=split")
 _YF_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
           "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 YAHOO_CACHE = "yahoo_prices.pkl"
@@ -5150,6 +5181,13 @@ YAHOO_CACHE = "yahoo_prices.pkl"
 # load_yahoo_panels. 400 days mirrors the shallow-panel tolerance build_gex_dispersion.py already
 # used for its own basket-wide re-pull guard.
 YAHOO_BACKFILL_TOL_DAYS = 400
+# Incremental fetches re-request this many already-cached sessions before the last cached one,
+# so the overlap can be compared against the cache (see load_yahoo_panels' rebase check).
+YAHOO_OVERLAP_BARS = 5
+# Relative tolerance for "the overlapping cached bars still match". Yahoo's adjclose carries
+# ~1e-7 float noise between identical requests; a split moves close by the split ratio and a
+# dividend moves every earlier adjclose by its yield (typically >= 0.05%), so 1e-4 separates them.
+YAHOO_REBASE_TOL = 1e-4
 ISHARES_DOC_TMPL = ("https://www.blackrock.com/varnish-api/blk-one01-product-data/product-data/"
                     "api/v1/get-fund-document?appType=PRODUCT_PAGE&appSubType=ISHARES"
                     "&targetSite=us-ishares&locale=en_US&portfolioId={pid}"
@@ -5205,8 +5243,26 @@ def _unix(ts):
     return int(pd.Timestamp(ts).timestamp())
 
 
+def _parse_yahoo_splits(res):
+    """{normalized ex-date: ratio} from a chart result's `events.splits` (ratio = numerator /
+    denominator, so a 4:1 split is 4.0 and a 1:10 reverse split is 0.1). Malformed rows are
+    skipped rather than failing the whole symbol."""
+    out = {}
+    for ev in ((res.get("events") or {}).get("splits") or {}).values():
+        try:
+            num, den = float(ev["numerator"]), float(ev["denominator"])
+            if num > 0 and den > 0 and num != den:
+                out[pd.to_datetime(int(ev["date"]), unit="s").normalize()] = num / den
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
 def fetch_yahoo_one(sym, start, end, session=None, retries=3, pause=0.5):
-    """(close, adjclose, volume) DataFrame indexed by date for one symbol, or empty."""
+    """(close, adjclose, volume) DataFrame indexed by date for one symbol, or empty.
+
+    The symbol's split events inside the window ride along as `df.attrs["splits"]`
+    ({ex-date: ratio}); an empty frame carries none."""
     if requests is None:
         raise RuntimeError("The 'requests' package is required for live fetching.")
     get = (session or requests).get
@@ -5238,7 +5294,9 @@ def fetch_yahoo_one(sym, start, end, session=None, retries=3, pause=0.5):
             df = pd.DataFrame({"close": q.get("close"),
                                "adjclose": adj if adj is not None else q.get("close"),
                                "volume": q.get("volume")}, index=idx)
-            return df[~df.index.duplicated(keep="last")].dropna(how="all")
+            out = df[~df.index.duplicated(keep="last")].dropna(how="all")
+            out.attrs["splits"] = _parse_yahoo_splits(res)
+            return out
         except Exception as e:  # noqa: BLE001
             last = str(e); time.sleep(pause * (a + 1))
     print(f"  ! yahoo {sym}: failed ({last})", file=sys.stderr)
@@ -5247,18 +5305,32 @@ def fetch_yahoo_one(sym, start, end, session=None, retries=3, pause=0.5):
 
 def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=False,
                       label="symbol"):
-    """{'close','adjclose','volume'} wide panels (dates x symbols) over [start, end].
+    """{'close','adjclose','volume'} wide panels (dates x symbols) over [start, end], plus
+    'splits' = {symbol: {ex-date: ratio}} -- Yahoo's own split events for the requested symbols
+    (symbols that never split are absent).
 
     Incrementally cached: a symbol synced today is skipped; one behind is re-fetched only
-    from its last cached date; new symbols fetch the full window; a symbol whose cached
+    from near its last cached date; new symbols fetch the full window; a symbol whose cached
     history starts well after `start` (truncated by some earlier narrower-window write) is
     backfilled in full rather than only ever fetched forward. No-data symbols are remembered
     for the day so they aren't retried on same-day re-runs.
 
-    `refresh=True` forces every symbol THIS call requests to be fetched from `start`
-    regardless of its cached state -- but the existing cache is still loaded first (not
-    skipped) so that other symbols/universes sharing the same pickle are preserved rather
-    than dropped when the panel is written back at the end.
+    Re-basing guard: Yahoo re-bases a symbol's WHOLE history on every split (close, volume)
+    and every dividend (adjclose), but an incremental fetch only returns recent bars -- so
+    after a corporate action the older cached bars would sit on the old basis and the panel
+    would show a fake step (a 2:1 split reads as a -50% day in every forward return that
+    spans it). Incremental fetches therefore re-request YAHOO_OVERLAP_BARS already-cached
+    sessions; when those no longer match the cache (beyond YAHOO_REBASE_TOL), or the response
+    carries a split the cache didn't know, the symbol is re-fetched in full and its column is
+    REPLACED rather than merged. Any full re-fetch reaches back to the earliest bar the cache
+    holds for the symbol (another caller may have asked for deeper history), so no stale-basis
+    stub survives in front of it. A symbol cached before split events were recorded
+    (`_splits_known`) gets one such full re-fetch.
+
+    `refresh=True` forces every symbol THIS call requests to be fetched in full regardless
+    of its cached state -- but the existing cache is still loaded first (not skipped) so that
+    other symbols/universes sharing the same pickle are preserved rather than dropped when the
+    panel is written back at the end.
     """
     symbols = list(dict.fromkeys(s.strip().upper() for s in symbols))
     cache = (Path(cache_dir) / YAHOO_CACHE) if cache_dir else None
@@ -5270,6 +5342,8 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
             cached = {}
     fields = ("close", "adjclose", "volume")
     base = {f: cached.get(f, pd.DataFrame()) for f in fields}
+    split_cache = {s: dict(ev) for s, ev in (cached.get("_splits") or {}).items()}
+    known = set(cached.get("_splits_known") or [])
     end_n = pd.Timestamp(end).normalize()
     # The session we should already hold once the day's bars are published: today if a weekday,
     # else the prior business day. A same-day cache is trusted only when its freshest close
@@ -5282,6 +5356,10 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
                     and base_latest is not None and base_latest >= target_session)
     nodata = set(cached.get("_nodata", [])) if synced_today else set()
 
+    def _cached(sym):
+        c = base["close"]
+        return c[sym].dropna() if sym in c.columns else pd.Series(dtype=float)
+
     def _is_current(sym):
         # Up to date when the symbol's freshest cached close reaches the target session (or it
         # produced no data today). Judged per-symbol against the target rather than a blanket
@@ -5290,72 +5368,119 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
         # another universe's still-behind symbols to be skipped and served a session stale.
         if sym in nodata:
             return True
-        c = base["close"]
-        if sym not in c.columns:
-            return False
-        s = c[sym].dropna()
+        s = _cached(sym)
         return (not s.empty) and s.index.max() >= target_session
 
-    def _fetch_start(sym):
+    def _full_start(sym):
+        s = _cached(sym)
+        st = pd.Timestamp(start)
+        return min(st, s.index.min()) if not s.empty else st
+
+    def _plan(sym):
+        """(fetch start, mode): mode 'full' replaces the symbol's cached column, 'inc' merges
+        onto it; (None, None) = already current."""
+        s = _cached(sym)
         # Checked before _is_current: refresh must force a full re-fetch of every symbol THIS
         # call requests even if the (now-always-loaded) cache already looks current for it.
         if refresh:
-            return pd.Timestamp(start)
+            return _full_start(sym), "full"
+        if not s.empty and sym not in known and sym not in nodata:
+            return _full_start(sym), "full"      # cached before split events were recorded
         if _is_current(sym):
-            return None
-        c = base["close"]
-        if sym not in c.columns:
-            return pd.Timestamp(start)
-        s = c[sym].dropna()
+            return None, None
         if s.empty:
-            return pd.Timestamp(start)
+            return pd.Timestamp(start), "full"
         if s.index.min() > pd.Timestamp(start) + pd.Timedelta(days=YAHOO_BACKFILL_TOL_DAYS):
             # Truncated by an earlier narrower-window write (e.g. a pre-fix --refresh call, or
             # any caller that only ever requested a shallower start) -- backfill in full instead
             # of only ever fetching forward, which would leave it permanently shallow.
-            return pd.Timestamp(start)
-        return s.index.max()
+            return pd.Timestamp(start), "full"
+        return s.index[max(0, len(s) - 1 - YAHOO_OVERLAP_BARS)], "inc"
+
+    def _rebased(sym, df):
+        """True when an incremental response shows the cached history is on a stale basis."""
+        if any(d not in split_cache.get(sym, {}) for d in df.attrs.get("splits", {})):
+            return True
+        s = _cached(sym)
+        overlap = df.index[(df.index < s.index.max())].intersection(s.index)
+        for f in ("close", "adjclose"):
+            old = base[f][sym].reindex(overlap) if sym in base[f].columns else None
+            if old is None or f not in df.columns:
+                continue
+            r = (df[f].reindex(overlap) / old).replace([np.inf, -np.inf], np.nan).dropna()
+            if len(r) and float((r - 1).abs().max()) > YAHOO_REBASE_TOL:
+                return True
+        return False
 
     def _window(panels):
         win = [d for d in panels["close"].index if pd.Timestamp(start) <= d <= end_n]
-        return {f: panels[f].reindex(index=win, columns=symbols) for f in fields}
+        res = {f: panels[f].reindex(index=win, columns=symbols) for f in fields}
+        res["splits"] = {s: dict(split_cache[s]) for s in symbols if split_cache.get(s)}
+        return res
 
-    if synced_today and all(_is_current(s) for s in symbols):
+    if synced_today and all(_is_current(s) and (s in known or s in nodata) for s in symbols):
         print(f"Yahoo prices: reusing today's cache (all {len(symbols)} {label}s current); "
               f"pass --refresh to re-poll.", file=sys.stderr)
         return _window(base)
 
-    todo = [(s, st) for s in symbols for st in [_fetch_start(s)] if st is not None]
+    todo = [(s, st, mode) for s in symbols for st, mode in [_plan(s)] if st is not None]
     print(f"Yahoo prices: {len(symbols)-len(todo)}/{len(symbols)} {label}s current in cache; "
           f"fetching {len(todo)}...", file=sys.stderr)
 
-    fetched = {}
-    if todo:
-        session = make_session(workers) if requests else None
+    session = make_session(workers) if (requests and todo) else None
+
+    def _run(items):
         counter = {"n": 0}
         lock = threading.Lock()
 
         def _one(item):
-            sym, st = item
+            sym, st, mode = item
             df = fetch_yahoo_one(sym, st, end, session=session)
             with lock:
                 counter["n"] += 1
-                if counter["n"] % 200 == 0 or counter["n"] == len(todo):
-                    print(f"[{counter['n']:>4}/{len(todo)}] yahoo fetched", file=sys.stderr)
-            return sym, df
+                if counter["n"] % 200 == 0 or counter["n"] == len(items):
+                    print(f"[{counter['n']:>4}/{len(items)}] yahoo fetched", file=sys.stderr)
+            return sym, mode, df
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-            for sym, df in ex.map(_one, todo):
-                if len(df):
-                    fetched[sym] = df
-                    nodata.discard(sym)
-                elif sym not in base["close"].columns:
-                    nodata.add(sym)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+            return list(ex.map(_one, items))
+
+    fetched = {}   # sym -> (df, mode)
+    for sym, mode, df in (_run(todo) if todo else []):
+        if len(df):
+            fetched[sym] = (df, mode)
+            nodata.discard(sym)
+        elif sym not in base["close"].columns:
+            nodata.add(sym)
+
+    rebased = [s for s, (df, mode) in fetched.items() if mode == "inc" and _rebased(s, df)]
+    if rebased:
+        print(f"Yahoo prices: {len(rebased)} {label}(s) re-based by a split/dividend since they "
+              f"were cached (e.g. {', '.join(rebased[:6])}) -- re-fetching full history.",
+              file=sys.stderr)
+        for sym, mode, df in _run([(s, _full_start(s), "full") for s in rebased]):
+            if len(df):
+                fetched[sym] = (df, mode)
+            else:                              # can't rebuild now: drop the stale-basis increment
+                fetched.pop(sym, None)         # and keep the (consistent) cache as it was
+
+    for sym, (df, mode) in fetched.items():
+        ev = dict(df.attrs.get("splits", {}) or {})
+        if mode == "full":
+            split_cache[sym] = ev
+            known.add(sym)
+        elif ev:
+            split_cache.setdefault(sym, {}).update(ev)
+    split_cache = {s: ev for s, ev in split_cache.items() if ev}
 
     out = {}
+    full_syms = [s for s, (_, mode) in fetched.items() if mode == "full"]
     for f in fields:
-        new = pd.DataFrame({s: d[f] for s, d in fetched.items() if f in d})
-        out[f] = (new.combine_first(base[f]) if not base[f].empty else new).sort_index()
+        old = base[f]
+        if not old.empty:
+            old = old.drop(columns=[s for s in full_syms if s in old.columns])
+        new = pd.DataFrame({s: d[f] for s, (d, _) in fetched.items() if f in d})
+        out[f] = (new.combine_first(old) if not old.empty else new).sort_index()
 
     # Record a same-day sync ONLY when (nearly) every requested symbol actually reached the
     # freshest session now available. Otherwise a partial fetch -- e.g. Yahoo throttling most
@@ -5383,7 +5508,8 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
         try:
             cache.parent.mkdir(parents=True, exist_ok=True)
             tmp = cache.with_suffix(".pkl.tmp")
-            pd.to_pickle({**out, "_synced": synced, "_nodata": sorted(nodata)}, tmp)
+            pd.to_pickle({**out, "_synced": synced, "_nodata": sorted(nodata),
+                          "_splits": split_cache, "_splits_known": sorted(known)}, tmp)
             tmp.replace(cache)
         except Exception as e:  # noqa: BLE001
             print(f"  ! could not write yahoo cache ({e})", file=sys.stderr)
@@ -5516,10 +5642,17 @@ def fetch_ssga_holdings(etf, label=None, session=None, retries=5, pause=1.5):
 
 def build_universe_panels(symbols, start, end, workers=8, cache_dir=None, ns="", refresh=False,
                           label="symbol", heal_frac=0.5):
-    """FINRA (short/total off-exchange) + Yahoo (raw close, adj close, volume) for `symbols`.
+    """FINRA (short/total off-exchange) + Yahoo (split-adjusted close, adj close, volume) for
+    `symbols`.
 
     Yahoo's trading-day calendar drives the FINRA date set, so both align to real sessions.
     Returns dict of wide panels incl. per-name 1-day DPI ('dpi') and 5-day-MA D ('d').
+
+    'short' / 'total' are FINRA's volumes put on Yahoo's split-adjusted share basis (see
+    finra_to_price_basis), so `close x short` / `close x total` are true dollars for the
+    dollar-DIX, contributor and sector dark-dollar weights, and `total / volume` is a clean
+    off-exchange share. The as-traded originals are 'short_raw' / 'total_raw'; 'splits' holds
+    the events used. DPI and D are ratios, identical on either basis.
 
     `heal_frac` is forwarded to the FINRA self-heal (see fetch_finra_dark_volume_panel);
     default 0.5 for a dense large-cap universe, pass 1.0 for a sparse one.
@@ -5527,10 +5660,14 @@ def build_universe_panels(symbols, start, end, workers=8, cache_dir=None, ns="",
     ypan = load_yahoo_panels(symbols, start, end, workers=workers, cache_dir=cache_dir,
                              refresh=refresh, label=label)
     dates = [pd.Timestamp(d) for d in ypan["close"].index]
-    short, total = fetch_finra_dark_volume_panel(dates, symbols, workers=workers,
-                                                 cache_dir=cache_dir, ns=ns, heal_frac=heal_frac)
-    dpi, d = finra_dpi_to_d(short, total)
-    return {"short": short, "total": total, "dpi": dpi, "d": d,
+    short_raw, total_raw = fetch_finra_dark_volume_panel(dates, symbols, workers=workers,
+                                                         cache_dir=cache_dir, ns=ns,
+                                                         heal_frac=heal_frac)
+    splits = ypan.get("splits") or {}
+    short, total = finra_to_price_basis(short_raw, total_raw, splits)
+    dpi, d = finra_dpi_to_d(short_raw, total_raw)
+    return {"short": short, "total": total, "short_raw": short_raw, "total_raw": total_raw,
+            "dpi": dpi, "d": d, "splits": splits,
             "close": ypan["close"], "adjclose": ypan["adjclose"], "volume": ypan["volume"]}
 
 
@@ -5780,16 +5917,14 @@ def main():
         r21_panel = compute_forward_return(NDX["adjclose"], 21)
         r42_panel = compute_forward_return(NDX["adjclose"], 42)
         r63_panel = compute_forward_return(NDX["adjclose"], 63)
+        # NDX["short"/"total"] are already on Yahoo's split-adjusted share basis (exact Yahoo
+        # split events, see build_universe_panels), matching Yahoo's split-adjusted close and
+        # volume -- so close x volume is true dollars for the DIX weights, and FINRA total /
+        # Yahoo volume is a split-continuous off-exchange share with no heuristic needed.
         ndx_dix = compute_dollar_dix(NDX["short"], NDX["total"], NDX["close"], exclude=(BENCH,))
         ndx_contrib = build_contributors_payload(NDX["short"], NDX["total"], NDX["close"],
                                                  exclude=(BENCH,), weight_map=NDX100_WEIGHT)
-        # FINRA off-exchange volume is as-traded; Yahoo's volume is split-adjusted. Rescale
-        # the pre-split FINRA total onto the adjusted basis so the aggregate dark ratio stays
-        # continuous across splits. (The dollar-DIX above needs no such fix: it pairs RAW
-        # close with as-traded volume, which is already true dollars -- adjusting there would
-        # double-count. Split adjustment belongs only where FINRA meets Yahoo's adj. volume.)
-        ndx_agg = compute_aggregate_dark_ratio(
-            split_adjust_finra_panel(NDX["total"], NDX["volume"]), NDX["volume"], exclude=(BENCH,))
+        ndx_agg = compute_aggregate_dark_ratio(NDX["total"], NDX["volume"], exclude=(BENCH,))
 
         # ---- SPX tab + S&P 500 small-multiples: dollar-DIX (IVV constituents) ----
         spx_payload = None

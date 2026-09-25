@@ -208,3 +208,69 @@ def test_split_adjust_makes_ratio_continuous():
 
 def test_split_adjust_empty_panel_returns_empty():
     assert N.split_adjust_finra_panel(pd.DataFrame(), pd.DataFrame()).empty
+
+
+# ---------------------------------------------------------------------------
+# finra_to_price_basis: exact Yahoo split events put FINRA's as-traded volume on
+# Yahoo's split-adjusted basis, so close x volume is true dollars.
+#
+# Yahoo's `close` is split-adjusted over the whole history; FINRA's volumes are the
+# shares that printed that day. Pairing them directly understated every pre-split
+# day's dollar volume by the split factor -- the dollar-DIX gave e.g. AMZN/GOOGL a
+# twentieth of their true weight before their 2022 20:1 splits.
+# ---------------------------------------------------------------------------
+def test_price_basis_makes_dollar_volume_continuous_across_split():
+    idx = _bdays(5)
+    close = pd.DataFrame({"X": 25.0}, index=idx)                  # split-adjusted price
+    total = pd.DataFrame({"X": [1000.0, 1000.0, 4000.0, 4000.0, 4000.0]}, index=idx)   # 4:1 on day 2
+    short = total * 0.5
+    sh, tv = N.finra_to_price_basis(short, total, {"X": {idx[2]: 4.0}})
+    # true dollars are constant: 1,000 sh x $100 (raw) pre-split == 4,000 sh x $25 post-split
+    assert (tv * close)["X"].tolist() == pytest.approx([100_000.0] * 5)
+    assert ((sh / tv) - (short / total)).abs().max().max() == pytest.approx(0.0)   # DPI unchanged
+    assert total["X"].iloc[0] == 1000.0                                          # input not mutated
+
+
+def test_price_basis_reverse_split_and_untouched_symbols():
+    idx = _bdays(4)
+    total = pd.DataFrame({"R": [10_000.0, 10_000.0, 1_000.0, 1_000.0],
+                          "U": [5.0, 6.0, 7.0, 8.0]}, index=idx)
+    sh, tv = N.finra_to_price_basis(total * 0.4, total, {"R": {idx[2]: 0.1}})   # 1:10 reverse
+    assert tv["R"].tolist() == pytest.approx([1_000.0] * 4)
+    assert tv["U"].tolist() == [5.0, 6.0, 7.0, 8.0]
+    same = N.finra_to_price_basis(total * 0.4, total, None)
+    assert same[1].equals(total)
+
+
+def test_dollar_dix_weights_true_dollars_only_on_price_basis():
+    idx = _bdays(2)
+    close = pd.DataFrame({"A": [100.0, 100.0], "B": [100.0, 100.0]}, index=idx)   # split-adjusted
+    # A splits 10:1 effective day 1 (raw price $1000 -> $100). As-traded FINRA volumes:
+    total = pd.DataFrame({"A": [1_000.0, 10_000.0], "B": [10_000.0, 10_000.0]}, index=idx)
+    short = pd.DataFrame({"A": [800.0, 8_000.0], "B": [2_000.0, 2_000.0]}, index=idx)
+    # A (DPI 0.8) and B (DPI 0.2) each trade $1M/day in true dollars -> DIX = 0.5 both days.
+    sh, tv = N.finra_to_price_basis(short, total, {"A": {idx[1]: 10.0}})
+    fixed = N.compute_dollar_dix(sh, tv, close, min_names=1, min_coverage=0)
+    assert fixed.tolist() == pytest.approx([0.5, 0.5])
+    # The old pairing (as-traded shares x split-adjusted price) gives A a tenth of its weight
+    # on the pre-split day, dragging the "dollar-weighted" DIX toward B's DPI.
+    naive = N.compute_dollar_dix(short, total, close, min_names=1, min_coverage=0)
+    assert naive.iloc[0] == pytest.approx(280_000.0 / 1_100_000.0)
+    assert naive.iloc[1] == pytest.approx(0.5)
+
+
+def test_build_universe_panels_returns_price_basis_and_raw_volumes(monkeypatch):
+    idx = _bdays(3)
+    ypan = {"close": pd.DataFrame({"X": [10.0, 10.0, 10.0]}, index=idx),
+            "adjclose": pd.DataFrame({"X": [10.0, 10.0, 10.0]}, index=idx),
+            "volume": pd.DataFrame({"X": [900.0, 900.0, 900.0]}, index=idx),
+            "splits": {"X": {idx[1]: 2.0}}}
+    short_raw = pd.DataFrame({"X": [100.0, 200.0, 200.0]}, index=idx)
+    total_raw = pd.DataFrame({"X": [250.0, 500.0, 500.0]}, index=idx)
+    monkeypatch.setattr(N, "load_yahoo_panels", lambda *a, **k: ypan)
+    monkeypatch.setattr(N, "fetch_finra_dark_volume_panel", lambda *a, **k: (short_raw, total_raw))
+    P = N.build_universe_panels(["X"], idx[0], idx[-1])
+    assert P["total"]["X"].tolist() == pytest.approx([500.0, 500.0, 500.0])      # adjusted basis
+    assert P["total_raw"]["X"].tolist() == [250.0, 500.0, 500.0]
+    assert P["dpi"]["X"].tolist() == pytest.approx([0.4, 0.4, 0.4])
+    assert P["splits"] == {"X": {idx[1]: 2.0}}
