@@ -1,6 +1,6 @@
 {
  "date": "2026-09-25",
- "captured_utc": "2026-09-25T17:53:44+00:00",
+ "captured_utc": "2026-09-25T18:53:43+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -20,12 +20,12 @@
   "SMH": {
    "ok": true,
    "expiries": 12,
-   "rows": 1657
+   "rows": 1670
   },
   "IGV": {
    "ok": true,
    "expiries": 12,
-   "rows": 862
+   "rows": 867
   },
   "XBI": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 10,
-   "rows": 1110
+   "rows": 1119
   },
   "EEM": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 11,
-   "rows": 1024
+   "rows": 1027
   },
   "XLF": {
    "ok": true,
@@ -120,7 +120,7 @@
   "FXI": {
    "ok": true,
    "expiries": 13,
-   "rows": 491
+   "rows": 492
   },
   "AAPL": {
    "ok": true,
@@ -140,7 +140,7 @@
   "NVDA": {
    "ok": true,
    "expiries": 12,
-   "rows": 974
+   "rows": 969
   },
   "AMZN": {
    "ok": true,
@@ -150,12 +150,12 @@
   "MSFT": {
    "ok": true,
    "expiries": 11,
-   "rows": 1296
+   "rows": 1297
   },
   "META": {
    "ok": true,
    "expiries": 11,
-   "rows": 1645
+   "rows": 1655
   },
   "AMD": {
    "ok": true,
@@ -200,7 +200,7 @@
   "DRAM": {
    "ok": true,
    "expiries": 13,
-   "rows": 1088
+   "rows": 1089
   },
   "USO": {
    "ok": true,
@@ -210,12 +210,12 @@
   "GLD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1628
+   "rows": 1614
   },
   "SLV": {
    "ok": true,
    "expiries": 11,
-   "rows": 1124
+   "rows": 1128
   },
   "IBIT": {
    "ok": true,
@@ -235,17 +235,17 @@
   "NBIS": {
    "ok": true,
    "expiries": 13,
-   "rows": 879
+   "rows": 878
   },
   "AAOI": {
    "ok": true,
    "expiries": 10,
-   "rows": 619
+   "rows": 623
   },
   "TWST": {
    "ok": true,
    "expiries": 5,
-   "rows": 182
+   "rows": 181
   },
   "PURR": {
    "ok": true,
