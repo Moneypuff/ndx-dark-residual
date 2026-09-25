@@ -6,6 +6,8 @@ dIV net of its own expiry's ATM dIV), the T+1 pairing (dOI of snapshot t
 scored against the local dIV of session t-1), and the aggressor quadrants.
 All on hand-built snapshot frames -- no network, no real chains.
 """
+import gzip
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -372,3 +374,26 @@ def test_resolve_leg_nearest_expiry_then_strike():
     put = V.resolve_leg(day, "GDX", "P", 91, -0.08, "2026-08-10")
     assert put["expiry"] == "2027-02-19" and put["strike"] == 90.0
     assert V.resolve_leg(day, "QQQ", "C", 91, 0.0, "2026-08-10") is None
+
+
+def test_load_snapshots_skips_empty_file_instead_of_crashing(tmp_path, capsys):
+    # A truncated/failed capture (near-zero-byte .csv.gz, the shape a
+    # crashed optsnap.yml run committed) must not take down the whole
+    # read -- refresh.yml runs every page build as one job, so one bad
+    # day here previously blocked the ENTIRE nightly deploy.
+    good = pd.DataFrame(_rows("2026-09-23", "GDX", "2026-11-20", 100.0,
+                              [("C", 100.0, 0.3, 10)]))
+    good.to_csv(tmp_path / "2026-09-23.csv.gz", index=False, compression="gzip")
+    (tmp_path / "2026-09-24.csv.gz").write_bytes(
+        gzip.compress(b""))  # 0-row capture -> EmptyDataError
+    out = V.load_snapshots(str(tmp_path))
+    assert list(out["date"].unique()) == ["2026-09-23"]
+    assert "skipping unreadable snapshot" in capsys.readouterr().err
+
+
+def test_load_snapshots_all_files_unreadable_returns_empty_frame(tmp_path):
+    (tmp_path / "2026-09-24.csv.gz").write_bytes(gzip.compress(b""))
+    out = V.load_snapshots(str(tmp_path))
+    assert out.empty
+    assert list(out.columns) == ["date", "symbol", "expiry", "right", "strike",
+                                 "iv", "oi", "volume", "bid", "ask", "last", "spot"]
