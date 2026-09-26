@@ -240,13 +240,13 @@ drift gives only a handful of independent observations.
   coefficient (+0.42 → +0.29 or +0.33). The median over years leaves it at +0.42.
 
 In those two episodes the SqueezeMetrics DIX followed the turn rather than calling it
-(5-day gauge, percentile of its trailing year):
+(5-day gauge, percentile of its trailing year; simple S&P returns):
 
 - **December 2018:** at the 24 Dec low it sat mid-range (62nd percentile). It reached
-  the top decile on 27 Dec, after the rebound's first +4.8% day, and stayed there
+  the top decile on 27 Dec, after the rebound's first +5.0% day, and stayed there
   through January while the S&P gained 5–11% over each following month.
 - **March 2020:** at the 23 Mar low it sat at the *bottom* of its range (0.4th
-  percentile), when the next month returned +22%. It reached the top decile on 27 Mar,
+  percentile), when the next month returned +25%. It reached the top decile on 27 Mar,
   three sessions into the rebound.
 
 **It follows the market by a day.** Correlation of the detrended daily gauge with the
