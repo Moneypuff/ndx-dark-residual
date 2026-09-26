@@ -45,9 +45,10 @@ python build_report.py        # build the dashboard from freshly fetched data
 > **Research verdict** (methodology review: `DARK_FLOW_FINDINGS.md`): name-level
 > dark flow — the `D`-vs-DIX residual and five better-built "relative darkness"
 > measures — shows **no robust directional edge** across the S&P 500, NDX-100 or
-> Russell 2000. At the index level the DIX behaves like a stress gauge (nothing
-> survives detrending or a realized-vol control), and the one index result that
-> looked tradeable (the comovement study's "large-cap firm / small-cap Low" family)
-> was an artifact of a split-weighting bug in the dollar-DIX, now fixed. Dark flow
-> does carry a little volatility information. Read the dashboard as a descriptive
-> monitor, not a live trading signal.
+> Russell 2000. At the index level the DIX behaves like a stress gauge: it tracks
+> the VIX and follows the market by a day, and its 15-year t = 1.8 falls to 0.7 once
+> the VIX is controlled for. The one index result that looked tradeable (the
+> comovement study's "large-cap firm / small-cap Low" family) was an artifact of a
+> split-weighting bug in the dollar-DIX, now fixed. Dark flow does carry a little
+> volatility information. Read the dashboard as a descriptive monitor, not a live
+> trading signal.

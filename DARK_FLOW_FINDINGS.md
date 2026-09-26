@@ -14,15 +14,20 @@ flow recover it?
    validated against SqueezeMetrics' published DIX. On the corrected gauges, the repo's
    one "tradeable-looking" index result (large-cap DIX firm while small-cap DIX is Low
    → strong NDX months, 86–100% hit) falls to baseline. On SqueezeMetrics' own 15-year
-   DIX, the level's 1-month edge is t = 1.8 raw and ≈ 0 once detrended or once realized
-   volatility is controlled for: the DIX mostly works as a stress gauge.
+   DIX, the level's 1-month edge is t = 1.8 raw, and it is market timing through
+   volatility. The DIX runs high when the VIX does, and high-VIX months have been
+   followed by rebounds: with the VIX in the regression the DIX drops to t = 0.7 (the
+   VIX alone has t = 4.2). The rest is the gauge's slow upward drift (detrended,
+   t = 0.8) and the 2018 and 2020 rebounds. Day to day, the large-cap DIX follows the
+   market by a day and says nothing about the next one (§2a). It is a stress gauge.
 2. **The residual isolates the wrong component.** A name's DPI is 13% structural level,
-   7% market-wide, 81% idiosyncratic — and the two moving parts relate to price with
-   **opposite signs**. The market-wide part rises on down days (−0.25 with the market's
-   same-day return: dip-buying absorbed off-exchange). The idiosyncratic part rises
-   *with the name's own* up-moves (+0.11 same day, +0.12 with the previous day) — an echo
-   of buy pressure already in the price, which then slightly reverses. Subtracting the
-   DIX throws away the contrarian part and keeps the echo.
+   7% market-wide, 81% idiosyncratic. The idiosyncratic part rises *with the name's own*
+   up-moves (+0.11 same day, +0.12 with the previous day) — an echo of buy pressure
+   already in the price, which then slightly reverses. The market-wide part is where
+   the index behaviour lives: the equal-weighted average of names' abnormal DPI rises on
+   down days (−0.25 with the market's same-day return), and the dollar-weighted
+   large-cap DIX follows the market with a one-day lag (§2a). Removing the market-wide
+   part, as the DIX residual does, leaves the echo.
 3. **Measured every sensible way, relative darkness has no directional edge in large
    caps.** Nine constructions (the four the dashboard uses and five new ones), 518
    S&P 500 ∪ NDX-100 names, 381 weekly cross-sections, entry after FINRA publishes,
@@ -42,8 +47,9 @@ flow recover it?
    match a placebo almost exactly — about one name in twelve looks significant at one
    month from noise alone — and 2019–22's "working" names stop working in 2023–26.
    Small caps are the exception: names picked on 2019–22 and traded in their own
-   direction beat every placebo run in 2023–26 (t = 3.0), and abnormal dark buying
-   leans bullish in *structurally dark* names in both universes (§5f).
+   direction beat every placebo run in 2023–26 (t = 3.0; 1.4–4.0 depending on where
+   the halves are cut), and abnormal dark buying leans bullish in *structurally dark*
+   names in both universes (§5f).
 6. **Dark flow does carry volatility information** — abnormal off-exchange share
    predicts lower future realized vol (t ≈ −8) — but the effect is ~4% of vol,
    too small to trade on its own.
@@ -55,13 +61,13 @@ python dark_flow_study.py --universe russell --no-sqz --by-name   # IWM holdings
 python dark_flow_study.py --universe ndx --no-sqz         # NDX-100 only
 ```
 `dark_flow.py` holds the measures and statistics (tested in `tests/test_dark_flow.py`);
-`dark_flow_study.py` is the study. Numbers below are from the 2026-09-25 runs, whose
-full output is committed as `dark_flow_summary.txt` (all three universes) and
-`dark_flow_signals.csv` (the S&P ∪ NDX signal table).
+`dark_flow_study.py` is the study. Numbers below are from runs on FINRA data through
+2026-09-25. Their full output is committed as `dark_flow_summary.txt` (all three
+universes) and `dark_flow_signals.csv` (the S&P ∪ NDX signal table).
 
 ---
 
-## 1. Two data bugs, now fixed
+## 1. Three data bugs, now fixed
 
 ### 1a. The dollar-DIX weighted pre-split days by a fraction of their dollars
 
@@ -139,6 +145,23 @@ symbol is re-fetched in full and its column *replaced*, reaching back to the ear
 bar any caller cached. A cache written before split events were recorded gets one full
 re-fetch per symbol (the first nightly run after this change does that automatically).
 
+### 1c. One symbol's holiday bar became a session for every universe
+
+The Yahoo cache is one pickle shared by every builder, and `load_yahoo_panels`
+returned the cache's whole date index rather than the dates the requested symbols
+trade. Yahoo carries `^VIX` bars on Memorial Day and Labor Day 2026. Once anything
+cached `^VIX` (this study does, for §2a), every universe gained two empty
+pseudo-sessions. Because Yahoo's calendar drives the FINRA dates, they reached the
+panels, the 5-day D and every row-counted window: a 21-session forward return
+spanning one covered 20 real sessions, and the study's weekly grid shifted.
+
+None of the production symbols has such bars (checked across the cache back to 2018),
+so the nightly build was not affected. This study's `^VIX` load was the first thing
+to trigger it.
+
+**Fix:** the window keeps only dates on which a requested symbol has a bar (regression
+test in `tests/test_yahoo_panels.py`).
+
 ---
 
 ## 2. Is there an index-level edge to inherit?
@@ -159,10 +182,95 @@ and the past 21-session return.
 
 Over 15 years the raw level earns +0.4pp/month per SD at t = 1.8. Nothing survives
 detrending or a volatility control, and the only significant coefficients are
-*negative* (3-month, detrended, vol-controlled). The DIX rises in selloffs (corr with
-realized vol +0.28, 2011–2026), and in a mostly-bull sample buying stress pays; realized
-vol captures that better than the DIX does. That is not an effect a name-level residual
-could be expected to carry.
+*negative* (3-month, detrended, vol-controlled).
+
+### 2a. Why the index gauge looks predictive at all
+
+Section 1 of the study output (`index_mechanism`) looks at the gauge four ways. All
+four say the same thing: the index-level "edge" is **market timing through
+volatility**, not dark-pool information about future prices.
+
+**It stands in for implied volatility.** Over 2011–26 the SqueezeMetrics DIX tracks
+the VIX (corr +0.27), and high-VIX months have been followed by higher S&P returns.
+With the VIX in the regression, the DIX's 1-month coefficient falls from +0.42
+(t 1.8) to +0.17 (t 0.7); the VIX alone has t = 4.2:
+
+| 1-month forward return, pp per SD (t) | corr with implied vol | gauge alone | + implied vol | implied vol alone | detrended | detrended + implied vol |
+|---|---:|---:|---:|---:|---:|---:|
+| SqueezeMetrics DIX → SPX, 2011–26 (VIX) | +0.27 | +0.42 (1.8) | +0.17 (0.7) | +0.97 (4.2) | +0.17 (0.8) | −0.08 (−0.4) |
+| reconstructed S&P DIX → SPY, 2018–26 (VIX) | −0.01 | +0.33 (0.9) | +0.34 (1.0) | +1.31 (4.3) | −0.16 (−0.5) | −0.36 (−1.2) |
+| reconstructed NDX DIX → QQQ, 2018–26 (VXN) | −0.02 | +0.44 (1.1) | +0.46 (1.2) | +1.07 (2.2) | −0.03 (−0.1) | −0.05 (−0.1) |
+| reconstructed Russell DIX → IWM, 2018–26 (VIX) | −0.10 | +0.78 (1.3) | +0.95 (1.6) | +1.84 (3.6) | +0.42 (0.7) | +0.20 (0.4) |
+
+The same holds without a regression. Sort days into terciles of each series' trailing
+one-year percentile (no look-ahead):
+
+- High-VIX days were followed by +1.66% a month on average, low-VIX days by +0.84%.
+- Across all days, high-DIX days beat low-DIX days by 0.38pp. Within a VIX tercile the
+  gap averages only 0.14pp (−0.11, +0.38 and +0.15).
+- Most of the gap comes from which days land in each column: 45% of high-DIX days are
+  high-VIX days, against 21% of low-DIX days.
+
+| SqueezeMetrics DIX, 2011–26: mean 1-month S&P return (%) | low DIX | mid DIX | high DIX |
+|---|---:|---:|---:|
+| low VIX | +0.77 | +1.02 | +0.66 |
+| mid VIX | +0.62 | +0.36 | +1.00 |
+| high VIX | +1.75 | +1.01 | +1.90 |
+| all days | +0.93 | +0.82 | **+1.32** |
+| share of the column's days with high VIX | 21% | 21% | **45%** |
+
+The reconstructed gauges from 2018 on don't track implied vol (corr ≈ 0), so the VIX
+can't absorb them. They are weak to start with, though (t ≤ 1.3). The next two effects
+account for most of what the S&P and NDX gauges show. The small-cap gauge keeps about
+half of its slope after detrending (+0.42, t 0.7). Its best cell, a high gauge in
+high-VIX months (+2.8% a month), rests on 337 overlapping days, at most ~16
+independent months.
+
+**Drift.** The DIX has climbed from ~0.38 in 2011 to ~0.47 now. Subtract its trailing
+one-year mean and the coefficient is +0.17 (t 0.8) on the long sample. On the
+reconstructed S&P and NDX gauges it is below zero (−0.16 and −0.03). A multi-year
+drift gives only a handful of independent observations.
+
+**Two rebounds.** Re-estimate leaving out one calendar year at a time:
+
+- Dropping 2018 alone takes the reconstructed S&P coefficient from +0.33 to +0.12
+  (t 0.3). For that gauge "2018" is only August–December. It takes the NDX
+  coefficient from +0.44 to +0.23.
+- On the 15-year series, dropping 2018 or 2020 each removes about a third of the
+  coefficient (+0.42 → +0.29 or +0.33). The median over years leaves it at +0.42.
+
+In those two episodes the SqueezeMetrics DIX followed the turn rather than calling it
+(5-day gauge, percentile of its trailing year):
+
+- **December 2018:** at the 24 Dec low it sat mid-range (62nd percentile). It reached
+  the top decile on 27 Dec, after the rebound's first +4.8% day, and stayed there
+  through January while the S&P gained 5–11% over each following month.
+- **March 2020:** at the 23 Mar low it sat at the *bottom* of its range (0.4th
+  percentile), when the next month returned +22%. It reached the top decile on 27 Mar,
+  three sessions into the rebound.
+
+**It follows the market by a day.** Correlation of the detrended daily gauge with the
+index's return on nearby days:
+
+| corr(detrended gauge on day t, index return on day t+k) | k = −1 (the day before) | k = 0 (same day) | k = +1 (next day) |
+|---|---:|---:|---:|
+| SqueezeMetrics DIX → SPX | +0.12 | −0.10 | +0.02 |
+| reconstructed S&P → SPY | +0.17 | −0.03 | +0.01 |
+| reconstructed NDX → QQQ | +0.23 | +0.04 | +0.00 |
+| reconstructed Russell → IWM | −0.04 | **−0.33** | −0.01 |
+
+The large-cap DIX runs highest the day *after* the index rises, and says nothing about
+the next day. The small-cap gauge moves against the market on the day itself: its
+dark buying rises when IWM falls, like the equal-weighted average of names' DPI in
+§3. It is just as silent about the next day.
+
+**Why none of this reaches single names.** The index-level timing is the volatility
+regime, the gauge's drift and a couple of rebounds, all seen through a gauge that lags
+the market by a day. A name-level test removes the market by construction: the
+residual subtracts the DIX, and cross-sectional ranks and market-relative returns
+difference it away. That leaves nothing to inherit. For the timing itself, implied
+vol is the cleaner source: the VIX (or VXN) predicts the index more strongly than any
+dark gauge, in every sample here.
 
 ---
 
@@ -190,15 +298,18 @@ The two moving parts point in **opposite directions** relative to price:
 |---|---:|---:|---:|---:|---:|---:|---:|
 | a name's abnormal DPI vs *its own* return | +0.02 | +0.06 | +0.12 | **+0.11** | −0.02 | −0.00 | +0.00 |
 
-vs. the common component against the equal-weight market's same-day return: **−0.25**
-(−0.48 in the Russell 2000). Market-wide dark buying is contrarian — it absorbs
-selloffs. Name-specific dark buying is an echo of the name's own buy pressure, already
-in the price, then partly reversed the next day.
+vs. the common component (the equal-weighted average of names' abnormal DPI) against
+the equal-weight market's same-day return: **−0.25** (−0.48 in the Russell 2000).
+Across the typical name, market-wide dark buying rises into selloffs. The
+dollar-weighted large-cap DIX, dominated by a handful of mega-caps, behaves
+differently: it follows the market by a day (§2a). Name-specific dark buying is an
+echo of the name's own buy pressure, already in the price, then partly reversed the
+next day.
 
 What that does to each part of the current method:
 
-1. **`D − DIX` and the rolling-OLS residual** subtract exactly the contrarian common
-   part and keep the echo.
+1. **`D − DIX` and the rolling-OLS residual** subtract the market-wide part and keep
+   the echo.
 2. **The benchmark** is dollar-weighted, so it is a handful of mega-caps (the top 10
    are 58% of NDX dark dollars over the last year) that includes the name itself
    (NVDA's residual is taken against a gauge that is 11% NVDA) — and until this fix
@@ -363,9 +474,11 @@ alignment with returns destroyed). Then the practical test: select the names wit
 
 - **Large caps: no.** How many names "work" matches the placebo almost exactly, and
   the names that worked in 2019–22 were back to zero in 2023–26 (top quintile's
-  average t: +1.6 → +0.2). Mind the base rate: with overlapping one-month returns,
-  about **one name in twelve clears |t| = 2 under the placebo** — ~40 S&P names that
-  look like DPI works on them from noise alone.
+  average t: +1.6 → +0.2). Traded out of sample, they stay inside the placebo range
+  wherever the halves are cut (`dpi_z`, t 0.9–1.7 with the split moved up to 8 weeks
+  either way). Mind the base rate: with overlapping one-month returns, about **one
+  name in twelve clears |t| = 2 under the placebo** — ~40 S&P names that look like DPI
+  works on them from noise alone.
 - **NDX-100:** 6 names clear |t| = 2 on abnormal DPI at one month (chance: 7.6), and 8
   keep |t| > 1 the same way in both halves (chance: 6.3). The most consistent-looking
   — XEL, INTU and BKR negative; ROP and FAST positive; NFLX, +4.2 in 2019–22 and −0.2
@@ -376,7 +489,11 @@ alignment with returns destroyed). Then the practical test: select the names wit
   (t = 3.0), better than every placebo run. It is name-specific (one common direction
   earns −0.04) and not a static tilt (timing only, t = 3.3). But slope ranks barely
   correlate across halves (+0.02), so it lives in a minority of names, and it is a
-  few percent a year gross on small caps whose positions turn over weekly.
+  few percent a year gross on small caps whose positions turn over weekly. The t-stat
+  also depends on where the halves are cut. Moving the split up to 8 weeks either way
+  gives t = 1.4–4.0 (median 2.2), and the study's split is near the top of that
+  range. It beats all 30 placebo runs at 8 of the 9 cuts, and 97% of them at the
+  ninth.
 
 **Picking characteristics.** Signal × characteristic interaction t-stats in the full
 cross-section (with the usual controls; each characteristic measured on trailing

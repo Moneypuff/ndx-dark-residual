@@ -19,6 +19,24 @@ RELATIVE-DARKNESS STUDY -- universe spx_ndx (518 names), FINRA 2018-08-01 -> 202
        5    +0.102 (+0.8)   +0.079 (+0.7)   -0.011 (-0.1)   -0.084 (-0.7)   +1.4
       21    +0.429 (+1.0)   +0.349 (+0.8)   -0.018 (-0.1)   -0.341 (-1.1)   +3.8
       63    +0.359 (+0.4)   -0.021 (-0.0)   -1.117 (-1.2)   -1.980 (-2.5)   +4.5
+   Why it looks predictive -- reconstructed dollar-DIX vs SPY (implied vol = VIX; corr of the 5d gauge with VIX -0.01, detrended +0.14):
+     h21: gauge alone +0.331 (+0.9) | + VIX +0.343 (+1.0) | VIX alone +1.314 (+4.3) | detrended -0.160 (-0.5) | detrended + VIX -0.358 (-1.2)
+     h63: gauge alone +0.193 (+0.2) | + VIX +0.216 (+0.3) | VIX alone +2.826 (+4.1) | detrended -1.390 (-1.5) | detrended + VIX -1.823 (-2.2)
+     1-month forward return (%) by trailing-1y terciles, rows VIX low/mid/high, cols gauge low/mid/high:
+       VIX low : +1.24 (n=213)  +1.36 (n=328)  +0.97 (n=245)
+       VIX mid : +0.88 (n=198)  +0.10 (n=155)  +0.87 (n=175)
+       VIX high: +2.60 (n=164)  +1.58 (n=128)  +1.56 (n=295)
+     lead-lag corr(detrended gauge_t, index return_t+k): k=-3 +0.089  k=-2 +0.090  k=-1 +0.170  k=+0 -0.029  k=+1 +0.007  k=+2 +0.007  k=+3 -0.009
+     leave-one-year-out, gauge alone h21 (full +0.331 (+0.9)): without 2018 +0.120 (+0.3); without 2025 +0.220 (+0.6); median over years +0.332
+   Why it looks predictive -- SqueezeMetrics DIX vs SPX, full history (implied vol = VIX; corr of the 5d gauge with VIX +0.27, detrended +0.24):
+     h21: gauge alone +0.420 (+1.8) | + VIX +0.166 (+0.7) | VIX alone +0.970 (+4.2) | detrended +0.168 (+0.8) | detrended + VIX -0.080 (-0.4)
+     h63: gauge alone +0.651 (+1.2) | + VIX +0.073 (+0.1) | VIX alone +2.108 (+4.3) | detrended -0.370 (-0.6) | detrended + VIX -0.949 (-1.8)
+     1-month forward return (%) by trailing-1y terciles, rows VIX low/mid/high, cols gauge low/mid/high:
+       VIX low : +0.77 (n=663)  +1.02 (n=573)  +0.66 (n=329)
+       VIX mid : +0.62 (n=328)  +0.36 (n=348)  +1.00 (n=391)
+       VIX high: +1.75 (n=258)  +1.01 (n=251)  +1.90 (n=585)
+     lead-lag corr(detrended gauge_t, index return_t+k): k=-3 +0.035  k=-2 +0.042  k=-1 +0.116  k=+0 -0.101  k=+1 +0.017  k=+2 +0.007  k=+3 -0.002
+     leave-one-year-out, gauge alone h21 (full +0.420 (+1.8)): without 2018 +0.292 (+1.2); without 2020 +0.333 (+1.4); median over years +0.418
 
 2. STRUCTURE -- what per-name DPI is made of
    1,004,585 name-days, 518 names. Variance shares: structural level 13.4% | common (market) 6.7% | idiosyncratic 80.6%
@@ -109,6 +127,15 @@ RELATIVE-DARKNESS STUDY -- universe russell (1972 names), FINRA 2018-08-01 -> 20
        5    +0.095 (+0.7)   +0.154 (+1.0)   -0.004 (-0.0)   +0.012 (+0.1)   +2.5
       21    +0.778 (+1.3)   +0.964 (+1.6)   +0.420 (+0.7)   +0.429 (+0.7)   +5.4
       63    +1.608 (+1.2)   +1.684 (+1.4)   +0.331 (+0.3)   +0.113 (+0.1)   +4.7
+   Why it looks predictive -- reconstructed dollar-DIX vs IWM (implied vol = VIX; corr of the 5d gauge with VIX -0.10, detrended +0.11):
+     h21: gauge alone +0.778 (+1.3) | + VIX +0.945 (+1.6) | VIX alone +1.840 (+3.6) | detrended +0.420 (+0.7) | detrended + VIX +0.202 (+0.4)
+     h63: gauge alone +1.608 (+1.2) | + VIX +1.964 (+1.6) | VIX alone +4.878 (+4.8) | detrended +0.331 (+0.3) | detrended + VIX -0.374 (-0.3)
+     1-month forward return (%) by trailing-1y terciles, rows VIX low/mid/high, cols gauge low/mid/high:
+       VIX low : +0.56 (n=295)  +1.31 (n=278)  -0.21 (n=213)
+       VIX mid : -2.10 (n=167)  +0.86 (n=151)  +0.72 (n=210)
+       VIX high: +0.31 (n=119)  +0.81 (n=131)  +2.83 (n=337)
+     lead-lag corr(detrended gauge_t, index return_t+k): k=-3 -0.018  k=-2 -0.045  k=-1 -0.038  k=+0 -0.330  k=+1 -0.008  k=+2 -0.001  k=+3 -0.004
+     leave-one-year-out, gauge alone h21 (full +0.778 (+1.3)): without 2018 +0.551 (+0.9); without 2024 +0.651 (+1.0); median over years +0.782
 
 2. STRUCTURE -- what per-name DPI is made of
    3,127,791 name-days, 1972 names. Variance shares: structural level 10.6% | common (market) 3.4% | idiosyncratic 87.7%
@@ -191,6 +218,15 @@ RELATIVE-DARKNESS STUDY -- universe ndx (103 names), FINRA 2018-08-01 -> 2026-09
        5    +0.119 (+0.9)   +0.107 (+0.7)   +0.018 (+0.1)   -0.014 (-0.1)   +0.9
       21    +0.438 (+1.1)   +0.348 (+0.9)   -0.028 (-0.1)   -0.189 (-0.5)   +1.5
       63    -0.101 (-0.1)   -0.699 (-0.6)   -1.563 (-1.2)   -2.208 (-1.8)   +2.3
+   Why it looks predictive -- reconstructed dollar-DIX vs QQQ (implied vol = VXN; corr of the 5d gauge with VXN -0.02, detrended +0.02):
+     h21: gauge alone +0.438 (+1.1) | + VXN +0.459 (+1.2) | VXN alone +1.069 (+2.2) | detrended -0.028 (-0.1) | detrended + VXN -0.054 (-0.1)
+     h63: gauge alone -0.101 (-0.1) | + VXN -0.061 (-0.1) | VXN alone +2.766 (+2.2) | detrended -1.563 (-1.2) | detrended + VXN -1.639 (-1.3)
+     1-month forward return (%) by trailing-1y terciles, rows VXN low/mid/high, cols gauge low/mid/high:
+       VXN low : +1.54 (n=192)  +2.04 (n=341)  +2.40 (n=241)
+       VXN mid : +1.76 (n=181)  +0.24 (n=148)  +0.37 (n=147)
+       VXN high: +2.38 (n=248)  +0.32 (n=140)  +1.88 (n=263)
+     lead-lag corr(detrended gauge_t, index return_t+k): k=-3 +0.114  k=-2 +0.127  k=-1 +0.233  k=+0 +0.038  k=+1 +0.001  k=+2 -0.002  k=+3 -0.004
+     leave-one-year-out, gauge alone h21 (full +0.438 (+1.1)): without 2018 +0.234 (+0.6); without 2025 +0.330 (+0.8); median over years +0.406
 
 2. STRUCTURE -- what per-name DPI is made of
    190,949 name-days, 103 names. Variance shares: structural level 14.7% | common (market) 6.4% | idiosyncratic 81.0%
