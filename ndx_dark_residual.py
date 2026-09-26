@@ -5816,6 +5816,23 @@ def main():
                 spx_payload = build_reconstructed_index_payload(
                     spx_dix, spy["adjclose"].get("SPY"), out_key="dix",
                     start=plot_start, n_constituents=n_sp)
+                # SPX-ex-NDX dollar-DIX: the same gauge over the S&P names
+                # that are NOT in the NDX-100 (nor Alphabet's twin class).
+                # Packed alongside `dix` so the intra-index regime study can
+                # test whether the SPX gauge's behavior is dilution by the
+                # NDX overlap or something the non-tech S&P carries itself.
+                if spx_payload is not None:
+                    ndx_overlap = set(NDX100) | {BENCH, "GOOG", "GOOGL"}
+                    spx_dix_ex = compute_dollar_dix(SP["short"], SP["total"],
+                                                    SP["close"],
+                                                    exclude=tuple(ndx_overlap))
+                    ex_dates = pd.to_datetime(spx_payload["dates"])
+                    spx_payload["dix_ex"] = [
+                        None if pd.isna(x) else round(float(x), 4)
+                        for x in spx_dix_ex.reindex(ex_dates).values]
+                    spx_payload["dix_ex_names"] = int(
+                        len([c for c in SP["short"].columns
+                             if c not in ndx_overlap]))
                 # residualize each S&P name's D against the S&P 500 DIX (5d MA) for its grid
                 spx_bench = spx_dix.rolling(5, min_periods=1).mean().reindex(SP["d"].index)
                 spx_res = compute_residuals(SP["d"], "SPX-DIX", window=args.window,
