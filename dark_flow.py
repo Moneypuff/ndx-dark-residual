@@ -58,6 +58,9 @@ echo_profile        mean per-date rank correlation of a signal with returns at
 index_predictability  time-series tests of an index DIX on its index's forward
                     returns: level and detrended, with realized-vol and past-return
                     controls.
+index_mechanism     why an index gauge looks predictive: its slope with and without
+                    implied vol (VIX/VXN), a vol-regime x gauge table of forward
+                    returns, and its lead-lag profile against index returns.
 
 Per-name ("does DPI work better on certain names?")
 ---------------------------------------------------
@@ -426,3 +429,62 @@ def selection_pnl(X, Y, est_mask, test_mask, lags, sel_t=1.5, min_obs=80, demean
         z = z - z.mean()
     sign = np.sign(sel["b"]) if orient == "own" else np.sign(est["b"].mean())
     return (z * sign * Y[test_mask][sel.index]).mean(axis=1).dropna(), len(sel)
+
+
+# --------------------------------------------------------------------------
+# Index level: what the gauge tracks, and what absorbs its predictive power
+# --------------------------------------------------------------------------
+def index_mechanism(dix, price, iv, horizons=(21, 63), smooth=5, trend=252, lags=(-3, -2, -1, 0, 1, 2, 3)):
+    """Why an index dark gauge looks predictive, in three views.
+
+    `coef`: slope (pp of forward log return per 1 SD, Newey-West t with lags = horizon) of the
+    `smooth`-session gauge alone, with implied vol `iv` (e.g. VIX) as a control, of `iv` alone,
+    and of the detrended gauge (minus its trailing `trend`-session mean) with and without `iv`.
+    `table`: mean 1-month (21-session) forward return by terciles of each series' trailing
+    1-year percentile (rows: `iv`, columns: gauge; no look-ahead), with counts in `counts`.
+    `leadlag`: correlation of the detrended daily gauge at t with the index return at t+k.
+    `loo`: the gauge-alone 1-month slope re-estimated leaving out each calendar year -- which
+    episodes the raw relation leans on. `corr_iv` / `corr_iv_detrended`: how closely the
+    (detrended) gauge tracks implied vol.
+    """
+    df = pd.DataFrame({"dix": dix, "px": price, "iv": iv}).dropna()
+    lp = np.log(df["px"])
+    r = lp.diff() * 100
+    g = df["dix"].rolling(smooth, min_periods=max(1, smooth - 2)).mean()
+    det = g - g.rolling(trend, min_periods=trend // 2).mean()
+    specs = {"gauge alone": ["g"], "gauge + implied vol": ["g", "iv"], "implied vol alone": ["iv"],
+             "detrended gauge": ["det"], "detrended gauge + implied vol": ["det", "iv"]}
+    base = pd.DataFrame({"g": g, "det": det, "iv": df["iv"]})
+    rows = []
+    for h in horizons:
+        y = (lp.shift(-h) - lp) * 100
+        for name, xs in specs.items():
+            D = pd.concat([base[xs], y.rename("y")], axis=1).dropna()
+            if len(D) < 3 * h + 10:
+                continue
+            Z = (D[xs] - D[xs].mean()) / D[xs].std()
+            beta, se, t, p, r2 = ols_nw(D["y"].to_numpy(), np.column_stack([np.ones(len(D))] + [Z[c] for c in xs]),
+                                        lags=h)
+            rows.append({"horizon": h, "spec": name, "coef": beta[1], "t": t[1], "n": len(D)})
+
+    def tpct(s):
+        return s.rolling(trend, min_periods=trend // 2).apply(lambda a: (a[:-1] < a[-1]).mean(), raw=True)
+    B = pd.DataFrame({"gp": tpct(g), "vp": tpct(df["iv"]), "f": (lp.shift(-21) - lp) * 100}).dropna()
+    labels = ["low", "mid", "high"]
+    B["gauge"] = pd.cut(B["gp"], [-0.01, 1 / 3, 2 / 3, 1.01], labels=labels)
+    B["implied vol"] = pd.cut(B["vp"], [-0.01, 1 / 3, 2 / 3, 1.01], labels=labels)
+    table = B.pivot_table(index="implied vol", columns="gauge", values="f", aggfunc="mean", observed=True)
+    counts = B.pivot_table(index="implied vol", columns="gauge", values="f", aggfunc="count", observed=True)
+    x = df["dix"] - df["dix"].rolling(trend, min_periods=trend // 2).mean()
+    leadlag = {k: float(x.corr(r.shift(-k))) for k in lags}
+    # which years carry the raw 1-month slope: re-estimate leaving each calendar year out
+    D = pd.concat([g.rename("g"), ((lp.shift(-21) - lp) * 100).rename("y")], axis=1).dropna()
+    loo = {}
+    for yr in sorted(set(D.index.year)):
+        d = D[D.index.year != yr]
+        z = (d["g"] - d["g"].mean()) / d["g"].std()
+        beta, se, t, p, r2 = ols_nw(d["y"].to_numpy(), np.column_stack([np.ones(len(d)), z]), lags=21)
+        loo[yr] = (float(beta[1]), float(t[1]))
+    return {"coef": pd.DataFrame(rows), "table": table, "counts": counts, "leadlag": leadlag,
+            "loo": pd.DataFrame.from_dict(loo, orient="index", columns=["coef", "t"]),
+            "corr_iv": float(g.corr(df["iv"])), "corr_iv_detrended": float(det.corr(df["iv"]))}

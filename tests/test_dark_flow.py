@@ -356,3 +356,48 @@ def test_selection_pnl_rewards_persistent_name_directions_only():
     assert abs(p0.mean()) < 0.1
     none, k = F.selection_pnl(X, noise, est, test, lags=1, sel_t=99)
     assert none.empty and k == 0
+
+
+# ===========================================================================
+# index_mechanism
+# ===========================================================================
+def _vol_driven_market(n=2500, seed=21):
+    """A market whose forward returns depend only on a volatility state; the dark gauge merely
+    co-moves with that state (plus noise and a slow upward drift) and lags returns by a day."""
+    rng = np.random.default_rng(seed)
+    idx = _idx(n, start="2012-01-02")
+    v = np.empty(n)
+    v[0] = 0.0
+    for i in range(1, n):
+        v[i] = 0.98 * v[i - 1] + rng.normal(0, 0.2)
+    iv = pd.Series(18 + 4 * v, index=idx)                          # implied vol tracks the state
+    ret = 0.05 + 0.06 * v + rng.normal(0, 1.0, n)                   # expected return rises with vol
+    r = pd.Series(ret, index=idx)
+    gauge = pd.Series(0.40 + np.linspace(0, 0.05, n) + 0.01 * v + 0.004 * r.shift(1).fillna(0)
+                      + rng.normal(0, 0.004, n), index=idx)
+    price = pd.Series(100 * np.exp(np.cumsum(ret) / 100), index=idx)
+    return gauge, price, iv
+
+
+def test_index_mechanism_implied_vol_absorbs_a_vol_proxy():
+    gauge, price, iv = _vol_driven_market()
+    M = F.index_mechanism(gauge, price, iv, horizons=(21,))
+    c = M["coef"].set_index("spec")
+    assert c.loc["gauge alone", "coef"] > 0
+    assert c.loc["implied vol alone", "t"] > c.loc["gauge alone", "t"]
+    assert abs(c.loc["gauge + implied vol", "coef"]) < 0.5 * c.loc["gauge alone", "coef"]
+
+
+def test_index_mechanism_table_and_leadlag():
+    gauge, price, iv = _vol_driven_market()
+    M = F.index_mechanism(gauge, price, iv, horizons=(21,))
+    assert list(M["table"].index) == ["low", "mid", "high"]
+    assert list(M["table"].columns) == ["low", "mid", "high"]
+    assert int(M["counts"].to_numpy().sum()) > 1500
+    ll = M["leadlag"]
+    assert ll[-1] == max(ll.values())                      # the gauge follows yesterday's return
+    assert abs(ll[1]) < 0.1                                # and says nothing about tomorrow's
+    assert M["corr_iv"] > 0.3                              # the planted gauge co-moves with vol
+    loo = M["loo"]
+    assert list(loo.columns) == ["coef", "t"]
+    assert set(loo.index) == set(gauge.index.year)         # one re-estimate per calendar year

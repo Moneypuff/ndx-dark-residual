@@ -12,7 +12,9 @@ Sections
 1. Index level   the universe's reconstructed dollar-DIX (and, when reachable,
                  SqueezeMetrics' published DIX, 2011->) vs the index's forward returns:
                  raw level and detrended, alone and with realized-vol / past-return
-                 controls, Newey-West.
+                 controls, Newey-West; then why it looks predictive -- the same slope
+                 with implied vol (VIX/VXN) as a control, a vol-regime x gauge table of
+                 forward returns, and the gauge's lead-lag profile against the index.
 2. Structure     variance decomposition of per-name DPI (structural / common /
                  idiosyncratic) and the "price echo": how abnormal DPI co-moves with the
                  name's own returns, vs how the common component co-moves with the market.
@@ -226,6 +228,46 @@ def fmt(c, t):
     return "      --      " if not np.isfinite(c) else f"{c:+.3f} ({t:+.1f})"
 
 
+IMPLIED_VOL = {"spx_ndx": "^VIX", "ndx": "^VXN", "russell": "^VIX"}   # Yahoo has no RVX
+
+
+def load_implied_vol(symbol, start, cache_dir=None):
+    """Daily close of an implied-vol index (VIX / VXN) from Yahoo, or None if unavailable."""
+    try:
+        px = N.load_yahoo_panels([symbol], start, pd.Timestamp.today().normalize(), workers=1,
+                                 cache_dir=cache_dir, label="implied vol")["close"]
+        s = px[symbol.upper()].dropna() if symbol.upper() in px else None
+        return s if s is not None and len(s) > 500 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def mechanism_lines(lines, label, gauge, price, iv, ivname):
+    """Why the gauge looks predictive: its slope with/without implied vol, the vol x gauge
+    return table, and its lead-lag profile against the index."""
+    M = F.index_mechanism(gauge, price, iv)
+    lines.append(f"   Why it looks predictive -- {label} (implied vol = {ivname}; corr of the 5d gauge with "
+                 f"{ivname} {M['corr_iv']:+.2f}, detrended {M['corr_iv_detrended']:+.2f}):")
+    for h, g in M["coef"].groupby("horizon"):
+        cells = {r.spec: fmt(r.coef, r.t).strip() for r in g.itertuples()}
+        lines.append(f"     h{h}: gauge alone {cells.get('gauge alone')} | + {ivname} {cells.get('gauge + implied vol')} | "
+                     f"{ivname} alone {cells.get('implied vol alone')} | detrended {cells.get('detrended gauge')} | "
+                     f"detrended + {ivname} {cells.get('detrended gauge + implied vol')}")
+    T, C = M["table"], M["counts"]
+    lines.append(f"     1-month forward return (%) by trailing-1y terciles, rows {ivname} low/mid/high, cols gauge low/mid/high:")
+    for ix in T.index:
+        lines.append(f"       {ivname} {ix:4s}: " + "  ".join(f"{T.loc[ix, c]:+.2f} (n={int(C.loc[ix, c])})" for c in T.columns))
+    lines.append("     lead-lag corr(detrended gauge_t, index return_t+k): "
+                 + "  ".join(f"k={k:+d} {v:+.3f}" for k, v in M["leadlag"].items()))
+    full = M["coef"][(M["coef"]["horizon"] == 21) & (M["coef"]["spec"] == "gauge alone")]
+    if len(full) and len(M["loo"]):
+        worst = M["loo"].sort_values("coef").head(2)
+        lines.append(f"     leave-one-year-out, gauge alone h21 (full {fmt(full['coef'].iloc[0], full['t'].iloc[0]).strip()}): "
+                     + "; ".join(f"without {yr} {fmt(r.coef, r.t).strip()}" for yr, r in worst.iterrows())
+                     + f"; median over years {M['loo']['coef'].median():+.3f}")
+    return M
+
+
 def dix_validation(fixed, naive, sqz):
     """How closely a reconstructed S&P-universe DIX tracks SqueezeMetrics' published DIX, for
     the split-fixed gauge vs the old pairing of as-traded FINRA shares with split-adjusted
@@ -238,7 +280,7 @@ def dix_validation(fixed, naive, sqz):
     return out
 
 
-def section_index(lines, dix, proxy_px, proxy, sqz, naive_dix=None):
+def section_index(lines, dix, proxy_px, proxy, sqz, naive_dix=None, iv=None, ivname="VIX", vix=None):
     lines.append("1. INDEX LEVEL -- does the dark gauge predict the index? (pp of forward return "
                  "per 1 SD of the 5d gauge; Newey-West t, lags = horizon)")
     if sqz is not None and naive_dix is not None:
@@ -265,6 +307,10 @@ def section_index(lines, dix, proxy_px, proxy, sqz, naive_dix=None):
                          f"   {float(rv.iloc[0]) if len(rv) else np.nan:+.1f}")
         R.insert(0, "feed", label)
         rows.append(R)
+    if iv is not None and proxy_px is not None:
+        mechanism_lines(lines, f"reconstructed dollar-DIX vs {proxy}", dix, proxy_px, iv, ivname)
+    if vix is not None and sqz is not None:
+        mechanism_lines(lines, "SqueezeMetrics DIX vs SPX, full history", sqz["dix"], sqz["price"], vix, "VIX")
     lines.append("")
     return pd.concat(rows) if rows else pd.DataFrame()
 
@@ -704,8 +750,12 @@ def main():
         ok = P["total_raw"][names] >= 1000
         naive = N.compute_dollar_dix(P["short_raw"][names].where(ok), P["total_raw"][names].where(ok),
                                      close)
+    ivsym = IMPLIED_VOL[args.universe]
+    iv = load_implied_vol(ivsym, "2010-06-01", cache_dir=args.cache_dir or None)
+    vix = iv if ivsym == "^VIX" else (load_implied_vol("^VIX", "2010-06-01", cache_dir=args.cache_dir or None)
+                                     if sqz is not None else None)
     idx_res = section_index(lines, dix, P["adjclose"][proxy] if proxy in P["adjclose"] else None, proxy,
-                            sqz, naive_dix=naive)
+                            sqz, naive_dix=naive, iv=iv, ivname=ivsym.strip("^"), vix=vix)
     section_structure(lines, dpi1, ret_1d)
     sig_res = section_signals(lines, sig, ctl, adj, dates, min_names)
     section_robust(lines, sig, ctl, vols, adj, dates, min_names, mask=liq)

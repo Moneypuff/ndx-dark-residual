@@ -5413,7 +5413,14 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
         return False
 
     def _window(panels):
-        win = [d for d in panels["close"].index if pd.Timestamp(start) <= d <= end_n]
+        # Only dates on which a REQUESTED symbol has a bar. The pickle is shared by every
+        # caller, and a symbol that prints on an exchange holiday (Yahoo carries ^VIX bars on
+        # some US holidays -- Memorial Day and Labor Day 2026) would otherwise hand every other
+        # universe an empty pseudo-session: Yahoo's calendar drives the FINRA dates, so it would
+        # land in the panels and shift the 5-day D and every other row-counted window.
+        req = panels["close"].reindex(columns=symbols)
+        live = req.index[req.notna().any(axis=1)]
+        win = [d for d in live if pd.Timestamp(start) <= d <= end_n]
         res = {f: panels[f].reindex(index=win, columns=symbols) for f in fields}
         res["splits"] = {s: dict(split_cache[s]) for s in symbols if split_cache.get(s)}
         return res

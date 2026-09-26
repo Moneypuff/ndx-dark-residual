@@ -305,3 +305,33 @@ def test_parse_yahoo_splits_ratios_and_malformed_rows():
     assert out[pd.to_datetime(1690000000, unit="s").normalize()] == pytest.approx(0.1)
     assert len(out) == 2
     assert N._parse_yahoo_splits({}) == {} and N._parse_yahoo_splits({"events": None}) == {}
+
+
+# ---------------------------------------------------------------------------
+# calendar: the pickle is shared, so one symbol's bar on an exchange holiday
+# (Yahoo carries ^VIX on some US holidays) must not become a session for every
+# other caller -- Yahoo's calendar drives the FINRA dates and every row window.
+# ---------------------------------------------------------------------------
+def test_another_symbols_holiday_bar_does_not_leak_into_the_calendar(tmp_path, monkeypatch):
+    days = pd.bdate_range("2026-08-31", "2026-09-11")
+    labor_day = pd.Timestamp("2026-09-07")
+    sessions = days.drop(labor_day)
+    _seed_cache(tmp_path, {"AAPL": _mkdf(sessions[sessions <= "2026-09-04"]),
+                           "^VIX": _mkdf(days, value=15.0)},
+                splits_known=["AAPL", "^VIX"])
+    calls = []
+    monkeypatch.setattr(N, "fetch_yahoo_one", _fake_fetch(calls, {"AAPL": _mkdf(sessions)}))
+
+    # fetch path: AAPL is extended, the merged pickle holds ^VIX's holiday bar
+    out = N.load_yahoo_panels(["AAPL"], "2026-08-31", "2026-09-11", cache_dir=tmp_path, label="T")
+    assert calls and calls[0][0] == "AAPL"
+    assert list(out["close"].index) == list(sessions)
+    assert labor_day in pd.read_pickle(tmp_path / N.YAHOO_CACHE)["close"].index
+
+    # same-day reuse path: still no pseudo-session for AAPL...
+    calls.clear()
+    again = N.load_yahoo_panels(["AAPL"], "2026-08-31", "2026-09-11", cache_dir=tmp_path, label="T")
+    assert not calls and list(again["close"].index) == list(sessions)
+    # ...while a caller that asks for ^VIX still gets its bar
+    both = N.load_yahoo_panels(["AAPL", "^VIX"], "2026-08-31", "2026-09-11", cache_dir=tmp_path, label="T")
+    assert labor_day in both["close"].index and pd.isna(both["close"].loc[labor_day, "AAPL"])

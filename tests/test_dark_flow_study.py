@@ -113,7 +113,7 @@ def test_by_name_section_runs_offline_and_reports_against_chance():
     lines = []
     S.section_by_name(lines, sig, ctl, adj, dates, names, dpi1, ret_1d, vols, min_names=40,
                       k_placebo=3)
-    text = "\\n".join(lines)
+    text = "\n".join(lines)
     assert text.startswith("6. BY NAME")
     for key in ("d_5d h5", "dpi_z h21", "persistence:", "beats", "interaction t",
                 "structurally dark tercile"):
@@ -178,3 +178,15 @@ def test_by_name_section_reports_sectors_when_mapped():
                       k_placebo=2, sector_map=smap)
     sector_lines = [ln for ln in lines if "by sector" in ln]
     assert len(sector_lines) == 2 and "Alpha (30)" in sector_lines[0] and "Beta (30)" in sector_lines[0]
+
+
+def test_section_index_explains_with_implied_vol():
+    P, names, idx = _synthetic_panels(n_names=60, n_days=1300, seed=6)
+    sig, ctl, dix, dpi1, ret_1d, adj, adv_dollar, close, vols = S.build_signals(P, names)
+    rng = np.random.default_rng(1)
+    iv = pd.Series(18 + np.cumsum(rng.normal(0, 0.3, len(idx))), index=idx).clip(lower=9)
+    lines = []
+    S.section_index(lines, dix, adj[names[0]], "TEST", None, iv=iv, ivname="VIX")
+    text = "\n".join(lines)
+    assert "Why it looks predictive" in text and "+ VIX" in text
+    assert "VIX high:" in text and "lead-lag" in text
