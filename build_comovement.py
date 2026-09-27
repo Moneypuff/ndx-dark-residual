@@ -56,10 +56,11 @@ def dix_and_returns(P):
     """(dix, ret) dicts of per-index daily Series, from the dashboard payload."""
     def s(dates, vals):
         return pd.Series(vals, index=pd.to_datetime(dates), dtype="float64")
-    dix = {"NDX": s(P["rel"]["dates"], P["rel"]["ndx_dix"]),
+    ndx = P.get("ndxi")   # long point-in-time NDX series when present (2009+), else the live replica
+    dix = {"NDX": s(ndx["dates"], ndx["dix"]) if ndx else s(P["rel"]["dates"], P["rel"]["ndx_dix"]),
            "SPX": s(P["spx"]["dates"], P["spx"]["dix"]),
            "IWM": s(P["iwm"]["dates"], P["iwm"]["d"])}
-    ret = {"NDX": s(P["rel"]["dates"], P["rel"]["r21"][P["bench"]]),
+    ret = {"NDX": s(ndx["dates"], ndx["r21"]) if ndx else s(P["rel"]["dates"], P["rel"]["r21"][P["bench"]]),
            "SPX": s(P["spx"]["dates"], P["spx"]["r21"]),
            "IWM": s(P["iwm"]["dates"], P["iwm"]["r21"])}
     return dix, ret

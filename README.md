@@ -18,6 +18,33 @@ a reconstructed index dollar-DIX benchmark, two ways:
 2. **Regression residual** — rolling OLS `D_i ~ a + b·INDEX_DIX` → ε (removes both
    the common level and each name's beta to market dark flow).
 
+## Index DIX history (point-in-time, 2009+)
+
+The NDX, SPX and IWM index tabs (and the comovement tab) show a **point-in-time,
+dollar-weighted DIX from August 2009**. It is committed as `data/pit_dix_history.csv`
+and spliced in front of the live build (`load_pit_dix_history` /
+`splice_dix_history`): dates up to the file's last row come from it, later dates from
+the nightly live computation.
+
+- **Why committed, not rebuilt in CI:** it needs FINRA Reg SHO files back to 2009 and
+  membership history, neither available to the nightly job. Before 2018-08 FINRA only
+  publishes per-facility files (FNSQ/FNYX/FNQC/FORF/FNRA), which sum exactly to the
+  consolidated file where both exist.
+- **Membership:** Nasdaq-100 from contemporaneous Wikipedia snapshots; S&P 500 from a
+  point-in-time table; Russell 2000 from IWM's actual holdings in SEC N-Q (2009-2018)
+  and N-PORT (2019+) filings. The live tail uses current holdings, so survivorship is
+  confined to the days since the file was last refreshed. The build log prints the
+  overlap agreement for each index.
+- **Validation:** the same construction on the S&P 500 reproduces SqueezeMetrics'
+  published DIX at 0.994 (daily level) / 0.996 (5-day MA), 2011-2026.
+- **Refresh** (locally, where the history pipeline lives):
+  `python tools/export_pit_dix_history.py`, then commit `data/pit_dix_history.csv`.
+
+Dollar weighting pairs FINRA's **as-traded** share volume with the **as-traded** close
+(`rawclose`, derived from Yahoo's split events). Yahoo's `close` is split-adjusted,
+and pairing it with as-traded volume mis-weights every name around splits, badly for
+reverse splits.
+
 ## Layout
 
 - **Dashboard**: `build_report.py` + `report_template.html` (D-vs-forward-return

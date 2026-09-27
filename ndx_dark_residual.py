@@ -1414,7 +1414,7 @@ def pack_name_rel(dpi_panel, adjclose_panel, keep_days=252, plot_start=None, wee
 
 
 def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dark_panel,
-               ndx_agg=None, ndx_dix=None, spx=None, iwm=None, bench_label=None,
+               ndx_agg=None, ndx_dix=None, spx=None, iwm=None, ndxi=None, bench_label=None,
                spx_res=None, spx_rel=None, spx_weight_map=None, spx_weight_order=None,
                wl_res=None, wl_rel=None, wl_sectors=None,
                breadth_px=None, sector_data=None, contrib=None, spx_keep_days=378,
@@ -1581,6 +1581,7 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
         "contrib": contrib,
         "spx": spx,
         "iwm": iwm,
+        "ndxi": ndxi,
         "bench": bench,
         "bench_label": bench_label,
         "window": window,
@@ -2704,7 +2705,8 @@ function renderToday(){
     let gs = null, regime = null;
     if(P.spx && P.iwm && P.rel.ndx_dix){
       const gauges = {
-        NDX: {dates: P.rel.dates, dix: P.rel.ndx_dix, r21: (P.rel.r21||{})[P.bench]},
+        NDX: P.ndxi ? {dates: P.ndxi.dates, dix: P.ndxi.dix, r21: P.ndxi.r21}
+                    : {dates: P.rel.dates, dix: P.rel.ndx_dix, r21: (P.rel.r21||{})[P.bench]},
         SPX: {dates: P.spx.dates, dix: P.spx.dix, r21: P.spx.r21},
         IWM: {dates: P.iwm.dates, dix: P.iwm.d,  r21: P.iwm.r21}};
       // 5d MA (min 3 obs) per gauge, keyed by date -- mirrors the comovement study
@@ -5582,6 +5584,52 @@ def build_universe_panels(symbols, start, end, workers=8, cache_dir=None, ns="",
             "rawclose": ypan["rawclose"]}
 
 
+PIT_DIX_HISTORY = Path(__file__).resolve().parent / "data" / "pit_dix_history.csv"
+
+
+def load_pit_dix_history(path=PIT_DIX_HISTORY):
+    """Committed point-in-time, dollar-weighted index DIX history (columns ndx, spx, iwm; 2009+).
+
+    Produced locally by tools/export_pit_dix_history.py from FINRA files back to 2009 and
+    point-in-time membership (Nasdaq-100 from contemporaneous Wikipedia snapshots, S&P 500 PIT,
+    Russell 2000 from IWM's SEC N-Q / N-PORT holdings), priced with as-traded closes. The live
+    build can't reproduce it (no 2009+ FINRA archive, no membership history in CI), so it is
+    spliced in front of the live series. Returns None if the file is absent."""
+    p = Path(path)
+    if not p.exists():
+        return None
+    try:
+        h = pd.read_csv(p, parse_dates=["date"]).set_index("date").sort_index()
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! could not read {p.name} ({e}); live-only DIX", file=sys.stderr)
+        return None
+    return h if not h.empty else None
+
+
+def splice_dix_history(live, hist, label=""):
+    """History for dates up to its last valid row, live beyond it.
+
+    Both are dollar-weighted DIX on the same (as-traded price) basis; the history also has
+    point-in-time membership, the live tail uses current holdings, so survivorship is confined
+    to the days after the history file was last refreshed. The overlap agreement is printed as
+    a diagnostic (it measures that membership difference)."""
+    if hist is None or hist.dropna().empty:
+        return live
+    if live is None or live.dropna().empty:
+        return hist.dropna()
+    h = hist.dropna(); last = h.index.max()
+    both = pd.concat([live.rename("live"), h.rename("pit")], axis=1).dropna()
+    if len(both) > 60:
+        try:   # diagnostic only -- never let it break a build
+            b5 = both.rolling(5).mean().dropna()
+            print(f"{label} DIX: PIT history {h.index.min().date()}..{last.date()} spliced before live; "
+                  f"overlap {len(both)} days, 5d-MA corr {b5['live'].corr(b5['pit']):.3f}, "
+                  f"mean offset {100 * (b5['live'] - b5['pit']).mean():+.2f}pp", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            print(f"  ! {label} splice diagnostic failed ({e})", file=sys.stderr)
+    return pd.concat([h, live[live.index > last].dropna()]).sort_index()
+
+
 def build_reconstructed_index_payload(dix_series, etf_close, out_key="d", start=None,
                                       reconstructed=True, n_constituents=None):
     """Pack a reconstructed index DIX (x-axis) vs an ETF's forward returns (from its close).
@@ -5781,6 +5829,7 @@ def main():
               f"({', '.join(wl_tickers[:6])}{'...' if len(wl_tickers) > 6 else ''})",
               file=sys.stderr)
 
+    ndxi_payload = None   # long point-in-time NDX index series; live builds only
     if args.demo:
         print("DEMO mode: synthetic data (no network)...", file=sys.stderr)
         data = demo_panel(NDX100, BENCH, start=args.plot_start or "2020-01-01")
@@ -5829,6 +5878,14 @@ def main():
         r42_panel = compute_forward_return(NDX["adjclose"], 42)
         r63_panel = compute_forward_return(NDX["adjclose"], 63)
         ndx_dix = compute_dollar_dix(NDX["short"], NDX["total"], NDX["rawclose"], exclude=(BENCH,))
+        pit_hist = load_pit_dix_history()
+        hist_start = pit_hist.index.min() if pit_hist is not None else start
+        idx_plot_start = min(hist_start, plot_start) if plot_start is not None else hist_start
+        qqq_long = load_yahoo_panels([BENCH], hist_start, end, workers=2, cache_dir=cache_dir,
+                                     refresh=args.refresh, label=BENCH)["adjclose"].get(BENCH)
+        ndxi_payload = build_reconstructed_index_payload(
+            splice_dix_history(ndx_dix, pit_hist["ndx"] if pit_hist is not None else None, "NDX"),
+            qqq_long, out_key="dix", start=idx_plot_start)
         ndx_contrib = build_contributors_payload(NDX["short"], NDX["total"], NDX["rawclose"],
                                                  exclude=(BENCH,), weight_map=NDX100_WEIGHT)
         # FINRA off-exchange volume is as-traded; Yahoo's volume is split-adjusted. Rescale
@@ -5858,12 +5915,13 @@ def main():
                 spx_dix = compute_dollar_dix(SP["short"], SP["total"], SP["rawclose"])
                 spx_contrib = build_contributors_payload(SP["short"], SP["total"], SP["rawclose"],
                                                          weight_map=spx_weight_map)
-                spy = load_yahoo_panels(["SPY"], start, end, workers=2, cache_dir=cache_dir,
+                spy = load_yahoo_panels(["SPY"], hist_start, end, workers=2, cache_dir=cache_dir,
                                         refresh=args.refresh, label="SPY")
                 n_sp = int((SP["short"].notna() & SP["total"].notna()).any().sum())
                 spx_payload = build_reconstructed_index_payload(
-                    spx_dix, spy["adjclose"].get("SPY"), out_key="dix",
-                    start=plot_start, n_constituents=n_sp)
+                    splice_dix_history(spx_dix, pit_hist["spx"] if pit_hist is not None else None, "SPX"),
+                    spy["adjclose"].get("SPY"), out_key="dix",
+                    start=idx_plot_start, n_constituents=n_sp)
                 # residualize each S&P name's D against the S&P 500 DIX (5d MA) for its grid
                 spx_bench = spx_dix.rolling(5, min_periods=1).mean().reindex(SP["d"].index)
                 spx_res = compute_residuals(SP["d"], "SPX-DIX", window=args.window,
@@ -5898,12 +5956,13 @@ def main():
             iwm_dix = compute_dollar_dix(RU["short"], RU["total"], RU["rawclose"], exclude=("IWM",))
             iwm_contrib = build_contributors_payload(RU["short"], RU["total"], RU["rawclose"],
                                                      exclude=("IWM",))
-            iwmp = load_yahoo_panels(["IWM"], start, end, workers=2, cache_dir=cache_dir,
+            iwmp = load_yahoo_panels(["IWM"], hist_start, end, workers=2, cache_dir=cache_dir,
                                      refresh=args.refresh, label="IWM")
             n_ru = int((RU["short"].notna() & RU["total"].notna()).any().sum())
             iwm_payload = build_reconstructed_index_payload(
-                iwm_dix, iwmp["adjclose"].get("IWM"), out_key="d",
-                start=plot_start, n_constituents=n_ru)
+                splice_dix_history(iwm_dix, pit_hist["iwm"] if pit_hist is not None else None, "IWM"),
+                iwmp["adjclose"].get("IWM"), out_key="d",
+                start=idx_plot_start, n_constituents=n_ru)
         if iwm_payload is None:
             print("  ! IWM reconstruction unavailable (holdings / FINRA / price); "
                   "IWM tab will be empty.", file=sys.stderr)
@@ -6023,7 +6082,7 @@ def main():
 
     contrib = {"ndx": ndx_contrib, "spx": spx_contrib, "iwm": iwm_contrib}
     html = build_html(res, BENCH, r21_panel, r42_panel, r63_panel, close_panel,
-                       raw_dark_panel, ndx_agg=ndx_agg, ndx_dix=ndx_dix, spx=spx_payload,
+                       raw_dark_panel, ndx_agg=ndx_agg, ndx_dix=ndx_dix, ndxi=ndxi_payload, spx=spx_payload,
                        iwm=iwm_payload, bench_label=bench_label, spx_res=spx_res, spx_rel=spx_rel,
                        spx_weight_map=spx_weight_map, spx_weight_order=spx_weight_order,
                        wl_res=wl_res, wl_rel=wl_rel, wl_sectors=wl_sectors,

@@ -1,5 +1,18 @@
 # Cross-index DIX comovement → 1-month forward returns
 
+> **Superseded (2026-09-27).** The IWM series this study used was built from *current*
+> IWM holdings with split-adjusted prices × as-traded FINRA volume (survivorship plus a
+> price-basis bug, both fixed in the dashboard now). An independent re-run on
+> point-in-time data from 2009 (all three indices, detrended z-scores, VIX-scaled returns,
+> placebo and out-of-sample checks) found:
+> - the "large-cap DIX firm while IWM Low" family does **not** hold (its 2020-26 sign flips
+>   negative on correct data, and it's null over 2009-26);
+> - the requested LLH divergence is not a buy (bearish in 2009-19, flat since);
+> - the one robust pattern is the end of an **SPX-DIX-High while NDX-DIX-not-High**
+>   episode, followed by above-normal 1-2 month returns.
+>
+> Treat the results below as descriptive of the flawed 2020-26 series.
+
 When the three index dark-flow gauges — **NDX-100 DIX**, **S&P 500 DIX** and
 **Russell 2000 / IWM DIX** — line up vs. pull apart, what do the indices do over
 the following month? Study of the **5-day moving average** of each dollar-DIX
