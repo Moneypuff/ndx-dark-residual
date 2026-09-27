@@ -25,10 +25,7 @@ def test_missing_history_file_means_live_only(tmp_path):
 
 def test_partial_history_file_degrades_missing_index_to_live(tmp_path, capsys):
     f = tmp_path / "h.csv"
-    f.write_text("date,ndx,spx
-2020-01-02,0.40,0.41
-2020-01-03,0.42,0.43
-")
+    f.write_text("date,ndx,spx\n2020-01-02,0.40,0.41\n2020-01-03,0.42,0.43\n")
     h = N.load_pit_dix_history(f)
     assert list(h.columns) == ["ndx", "spx", "iwm"] and h["iwm"].isna().all()
     assert "lacks column(s) ['iwm']" in capsys.readouterr().err
