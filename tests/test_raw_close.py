@@ -38,7 +38,8 @@ def test_multiple_splits_compound_and_bad_events_are_ignored():
     ev = {"a": {"date": _ts("2021-01-04"), "numerator": 2, "denominator": 1},
           "b": {"date": _ts("2022-01-03"), "numerator": 3, "denominator": 1},
           "bad1": {"numerator": 5, "denominator": 1},                        # no date
-          "bad2": {"date": _ts("2021-06-01"), "numerator": 0, "denominator": 1}}
+          "bad2": {"date": _ts("2021-06-01"), "numerator": 0, "denominator": 1},
+          "bad3": None, "bad4": "2:1"}                                       # non-mapping entries
     raw = N._raw_close_from_splits(close, ev)
     assert list(raw) == pytest.approx([60.0, 30.0, 10.0])
     assert N._raw_close_from_splits(close, None).equals(close.astype("float64"))

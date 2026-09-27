@@ -5226,6 +5226,8 @@ def _raw_close_from_splits(close, splits):
     """
     raw = pd.Series(close, dtype="float64").copy()
     for ev in (splits or {}).values():
+        if not isinstance(ev, dict):    # malformed entry: skip it, don't fail the whole fetch
+            continue
         try:
             num, den = float(ev.get("numerator") or 0), float(ev.get("denominator") or 0)
             ex = pd.to_datetime(int(ev["date"]), unit="s").normalize()
