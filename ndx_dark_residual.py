@@ -856,8 +856,11 @@ def compute_dollar_dix(short_panel, offexch_panel, close_panel, exclude=(), min_
     construction: sum(price x FINRA ShortVolume) / sum(price x FINRA off-exchange
     TotalVolume) per day. This equals the dollar-volume-weighted average of the
     per-name DPI (short/total within the off-exchange venues) because the weighting
-    volume and the DPI denominator are the same series. Volumes must already be on
-    the split-adjusted basis so that adjusted-volume x adjusted-price = true dollars.
+    volume and the DPI denominator are the same series. Price and volume must be on the
+    SAME basis: FINRA volume is as-traded, so pass the as-traded close (`rawclose` from
+    load_yahoo_panels), not Yahoo's split-adjusted `close`. Pairing split-adjusted prices
+    with as-traded volume mis-weights every name before a split -- badly for reverse splits,
+    which are common in small caps (1-for-10 inflates the pre-split weight 10x).
     A name enters a day's sums only when short, total AND price all exist.
 
     Coverage guard: a day is emitted only when its contributor count clears BOTH an
@@ -1538,7 +1541,8 @@ def build_html(res, bench, r21_panel, r42_panel, r63_panel, close_panel, raw_dar
     }
 
     sectors_payload = (build_sector_payload(sector_data["members"], sector_data["short"],
-                                            sector_data["total"], sector_data["close"],
+                                            sector_data["total"],
+                                            sector_data.get("rawclose", sector_data["close"]),
                                             sector_data["d"], keep,
                                             etf_px=sector_data.get("etf_px"))
                        if sector_data else None)
@@ -5141,7 +5145,7 @@ function wireDecileHover(barsId, scatterId){
 #                 adjusted close (split-safe forward returns) and volume. Free, no key.
 # ==========================================================================
 YAHOO_CHART = ("https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
-               "?period1={p1}&period2={p2}&interval=1d")
+               "?period1={p1}&period2={p2}&interval=1d&events=split")
 _YF_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
           "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 YAHOO_CACHE = "yahoo_prices.pkl"
@@ -5205,8 +5209,40 @@ def _unix(ts):
     return int(pd.Timestamp(ts).timestamp())
 
 
+YAHOO_FIELDS = ("close", "adjclose", "volume", "rawclose")
+
+
+def _raw_close_from_splits(close, splits):
+    """As-traded close from Yahoo's split-adjusted close.
+
+    Yahoo's chart `close` is adjusted for every split AFTER each bar. `splits` is the chart
+    response's events.splits mapping ({ts: {"date", "numerator", "denominator"}}). A bar dated
+    before a split's ex-date is multiplied by numerator/denominator (4:1 forward -> x4,
+    1-for-10 reverse -> x0.1), which undoes the adjustment. The result is time-invariant: a
+    raw close never changes after the fact, so incrementally cached raw closes stay correct
+    even when later splits re-adjust Yahoo's `close` series. Every split between a bar and
+    the fetch falls inside the fetch window (the bar itself is in the window), so the events
+    returned with the same request are sufficient.
+    """
+    raw = pd.Series(close, dtype="float64").copy()
+    for ev in (splits or {}).values():
+        if not isinstance(ev, dict):    # malformed entry: skip it, don't fail the whole fetch
+            continue
+        try:
+            num, den = float(ev.get("numerator") or 0), float(ev.get("denominator") or 0)
+            ex = pd.to_datetime(int(ev["date"]), unit="s").normalize()
+        except (KeyError, TypeError, ValueError):
+            continue
+        if num > 0 and den > 0:
+            raw[raw.index < ex] *= num / den
+    return raw
+
+
 def fetch_yahoo_one(sym, start, end, session=None, retries=3, pause=0.5):
-    """(close, adjclose, volume) DataFrame indexed by date for one symbol, or empty."""
+    """(close, adjclose, volume, rawclose) DataFrame indexed by date for one symbol, or empty.
+
+    `close` is Yahoo's split-adjusted close (right for charts and returns); `rawclose` is the
+    as-traded close (right for pairing with FINRA's as-traded share volume, i.e. dollar DIX)."""
     if requests is None:
         raise RuntimeError("The 'requests' package is required for live fetching.")
     get = (session or requests).get
@@ -5227,27 +5263,34 @@ def fetch_yahoo_one(sym, start, end, session=None, retries=3, pause=0.5):
             j = r.json()
             res = j.get("chart", {}).get("result")
             if not res or j.get("chart", {}).get("error"):
-                return pd.DataFrame(columns=["close", "adjclose", "volume"])
+                return pd.DataFrame(columns=list(YAHOO_FIELDS))
             res = res[0]
             ts = res.get("timestamp")
             if not ts:
-                return pd.DataFrame(columns=["close", "adjclose", "volume"])
+                return pd.DataFrame(columns=list(YAHOO_FIELDS))
             q = res["indicators"]["quote"][0]
             adj = res["indicators"].get("adjclose", [{}])[0].get("adjclose")
             idx = pd.to_datetime(ts, unit="s").normalize()
             df = pd.DataFrame({"close": q.get("close"),
                                "adjclose": adj if adj is not None else q.get("close"),
                                "volume": q.get("volume")}, index=idx)
-            return df[~df.index.duplicated(keep="last")].dropna(how="all")
+            df = df[~df.index.duplicated(keep="last")].dropna(how="all")
+            df["rawclose"] = _raw_close_from_splits(df["close"],
+                                                    (res.get("events") or {}).get("splits"))
+            return df
         except Exception as e:  # noqa: BLE001
             last = str(e); time.sleep(pause * (a + 1))
     print(f"  ! yahoo {sym}: failed ({last})", file=sys.stderr)
-    return pd.DataFrame(columns=["close", "adjclose", "volume"])
+    return pd.DataFrame(columns=list(YAHOO_FIELDS))
 
 
 def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=False,
                       label="symbol"):
-    """{'close','adjclose','volume'} wide panels (dates x symbols) over [start, end].
+    """{'close','adjclose','volume','rawclose'} wide panels (dates x symbols) over [start, end].
+
+    `rawclose` (as-traded close, see fetch_yahoo_one) was added after the cache format was
+    established: a cached symbol with no rawclose history is treated as not current and is
+    re-fetched over the full window once, after which it syncs incrementally as before.
 
     Incrementally cached: a symbol synced today is skipped; one behind is re-fetched only
     from its last cached date; new symbols fetch the full window; a symbol whose cached
@@ -5268,8 +5311,12 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
             cached = pd.read_pickle(cache)
         except Exception:  # noqa: BLE001
             cached = {}
-    fields = ("close", "adjclose", "volume")
+    fields = YAHOO_FIELDS
     base = {f: cached.get(f, pd.DataFrame()) for f in fields}
+
+    def _has_raw(sym):
+        r = base["rawclose"]
+        return sym in r.columns and bool(r[sym].notna().any())
     end_n = pd.Timestamp(end).normalize()
     # The session we should already hold once the day's bars are published: today if a weekday,
     # else the prior business day. A same-day cache is trusted only when its freshest close
@@ -5291,7 +5338,7 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
         if sym in nodata:
             return True
         c = base["close"]
-        if sym not in c.columns:
+        if sym not in c.columns or not _has_raw(sym):
             return False
         s = c[sym].dropna()
         return (not s.empty) and s.index.max() >= target_session
@@ -5304,8 +5351,8 @@ def load_yahoo_panels(symbols, start, end, workers=8, cache_dir=None, refresh=Fa
         if _is_current(sym):
             return None
         c = base["close"]
-        if sym not in c.columns:
-            return pd.Timestamp(start)
+        if sym not in c.columns or not _has_raw(sym):
+            return pd.Timestamp(start)        # new, or cached before rawclose existed
         s = c[sym].dropna()
         if s.empty:
             return pd.Timestamp(start)
@@ -5516,7 +5563,7 @@ def fetch_ssga_holdings(etf, label=None, session=None, retries=5, pause=1.5):
 
 def build_universe_panels(symbols, start, end, workers=8, cache_dir=None, ns="", refresh=False,
                           label="symbol", heal_frac=0.5):
-    """FINRA (short/total off-exchange) + Yahoo (raw close, adj close, volume) for `symbols`.
+    """FINRA (short/total off-exchange) + Yahoo (close, adj close, volume, raw close) for `symbols`.
 
     Yahoo's trading-day calendar drives the FINRA date set, so both align to real sessions.
     Returns dict of wide panels incl. per-name 1-day DPI ('dpi') and 5-day-MA D ('d').
@@ -5531,7 +5578,8 @@ def build_universe_panels(symbols, start, end, workers=8, cache_dir=None, ns="",
                                                  cache_dir=cache_dir, ns=ns, heal_frac=heal_frac)
     dpi, d = finra_dpi_to_d(short, total)
     return {"short": short, "total": total, "dpi": dpi, "d": d,
-            "close": ypan["close"], "adjclose": ypan["adjclose"], "volume": ypan["volume"]}
+            "close": ypan["close"], "adjclose": ypan["adjclose"], "volume": ypan["volume"],
+            "rawclose": ypan["rawclose"]}
 
 
 def build_reconstructed_index_payload(dix_series, etf_close, out_key="d", start=None,
@@ -5780,8 +5828,8 @@ def main():
         r21_panel = compute_forward_return(NDX["adjclose"], 21)
         r42_panel = compute_forward_return(NDX["adjclose"], 42)
         r63_panel = compute_forward_return(NDX["adjclose"], 63)
-        ndx_dix = compute_dollar_dix(NDX["short"], NDX["total"], NDX["close"], exclude=(BENCH,))
-        ndx_contrib = build_contributors_payload(NDX["short"], NDX["total"], NDX["close"],
+        ndx_dix = compute_dollar_dix(NDX["short"], NDX["total"], NDX["rawclose"], exclude=(BENCH,))
+        ndx_contrib = build_contributors_payload(NDX["short"], NDX["total"], NDX["rawclose"],
                                                  exclude=(BENCH,), weight_map=NDX100_WEIGHT)
         # FINRA off-exchange volume is as-traded; Yahoo's volume is split-adjusted. Rescale
         # the pre-split FINRA total onto the adjusted basis so the aggregate dark ratio stays
@@ -5807,8 +5855,8 @@ def main():
                 SP = build_universe_panels(sp_syms, start, end, workers=args.workers,
                                            cache_dir=cache_dir, ns="sp500", refresh=args.refresh,
                                            label="S&P 500")
-                spx_dix = compute_dollar_dix(SP["short"], SP["total"], SP["close"])
-                spx_contrib = build_contributors_payload(SP["short"], SP["total"], SP["close"],
+                spx_dix = compute_dollar_dix(SP["short"], SP["total"], SP["rawclose"])
+                spx_contrib = build_contributors_payload(SP["short"], SP["total"], SP["rawclose"],
                                                          weight_map=spx_weight_map)
                 spy = load_yahoo_panels(["SPY"], start, end, workers=2, cache_dir=cache_dir,
                                         refresh=args.refresh, label="SPY")
@@ -5847,8 +5895,8 @@ def main():
             RU = build_universe_panels(iwm_syms, start, end, workers=args.workers,
                                        cache_dir=cache_dir, ns="russell", refresh=args.refresh,
                                        label="Russell", heal_frac=1.0)  # sparse universe: all-NaN only
-            iwm_dix = compute_dollar_dix(RU["short"], RU["total"], RU["close"], exclude=("IWM",))
-            iwm_contrib = build_contributors_payload(RU["short"], RU["total"], RU["close"],
+            iwm_dix = compute_dollar_dix(RU["short"], RU["total"], RU["rawclose"], exclude=("IWM",))
+            iwm_contrib = build_contributors_payload(RU["short"], RU["total"], RU["rawclose"],
                                                      exclude=("IWM",))
             iwmp = load_yahoo_panels(["IWM"], start, end, workers=2, cache_dir=cache_dir,
                                      refresh=args.refresh, label="IWM")
@@ -5923,7 +5971,8 @@ def main():
                                            workers=4, cache_dir=cache_dir,
                                            refresh=args.refresh, label="sector ETF")["adjclose"]
             sector_data = {"members": sec_members, "short": SEC["short"],
-                           "total": SEC["total"], "close": SEC["close"], "d": SEC["d"],
+                           "total": SEC["total"], "close": SEC["close"], "rawclose": SEC["rawclose"],
+                           "d": SEC["d"],
                            "dpi": SEC["dpi"], "adjclose": SEC["adjclose"],
                            "etf_px": sec_etf_px}
 

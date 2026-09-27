@@ -21,16 +21,16 @@ import ndx_dark_residual as N
 
 def _mkdf(dates, value=100.0):
     idx = pd.DatetimeIndex(dates)
-    return pd.DataFrame({"close": value, "adjclose": value, "volume": 1000}, index=idx)
+    return pd.DataFrame({"close": value, "adjclose": value, "volume": 1000, "rawclose": value}, index=idx)
 
 
 def _seed_cache(cache_dir, panels_by_symbol, synced=None, nodata=None):
     """Write a yahoo_prices.pkl whose wide frames hold exactly the given
     per-symbol date ranges, mirroring what load_yahoo_panels itself writes."""
-    fields = ("close", "adjclose", "volume")
+    fields = N.YAHOO_FIELDS
     out = {}
     for f in fields:
-        out[f] = pd.DataFrame({s: df[f] for s, df in panels_by_symbol.items()})
+        out[f] = pd.DataFrame({s: df[f] for s, df in panels_by_symbol.items() if f in df})
     payload = {**out, "_synced": synced or "", "_nodata": sorted(nodata or [])}
     cache_dir.mkdir(parents=True, exist_ok=True)
     pd.to_pickle(payload, cache_dir / N.YAHOO_CACHE)
@@ -43,7 +43,7 @@ def _fake_fetch(calls, series_by_symbol):
         calls.append((sym, pd.Timestamp(start)))
         src = series_by_symbol.get(sym)
         if src is None:
-            return pd.DataFrame(columns=["close", "adjclose", "volume"])
+            return pd.DataFrame(columns=list(N.YAHOO_FIELDS))
         win = src[(src.index >= pd.Timestamp(start)) & (src.index <= pd.Timestamp(end))]
         return win.copy()
     return _fetch
