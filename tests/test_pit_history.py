@@ -23,6 +23,19 @@ def test_missing_history_file_means_live_only(tmp_path):
     assert N.splice_dix_history(live, None).equals(live)
 
 
+def test_partial_history_file_degrades_missing_index_to_live(tmp_path, capsys):
+    f = tmp_path / "h.csv"
+    f.write_text("date,ndx,spx
+2020-01-02,0.40,0.41
+2020-01-03,0.42,0.43
+")
+    h = N.load_pit_dix_history(f)
+    assert list(h.columns) == ["ndx", "spx", "iwm"] and h["iwm"].isna().all()
+    assert "lacks column(s) ['iwm']" in capsys.readouterr().err
+    live = pd.Series([0.5], index=pd.to_datetime(["2020-01-06"]))
+    assert N.splice_dix_history(live, h["iwm"]).equals(live)
+
+
 def test_splice_uses_history_then_live_after_its_last_row():
     hist = pd.Series([0.40, 0.41, 0.42], index=pd.to_datetime(["2020-01-02", "2020-01-03", "2020-01-06"]))
     live = pd.Series([0.99, 0.99, 0.50, 0.51],

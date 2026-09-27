@@ -5603,7 +5603,12 @@ def load_pit_dix_history(path=PIT_DIX_HISTORY):
     except Exception as e:  # noqa: BLE001
         print(f"  ! could not read {p.name} ({e}); live-only DIX", file=sys.stderr)
         return None
-    return h if not h.empty else None
+    if h.empty:
+        return None
+    missing = [c for c in ("ndx", "spx", "iwm") if c not in h.columns]
+    if missing:   # a partial file degrades those indices to live-only instead of failing the build
+        print(f"  ! {p.name} lacks column(s) {missing}; those indices use live data only", file=sys.stderr)
+    return h.reindex(columns=["ndx", "spx", "iwm"])
 
 
 def splice_dix_history(live, hist, label=""):
