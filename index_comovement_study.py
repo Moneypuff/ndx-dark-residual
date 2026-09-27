@@ -191,7 +191,8 @@ def build_aligned(P, ma_window=5, min_periods=3, basis="full"):
         ).set_index("date")
 
     raw = {
-        "NDX": series(P["rel"]["dates"], P["rel"]["ndx_dix"], P["rel"]["r21"][P["bench"]]),
+        "NDX": (series(P["ndxi"]["dates"], P["ndxi"]["dix"], P["ndxi"]["r21"]) if P.get("ndxi")
+                else series(P["rel"]["dates"], P["rel"]["ndx_dix"], P["rel"]["r21"][P["bench"]])),
         "SPX": series(P["spx"]["dates"], P["spx"]["dix"], P["spx"]["r21"]),
         "IWM": series(P["iwm"]["dates"], P["iwm"]["d"], P["iwm"]["r21"]),
     }
