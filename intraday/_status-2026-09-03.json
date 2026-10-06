@@ -1,0 +1,246 @@
+{
+ "date": "2026-09-03",
+ "captured_utc": "2026-09-03T19:54:33+00:00",
+ "symbols": {
+  "SPY": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 2725
+  },
+  "QQQ": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 2536
+  },
+  "IWM": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1167
+  },
+  "SMH": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1578
+  },
+  "IGV": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 848
+  },
+  "XBI": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 820
+  },
+  "KRE": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 558
+  },
+  "GDX": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 1075
+  },
+  "EEM": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 626
+  },
+  "VTV": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 116
+  },
+  "VUG": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 233
+  },
+  "XLK": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1058
+  },
+  "XLF": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 521
+  },
+  "XLV": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 738
+  },
+  "XLY": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 596
+  },
+  "XLP": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 482
+  },
+  "XLE": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 649
+  },
+  "XLI": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 848
+  },
+  "XLB": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 485
+  },
+  "XLU": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 497
+  },
+  "XLRE": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 119
+  },
+  "XLC": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 401
+  },
+  "KWEB": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 380
+  },
+  "FXI": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 477
+  },
+  "AAPL": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 852
+  },
+  "TSLA": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1063
+  },
+  "GOOGL": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 996
+  },
+  "NVDA": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 826
+  },
+  "AMZN": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 788
+  },
+  "MSFT": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1187
+  },
+  "META": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1349
+  },
+  "AMD": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1056
+  },
+  "MU": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1717
+  },
+  "CRWV": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 719
+  },
+  "IONQ": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 528
+  },
+  "OWL": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 317
+  },
+  "RKLB": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 474
+  },
+  "ONDS": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 324
+  },
+  "SPCX": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 748
+  },
+  "DRAM": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 984
+  },
+  "USO": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 1326
+  },
+  "GLD": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1807
+  },
+  "SLV": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1085
+  },
+  "IBIT": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 791
+  },
+  "TLT": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 907
+  },
+  "EWY": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 970
+  },
+  "NBIS": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 783
+  },
+  "AAOI": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 567
+  }
+ }
+}
