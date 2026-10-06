@@ -2,7 +2,7 @@
 
 All option-chain data for the vol tracker, vol surface and S&P 500 captures. Data only; code
 lives on main and on claude/etf-signal-options-playbook. This is the only data branch:
-`claude/optsnap-data` was merged in on 2026-10-06 and removed.
+`claude/optsnap-data` was merged in on 2026-10-06; nothing writes to it any more and every commit on it is contained here, so it can be deleted.
 
 ## Layout
 
