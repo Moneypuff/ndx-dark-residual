@@ -1,0 +1,5 @@
+(a) origin/claude/etf-signal-options-playbook commit: 069ad10d3ea3f145860b3988bdf001b49b0fd5b9
+(b) pip install -r requirements.txt: OK (exit 0, only root-user warning)
+(c) universe/core.csv exists (52 lines); universe/sp500.csv exists (504 lines)
+(d) capture exit code 0 (expected 3 after close, got 0); last 3 lines: "wrote /tmp/test-intraday/2026-10-06.csv.gz  (46223 rows, 965 KB, 51/51 symbols ok)" | "raw: /tmp/test-intraday/2026-10-06_1733ET.csv.gz  (965 KB)" | "distilled: /tmp/test-board.csv  (204 rows, 15 KB)"
+(e) ToolSearch mcp__Google_Drive__create_file: NOT found by that name; a Drive create_file tool is available as mcp__00c4d773-c42d-461e-a500-d8dff2c06d88__create_file
