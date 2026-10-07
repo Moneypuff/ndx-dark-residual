@@ -112,3 +112,12 @@ def test_contract_rows_shape():
     assert r["symbol"] == "GDX" and r["expiry"] == "2027-01-15"
     assert set(r) == {"date", "symbol", "expiry", "right", "strike", "iv",
                       "oi", "volume", "bid", "ask", "last", "spot"}
+
+
+def test_batches_segments_in_order():
+    syms = [f"S{i}" for i in range(23)]
+    segs = S.batches(syms, 10)
+    assert [len(s) for s in segs] == [10, 10, 3]
+    assert sum(segs, []) == syms
+    assert S.batches([], 10) == []
+    assert S.batches(["A", "B"], 0) == [["A"], ["B"]]

@@ -50,6 +50,10 @@ TOP_OI_PER_SIDE = 20       # never drop a big-OI strike, whatever its moneyness
 MONEYNESS = 0.25           # regular expiries: strikes within +/-25% of spot
 MONEYNESS_LEAP = 0.65      # January LEAPs: structured-note barriers run deep
 REQUEST_GAP_S = 0.15       # be polite to the endpoint
+BATCH_SIZE = 10            # symbols per segment ...
+BATCH_PAUSE_S = 5.0        # ... with a pause between segments (Yahoo 429s bursts)
+RETRY_PAUSE_S = 30.0       # cool-off before the second pass over failed symbols
+CRUMB_BACKOFF_S = (5, 15, 30, 60)  # waits between crumb attempts when throttled
 DEFAULT_UNIVERSE = Path(__file__).resolve().parent / "data" / "optsnap_universe.csv"
 
 
@@ -131,7 +135,18 @@ def contract_rows(chain, symbol, spot, expiry_epoch, snap_date):
 # ----------------------------------------------------------------------------
 # Capture
 # ----------------------------------------------------------------------------
-def snapshot(symbols, out_dir, request_gap=REQUEST_GAP_S):
+def batches(items, size):
+    """Consecutive segments of at most `size` items."""
+    size = max(1, int(size))
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def snapshot(symbols, out_dir, request_gap=REQUEST_GAP_S, batch_size=BATCH_SIZE,
+             batch_pause=BATCH_PAUSE_S, retry_pause=RETRY_PAUSE_S):
+    """Capture in small segments: `batch_size` symbols, then `batch_pause`
+    seconds of quiet, so a burst never trips Yahoo's rate limit. A throttled
+    or rejected crumb is re-fetched with backoff, and symbols that still fail
+    get one more pass after `retry_pause` seconds."""
     if N.requests is None:
         raise SystemExit("requests not available")
     out = Path(out_dir)
@@ -139,21 +154,37 @@ def snapshot(symbols, out_dir, request_gap=REQUEST_GAP_S):
     snap_date = str(pd.Timestamp.today().date())
     sess = N.make_session(4)
     sess.headers.update(UA)
-    try:
-        sess.get(CRUMB_SEED_URL, timeout=15)
-    except Exception:  # noqa: BLE001 -- 404 still sets the cookie
-        pass
-    crumb = sess.get(CRUMB_URL, timeout=15).text.strip()
+    state = {"crumb": None}
+
+    def refresh_crumb():
+        for wait in (0, *CRUMB_BACKOFF_S):
+            time.sleep(wait)
+            try:
+                sess.get(CRUMB_SEED_URL, timeout=15)
+            except Exception:  # noqa: BLE001 -- 404 still sets the cookie
+                pass
+            try:
+                r = sess.get(CRUMB_URL, timeout=15)
+            except Exception:  # noqa: BLE001
+                continue
+            text = r.text.strip()
+            if r.status_code == 200 and text and "<" not in text:
+                state["crumb"] = text
+                return
+            print(f"  crumb: HTTP {r.status_code}, backing off")
+        raise RuntimeError("could not obtain a Yahoo crumb (rate limited)")
 
     def get_chain(sym, expiry=None):
-        params = {"crumb": crumb}
-        if expiry is not None:
-            params["date"] = expiry
         for attempt in (1, 2):
+            params = {"crumb": state["crumb"]}
+            if expiry is not None:
+                params["date"] = expiry
             try:
-                d = sess.get(CHAIN_URL.format(sym=sym), params=params,
-                             timeout=25).json()
-                return d["optionChain"]["result"][0]
+                r = sess.get(CHAIN_URL.format(sym=sym), params=params, timeout=25)
+                if r.status_code in (401, 429):   # stale crumb or throttled
+                    refresh_crumb()
+                    raise RuntimeError(f"HTTP {r.status_code}")
+                return r.json()["optionChain"]["result"][0]
             except Exception:  # noqa: BLE001
                 if attempt == 2:
                     raise
@@ -162,22 +193,45 @@ def snapshot(symbols, out_dir, request_gap=REQUEST_GAP_S):
                 time.sleep(request_gap)
 
     all_rows, status = [], {}
-    for sym in symbols:
+
+    def capture(sym):
         try:
             base = get_chain(sym)
             spot = base["quote"]["regularMarketPrice"]
             exps = select_expiries(base.get("expirationDates") or [],
                                    pd.Timestamp.today())
-            n0 = len(all_rows)
+            rows = []
             for e in exps:
                 res = get_chain(sym, expiry=e)
                 opts = res.get("options") or []
                 if opts:
-                    all_rows.extend(contract_rows(opts[0], sym, spot, e, snap_date))
-            status[sym] = {"ok": True, "expiries": len(exps),
-                           "rows": len(all_rows) - n0}
+                    rows.extend(contract_rows(opts[0], sym, spot, e, snap_date))
+            all_rows.extend(rows)
+            status[sym] = {"ok": True, "expiries": len(exps), "rows": len(rows)}
         except Exception as exc:  # noqa: BLE001
             status[sym] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+    def run_pass(syms):
+        segs = batches(syms, batch_size)
+        for i, seg in enumerate(segs):
+            if i:
+                time.sleep(batch_pause)
+            for sym in seg:
+                capture(sym)
+
+    refresh_crumb()
+    run_pass(symbols)
+    failed = [s for s in symbols if not status[s]["ok"]]
+    if failed:
+        print(f"  {len(failed)} symbols failed; retrying after {retry_pause:.0f}s")
+        time.sleep(retry_pause)
+        try:
+            refresh_crumb()
+            run_pass(failed)
+        except RuntimeError as exc:   # keep what the first pass got
+            print(f"  retry pass skipped: {exc}")
+    for sym in symbols:
+        if not status[sym]["ok"]:
             print(f"  [{sym}] FAILED: {status[sym]['error']}")
 
     df = pd.DataFrame(all_rows)
