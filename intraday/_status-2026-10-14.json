@@ -1,11 +1,11 @@
 {
  "date": "2026-10-14",
- "captured_utc": "2026-10-14T17:53:56+00:00",
+ "captured_utc": "2026-10-14T18:54:28+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
    "expiries": 12,
-   "rows": 3229
+   "rows": 3236
   },
   "QQQ": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 934
+   "rows": 933
   },
   "EEM": {
    "ok": true,
@@ -70,12 +70,12 @@
   "XLV": {
    "ok": true,
    "expiries": 9,
-   "rows": 670
+   "rows": 666
   },
   "XLY": {
    "ok": true,
    "expiries": 9,
-   "rows": 585
+   "rows": 586
   },
   "XLP": {
    "ok": true,
@@ -100,7 +100,7 @@
   "XLU": {
    "ok": true,
    "expiries": 10,
-   "rows": 531
+   "rows": 532
   },
   "XLRE": {
    "ok": true,
@@ -125,7 +125,7 @@
   "AAPL": {
    "ok": true,
    "expiries": 11,
-   "rows": 869
+   "rows": 864
   },
   "TSLA": {
    "ok": true,
@@ -135,7 +135,7 @@
   "GOOGL": {
    "ok": true,
    "expiries": 11,
-   "rows": 1160
+   "rows": 1151
   },
   "NVDA": {
    "ok": true,
@@ -150,7 +150,7 @@
   "MSFT": {
    "ok": true,
    "expiries": 10,
-   "rows": 1306
+   "rows": 1307
   },
   "META": {
    "ok": true,
@@ -165,7 +165,7 @@
   "MU": {
    "ok": true,
    "expiries": 12,
-   "rows": 1835
+   "rows": 1840
   },
   "CRWV": {
    "ok": true,
@@ -175,7 +175,7 @@
   "IONQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 426
+   "rows": 425
   },
   "OWL": {
    "ok": true,
@@ -195,17 +195,17 @@
   "SPCX": {
    "ok": true,
    "expiries": 10,
-   "rows": 647
+   "rows": 641
   },
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 917
+   "rows": 931
   },
   "USO": {
    "ok": true,
    "expiries": 12,
-   "rows": 1753
+   "rows": 1758
   },
   "GLD": {
    "ok": true,
@@ -225,7 +225,7 @@
   "TLT": {
    "ok": true,
    "expiries": 12,
-   "rows": 971
+   "rows": 972
   },
   "EWY": {
    "ok": true,
@@ -235,12 +235,12 @@
   "NBIS": {
    "ok": true,
    "expiries": 12,
-   "rows": 766
+   "rows": 763
   },
   "AAOI": {
    "ok": true,
    "expiries": 11,
-   "rows": 554
+   "rows": 551
   },
   "TWST": {
    "ok": true,
