@@ -1,36 +1,36 @@
 {
  "date": "2026-10-20",
- "captured_utc": "2026-10-20T13:58:34+00:00",
+ "captured_utc": "2026-10-20T15:00:32+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
    "expiries": 11,
-   "rows": 2684
+   "rows": 2691
   },
   "QQQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 2397
+   "rows": 2398
   },
   "IWM": {
    "ok": true,
    "expiries": 12,
-   "rows": 1148
+   "rows": 1156
   },
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1593
+   "rows": 1621
   },
   "IGV": {
    "ok": true,
    "expiries": 12,
-   "rows": 840
+   "rows": 836
   },
   "XBI": {
    "ok": true,
    "expiries": 9,
-   "rows": 798
+   "rows": 797
   },
   "KRE": {
    "ok": true,
@@ -40,72 +40,72 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 935
+   "rows": 944
   },
   "EEM": {
    "ok": true,
    "expiries": 9,
-   "rows": 619
+   "rows": 623
   },
   "VTV": {
    "ok": true,
    "expiries": 4,
-   "rows": 139
+   "rows": 140
   },
   "VUG": {
    "ok": true,
    "expiries": 6,
-   "rows": 226
+   "rows": 225
   },
   "XLK": {
    "ok": true,
    "expiries": 10,
-   "rows": 992
+   "rows": 983
   },
   "XLF": {
    "ok": true,
    "expiries": 9,
-   "rows": 482
+   "rows": 483
   },
   "XLV": {
    "ok": true,
    "expiries": 9,
-   "rows": 666
+   "rows": 667
   },
   "XLY": {
    "ok": true,
    "expiries": 9,
-   "rows": 579
+   "rows": 582
   },
   "XLP": {
    "ok": true,
    "expiries": 9,
-   "rows": 517
+   "rows": 515
   },
   "XLE": {
    "ok": true,
    "expiries": 9,
-   "rows": 664
+   "rows": 662
   },
   "XLI": {
    "ok": true,
    "expiries": 9,
-   "rows": 799
+   "rows": 798
   },
   "XLB": {
    "ok": true,
    "expiries": 9,
-   "rows": 441
+   "rows": 444
   },
   "XLU": {
    "ok": true,
    "expiries": 11,
-   "rows": 531
+   "rows": 533
   },
   "XLRE": {
    "ok": true,
    "expiries": 5,
-   "rows": 113
+   "rows": 114
   },
   "XLC": {
    "ok": true,
@@ -115,7 +115,7 @@
   "KWEB": {
    "ok": true,
    "expiries": 10,
-   "rows": 395
+   "rows": 397
   },
   "FXI": {
    "ok": true,
@@ -130,7 +130,7 @@
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1139
+   "rows": 1159
   },
   "GOOGL": {
    "ok": true,
@@ -140,42 +140,42 @@
   "NVDA": {
    "ok": true,
    "expiries": 12,
-   "rows": 945
+   "rows": 948
   },
   "AMZN": {
    "ok": true,
    "expiries": 12,
-   "rows": 852
+   "rows": 862
   },
   "MSFT": {
    "ok": true,
    "expiries": 11,
-   "rows": 1365
+   "rows": 1362
   },
   "META": {
    "ok": true,
    "expiries": 12,
-   "rows": 1521
+   "rows": 1537
   },
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1256
+   "rows": 1290
   },
   "MU": {
    "ok": true,
    "expiries": 13,
-   "rows": 1966
+   "rows": 2001
   },
   "CRWV": {
    "ok": true,
    "expiries": 11,
-   "rows": 638
+   "rows": 645
   },
   "IONQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 417
+   "rows": 424
   },
   "OWL": {
    "ok": true,
@@ -185,7 +185,7 @@
   "RKLB": {
    "ok": true,
    "expiries": 11,
-   "rows": 468
+   "rows": 474
   },
   "ONDS": {
    "ok": true,
@@ -195,32 +195,32 @@
   "SPCX": {
    "ok": true,
    "expiries": 12,
-   "rows": 744
+   "rows": 755
   },
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 932
+   "rows": 931
   },
   "USO": {
    "ok": true,
    "expiries": 13,
-   "rows": 1842
+   "rows": 1843
   },
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1626
+   "rows": 1630
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1024
+   "rows": 1030
   },
   "IBIT": {
    "ok": true,
    "expiries": 11,
-   "rows": 796
+   "rows": 799
   },
   "TLT": {
    "ok": true,
@@ -230,17 +230,17 @@
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 928
+   "rows": 937
   },
   "NBIS": {
    "ok": true,
    "expiries": 12,
-   "rows": 782
+   "rows": 786
   },
   "AAOI": {
    "ok": true,
    "expiries": 11,
-   "rows": 581
+   "rows": 589
   },
   "TWST": {
    "ok": true,
@@ -255,7 +255,7 @@
   "NKE": {
    "ok": true,
    "expiries": 10,
-   "rows": 426
+   "rows": 428
   }
  }
 }
