@@ -1,0 +1,2521 @@
+{
+ "date": "2026-10-20",
+ "captured_utc": "2026-10-20T20:18:29+00:00",
+ "symbols": {
+  "NVDA": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 947
+  },
+  "AAPL": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 881
+  },
+  "MSFT": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1368
+  },
+  "AMZN": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 853
+  },
+  "GOOGL": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1144
+  },
+  "AVGO": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 810
+  },
+  "META": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 1546
+  },
+  "GOOG": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 893
+  },
+  "MU": {
+   "ok": true,
+   "expiries": 13,
+   "rows": 1966
+  },
+  "TSLA": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1151
+  },
+  "AMD": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1276
+  },
+  "BRK-B": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 695
+  },
+  "LLY": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1439
+  },
+  "JPM": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 643
+  },
+  "XOM": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 501
+  },
+  "V": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 714
+  },
+  "JNJ": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 503
+  },
+  "INTC": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 706
+  },
+  "ABBV": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 573
+  },
+  "WMT": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 495
+  },
+  "MA": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 850
+  },
+  "CSCO": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 550
+  },
+  "PLTR": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 791
+  },
+  "LRCX": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 711
+  },
+  "AMAT": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 937
+  },
+  "COST": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1329
+  },
+  "CVX": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 461
+  },
+  "CAT": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1063
+  },
+  "BAC": {
+   "ok": true,
+   "expiries": 13,
+   "rows": 551
+  },
+  "MRK": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 493
+  },
+  "UNH": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 657
+  },
+  "PG": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 489
+  },
+  "KO": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 498
+  },
+  "PANW": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 835
+  },
+  "GE": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 547
+  },
+  "PM": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 415
+  },
+  "NFLX": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 811
+  },
+  "HD": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 701
+  },
+  "CRWD": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1141
+  },
+  "KLAC": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 1034
+  },
+  "TXN": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 728
+  },
+  "GEV": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1288
+  },
+  "GS": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1882
+  },
+  "TMO": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 572
+  },
+  "SNDK": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 2405
+  },
+  "RTX": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 535
+  },
+  "WFC": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 484
+  },
+  "ORCL": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 666
+  },
+  "MRVL": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 801
+  },
+  "MS": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 511
+  },
+  "LIN": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 522
+  },
+  "AMGN": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 688
+  },
+  "ANET": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 544
+  },
+  "C": {
+   "ok": true,
+   "expiries": 13,
+   "rows": 633
+  },
+  "APH": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 391
+  },
+  "IBM": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 759
+  },
+  "ADI": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 533
+  },
+  "STX": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 1116
+  },
+  "QCOM": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 616
+  },
+  "VZ": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 452
+  },
+  "CRM": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 621
+  },
+  "GILD": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 484
+  },
+  "DIS": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 439
+  },
+  "ABT": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 488
+  },
+  "PEP": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 512
+  },
+  "DE": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 675
+  },
+  "ETN": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 586
+  },
+  "DELL": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 1069
+  },
+  "T": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 351
+  },
+  "MCD": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 558
+  },
+  "UNP": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 460
+  },
+  "WELL": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 214
+  },
+  "AXP": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 612
+  },
+  "NEE": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 441
+  },
+  "WDC": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 849
+  },
+  "SCHW": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 468
+  },
+  "PFE": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 356
+  },
+  "COP": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 517
+  },
+  "BLK": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 777
+  },
+  "BA": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 693
+  },
+  "TJX": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 414
+  },
+  "ISRG": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 839
+  },
+  "UBER": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 454
+  },
+  "NOW": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 939
+  },
+  "DHR": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 380
+  },
+  "VRTX": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 491
+  },
+  "GLW": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 728
+  },
+  "PGR": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 413
+  },
+  "PH": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 179
+  },
+  "NEM": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 513
+  },
+  "PLD": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 257
+  },
+  "MPC": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 483
+  },
+  "VLO": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 670
+  },
+  "BMY": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 345
+  },
+  "COF": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 437
+  },
+  "ACN": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 670
+  },
+  "BKNG": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 1026
+  },
+  "SPGI": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 573
+  },
+  "CB": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 349
+  },
+  "FTNT": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 490
+  },
+  "MO": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 385
+  },
+  "MDT": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 431
+  },
+  "CVS": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 509
+  },
+  "SBUX": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 447
+  },
+  "PSX": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 579
+  },
+  "MCK": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 507
+  },
+  "FCX": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 519
+  },
+  "TT": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 191
+  },
+  "ADP": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 443
+  },
+  "LMT": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 886
+  },
+  "PWR": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 569
+  },
+  "EQIX": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 262
+  },
+  "LOW": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 460
+  },
+  "SYK": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 301
+  },
+  "VRT": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 582
+  },
+  "BNY": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 263
+  },
+  "CDNS": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 637
+  },
+  "CME": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 391
+  },
+  "LITE": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 1459
+  },
+  "SO": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 365
+  },
+  "JCI": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 259
+  },
+  "ADBE": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 741
+  },
+  "SNPS": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 665
+  },
+  "DDOG": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 583
+  },
+  "HWM": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 460
+  },
+  "EMR": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 334
+  },
+  "HPE": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 503
+  },
+  "HOOD": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 665
+  },
+  "USB": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 328
+  },
+  "DUK": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 237
+  },
+  "CEG": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 638
+  },
+  "PNC": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 391
+  },
+  "CSX": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 288
+  },
+  "WMB": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 255
+  },
+  "ELV": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 346
+  },
+  "ICE": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 335
+  },
+  "GD": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 433
+  },
+  "BE": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 804
+  },
+  "MMM": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 397
+  },
+  "BX": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 526
+  },
+  "MRSH": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 160
+  },
+  "TMUS": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 540
+  },
+  "INTU": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 694
+  },
+  "WM": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 328
+  },
+  "APP": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 732
+  },
+  "CMCSA": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 347
+  },
+  "MAR": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 457
+  },
+  "AMT": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 296
+  },
+  "EOG": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 391
+  },
+  "MRNA": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 784
+  },
+  "MSI": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 117
+  },
+  "TRV": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 209
+  },
+  "MDLZ": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 267
+  },
+  "SLB": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 393
+  },
+  "MPWR": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 576
+  },
+  "SHW": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 249
+  },
+  "ROST": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 351
+  },
+  "DASH": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 524
+  },
+  "CMI": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 230
+  },
+  "CI": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 414
+  },
+  "REGN": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 671
+  },
+  "NSC": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 202
+  },
+  "HLT": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 400
+  },
+  "GM": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 437
+  },
+  "ECL": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 128
+  },
+  "TER": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 610
+  },
+  "UPS": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 433
+  },
+  "TGT": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 478
+  },
+  "ABNB": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 515
+  },
+  "CL": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 348
+  },
+  "ITW": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 142
+  },
+  "RCL": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 518
+  },
+  "HON": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 377
+  },
+  "ORLY": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 221
+  },
+  "CTAS": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 342
+  },
+  "URI": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 700
+  },
+  "MCO": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 179
+  },
+  "KEYS": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 240
+  },
+  "COHR": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 730
+  },
+  "AEP": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 240
+  },
+  "SPG": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 238
+  },
+  "HCA": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 395
+  },
+  "NOC": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 609
+  },
+  "FDX": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 510
+  },
+  "TEL": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 181
+  },
+  "DLR": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 340
+  },
+  "APD": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 182
+  },
+  "KKR": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 461
+  },
+  "MNST": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 293
+  },
+  "KMI": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 286
+  },
+  "TRGP": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 163
+  },
+  "BSX": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 374
+  },
+  "NXPI": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 357
+  },
+  "FIX": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 515
+  },
+  "TDG": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 202
+  },
+  "COR": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 251
+  },
+  "FAST": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 252
+  },
+  "AJG": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 141
+  },
+  "AME": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 111
+  },
+  "PCAR": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 337
+  },
+  "AON": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 155
+  },
+  "BKR": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 186
+  },
+  "NUE": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 374
+  },
+  "ALL": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 277
+  },
+  "TFC": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 187
+  },
+  "OKE": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 235
+  },
+  "GWW": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 352
+  },
+  "CIEN": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 749
+  },
+  "CRH": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 305
+  },
+  "APO": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 443
+  },
+  "CAH": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 360
+  },
+  "D": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 199
+  },
+  "DVN": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 344
+  },
+  "MET": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 282
+  },
+  "SRE": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 71
+  },
+  "O": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 233
+  },
+  "ROK": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 230
+  },
+  "EW": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 235
+  },
+  "AFL": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 285
+  },
+  "HONA": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 266
+  },
+  "DAL": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 448
+  },
+  "VYLR": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 27
+  },
+  "WAB": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 101
+  },
+  "BDX": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 201
+  },
+  "HUM": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 727
+  },
+  "A": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 267
+  },
+  "STT": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 294
+  },
+  "P": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 362
+  },
+  "F": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 322
+  },
+  "PSA": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 97
+  },
+  "GRMN": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 164
+  },
+  "ETR": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 116
+  },
+  "ADSK": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 451
+  },
+  "TWLO": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 635
+  },
+  "PYPL": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 456
+  },
+  "FITB": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 185
+  },
+  "CARR": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 292
+  },
+  "AZO": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 470
+  },
+  "CVNA": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 641
+  },
+  "VST": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 572
+  },
+  "XEL": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 146
+  },
+  "ILMN": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 322
+  },
+  "LHX": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 315
+  },
+  "MCHP": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 461
+  },
+  "NTAP": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 318
+  },
+  "IQV": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 183
+  },
+  "AMP": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 125
+  },
+  "WAT": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 111
+  },
+  "FERG": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 104
+  },
+  "VMRK": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 59
+  },
+  "FLEX": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 259
+  },
+  "EBAY": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 447
+  },
+  "OXY": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 430
+  },
+  "VEEV": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 335
+  },
+  "KDP": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 178
+  },
+  "EXC": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 172
+  },
+  "COIN": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 754
+  },
+  "VTR": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 116
+  },
+  "IDXX": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 169
+  },
+  "RSG": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 81
+  },
+  "XYZ": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 415
+  },
+  "NKE": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 430
+  },
+  "NDAQ": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 273
+  },
+  "IBKR": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 371
+  },
+  "MSCI": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 156
+  },
+  "ADM": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 278
+  },
+  "AIG": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 321
+  },
+  "PRU": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 241
+  },
+  "CMG": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 356
+  },
+  "ED": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 123
+  },
+  "WDAY": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 429
+  },
+  "FANG": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 272
+  },
+  "YUM": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 200
+  },
+  "CBRE": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 165
+  },
+  "SYY": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 234
+  },
+  "ROP": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 103
+  },
+  "UAL": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 504
+  },
+  "TTWO": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 466
+  },
+  "EME": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 243
+  },
+  "PEG": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 115
+  },
+  "HIG": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 62
+  },
+  "DHI": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 411
+  },
+  "IRM": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 271
+  },
+  "KVUE": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 152
+  },
+  "ODFL": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 143
+  },
+  "AXON": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 641
+  },
+  "ON": {
+   "ok": true,
+   "expiries": 12,
+   "rows": 524
+  },
+  "KR": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 331
+  },
+  "BIIB": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 387
+  },
+  "WEC": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 72
+  },
+  "DXCM": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 272
+  },
+  "CCL": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 381
+  },
+  "STLD": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 328
+  },
+  "RMD": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 114
+  },
+  "EQT": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 329
+  },
+  "VMC": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 116
+  },
+  "ACGL": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 57
+  },
+  "PAYX": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 227
+  },
+  "CNC": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 373
+  },
+  "KMB": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 380
+  },
+  "JBL": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 471
+  },
+  "MTB": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 135
+  },
+  "NTRS": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 184
+  },
+  "HBAN": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 144
+  },
+  "MTD": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 178
+  },
+  "EXPE": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 477
+  },
+  "GEHC": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 326
+  },
+  "ZTS": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 258
+  },
+  "MLM": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 141
+  },
+  "CBOE": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 457
+  },
+  "HPQ": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 449
+  },
+  "TDY": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 132
+  },
+  "CCI": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 301
+  },
+  "WSM": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 270
+  },
+  "EXR": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 75
+  },
+  "RJF": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 105
+  },
+  "AEE": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 47
+  },
+  "Q": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 231
+  },
+  "HAL": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 332
+  },
+  "PCG": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 280
+  },
+  "CFG": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 168
+  },
+  "LYV": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 288
+  },
+  "IR": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 83
+  },
+  "WTW": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 74
+  },
+  "ATO": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 53
+  },
+  "WST": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 146
+  },
+  "CPAY": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 106
+  },
+  "DG": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 461
+  },
+  "ARES": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 381
+  },
+  "CTSH": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 268
+  },
+  "DTE": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 57
+  },
+  "FFIV": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 229
+  },
+  "DOV": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 162
+  },
+  "DGX": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 103
+  },
+  "HUBB": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 142
+  },
+  "EXPD": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 81
+  },
+  "AWK": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 81
+  },
+  "OTIS": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 85
+  },
+  "LH": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 115
+  },
+  "CINF": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 77
+  },
+  "PPL": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 101
+  },
+  "VICI": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 126
+  },
+  "CNP": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 112
+  },
+  "FISV": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 305
+  },
+  "SMCI": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 600
+  },
+  "ES": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 49
+  },
+  "XYL": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 141
+  },
+  "VRSN": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 159
+  },
+  "VLTO": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 51
+  },
+  "PPG": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 281
+  },
+  "HSY": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 434
+  },
+  "SYF": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 211
+  },
+  "ULTA": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 632
+  },
+  "TPR": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 388
+  },
+  "CPRT": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 218
+  },
+  "RF": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 174
+  },
+  "EL": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 392
+  },
+  "CASY": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 199
+  },
+  "FE": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 142
+  },
+  "DRI": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 234
+  },
+  "CHD": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 62
+  },
+  "TROW": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 207
+  },
+  "SW": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 66
+  },
+  "RDDT": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 673
+  },
+  "DLTR": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 406
+  },
+  "PFG": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 48
+  },
+  "VRSK": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 101
+  },
+  "PHM": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 323
+  },
+  "IFF": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 148
+  },
+  "EIX": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 204
+  },
+  "STE": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 59
+  },
+  "PTC": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 147
+  },
+  "OMC": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 172
+  },
+  "DOW": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 301
+  },
+  "LUV": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 325
+  },
+  "NRG": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 431
+  },
+  "PKG": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 51
+  },
+  "VTRS": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 110
+  },
+  "TPL": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 148
+  },
+  "CMS": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 39
+  },
+  "EXE": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 313
+  },
+  "INCY": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 151
+  },
+  "AMCR": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 145
+  },
+  "SWKS": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 372
+  },
+  "SNA": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 75
+  },
+  "FSLR": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 527
+  },
+  "NI": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 31
+  },
+  "KHC": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 242
+  },
+  "KEY": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 163
+  },
+  "EVRG": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 54
+  },
+  "GPN": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 241
+  },
+  "BR": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 95
+  },
+  "ZBRA": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 150
+  },
+  "NDSN": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 62
+  },
+  "DD": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 275
+  },
+  "RVTY": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 129
+  },
+  "CF": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 470
+  },
+  "FTV": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 25
+  },
+  "BRO": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 61
+  },
+  "ESS": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 50
+  },
+  "ZBH": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 107
+  },
+  "IEX": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 22
+  },
+  "GPC": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 166
+  },
+  "FIS": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 307
+  },
+  "L": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 41
+  },
+  "BBY": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 407
+  },
+  "SBAC": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 105
+  },
+  "JBHT": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 179
+  },
+  "STZ": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 478
+  },
+  "IP": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 243
+  },
+  "GIS": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 245
+  },
+  "BG": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 150
+  },
+  "EFX": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 157
+  },
+  "CDW": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 101
+  },
+  "CHRW": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 259
+  },
+  "LNT": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 44
+  },
+  "TSCO": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 248
+  },
+  "J": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 98
+  },
+  "WRB": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 68
+  },
+  "AKAM": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 548
+  },
+  "APA": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 315
+  },
+  "LYB": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 267
+  },
+  "HST": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 119
+  },
+  "NVR": {
+   "ok": true,
+   "expiries": 0,
+   "rows": 0
+  },
+  "BALL": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 143
+  },
+  "LDOS": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 182
+  },
+  "CRL": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 147
+  },
+  "KIM": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 31
+  },
+  "FICO": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 668
+  },
+  "TSN": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 207
+  },
+  "LEN": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 433
+  },
+  "INVH": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 40
+  },
+  "RL": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 165
+  },
+  "TRMB": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 75
+  },
+  "ECHO": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 401
+  },
+  "MAA": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 64
+  },
+  "IVZ": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 126
+  },
+  "SWK": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 207
+  },
+  "MAS": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 47
+  },
+  "FDXF": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 114
+  },
+  "WY": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 143
+  },
+  "AIZ": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 57
+  },
+  "TXT": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 114
+  },
+  "ALLE": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 67
+  },
+  "EG": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 85
+  },
+  "DOC": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 54
+  },
+  "AVY": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 47
+  },
+  "HAS": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 230
+  },
+  "GL": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 109
+  },
+  "SOLV": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 56
+  },
+  "FOXA": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 102
+  },
+  "GDDY": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 313
+  },
+  "BAX": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 203
+  },
+  "GNRC": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 482
+  },
+  "TYL": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 119
+  },
+  "SJM": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 124
+  },
+  "ALB": {
+   "ok": true,
+   "expiries": 11,
+   "rows": 510
+  },
+  "CHTR": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 526
+  },
+  "GEN": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 160
+  },
+  "REG": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 15
+  },
+  "IT": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 126
+  },
+  "PNW": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 78
+  },
+  "MKC": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 143
+  },
+  "LII": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 119
+  },
+  "TECH": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 78
+  },
+  "CSGP": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 167
+  },
+  "COO": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 91
+  },
+  "DECK": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 384
+  },
+  "AES": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 83
+  },
+  "NWSA": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 18
+  },
+  "TKO": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 118
+  },
+  "HII": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 119
+  },
+  "JKHY": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 77
+  },
+  "UDR": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 32
+  },
+  "CLX": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 238
+  },
+  "FDS": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 177
+  },
+  "DPZ": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 348
+  },
+  "CPT": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 41
+  },
+  "LULU": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 487
+  },
+  "BEN": {
+   "ok": true,
+   "expiries": 5,
+   "rows": 112
+  },
+  "BXP": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 88
+  },
+  "PODD": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 109
+  },
+  "LVS": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 335
+  },
+  "APTV": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 161
+  },
+  "ALGN": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 369
+  },
+  "UHS": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 98
+  },
+  "ROL": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 128
+  },
+  "PNR": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 163
+  },
+  "FRT": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 56
+  },
+  "HSIC": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 40
+  },
+  "FOX": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 31
+  },
+  "ARE": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 200
+  },
+  "NCLH": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 278
+  },
+  "MOS": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 310
+  },
+  "AOS": {
+   "ok": true,
+   "expiries": 4,
+   "rows": 48
+  },
+  "DVA": {
+   "ok": true,
+   "expiries": 8,
+   "rows": 215
+  },
+  "HRL": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 203
+  },
+  "ERIE": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 63
+  },
+  "WYNN": {
+   "ok": true,
+   "expiries": 10,
+   "rows": 495
+  },
+  "SKYD": {
+   "ok": true,
+   "expiries": 9,
+   "rows": 259
+  },
+  "MGM": {
+   "ok": true,
+   "expiries": 7,
+   "rows": 270
+  },
+  "BF-B": {
+   "ok": true,
+   "expiries": 6,
+   "rows": 66
+  },
+  "NWS": {
+   "ok": true,
+   "expiries": 3,
+   "rows": 14
+  }
+ }
+}
