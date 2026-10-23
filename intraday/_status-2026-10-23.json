@@ -1,6 +1,6 @@
 {
  "date": "2026-10-23",
- "captured_utc": "2026-10-23T15:10:05+00:00",
+ "captured_utc": "2026-10-23T15:54:58+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -20,7 +20,7 @@
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1576
+   "rows": 1579
   },
   "IGV": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 879
+   "rows": 892
   },
   "EEM": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 10,
-   "rows": 992
+   "rows": 998
   },
   "XLF": {
    "ok": true,
@@ -70,7 +70,7 @@
   "XLV": {
    "ok": true,
    "expiries": 9,
-   "rows": 678
+   "rows": 681
   },
   "XLY": {
    "ok": true,
@@ -80,7 +80,7 @@
   "XLP": {
    "ok": true,
    "expiries": 9,
-   "rows": 525
+   "rows": 526
   },
   "XLE": {
    "ok": true,
@@ -130,7 +130,7 @@
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1153
+   "rows": 1136
   },
   "GOOGL": {
    "ok": true,
@@ -165,12 +165,12 @@
   "MU": {
    "ok": true,
    "expiries": 13,
-   "rows": 1905
+   "rows": 1897
   },
   "CRWV": {
    "ok": true,
    "expiries": 11,
-   "rows": 608
+   "rows": 609
   },
   "IONQ": {
    "ok": true,
@@ -185,7 +185,7 @@
   "RKLB": {
    "ok": true,
    "expiries": 11,
-   "rows": 463
+   "rows": 468
   },
   "ONDS": {
    "ok": true,
@@ -205,17 +205,17 @@
   "USO": {
    "ok": true,
    "expiries": 13,
-   "rows": 1787
+   "rows": 1784
   },
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1655
+   "rows": 1650
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 956
+   "rows": 967
   },
   "IBIT": {
    "ok": true,
@@ -230,7 +230,7 @@
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 930
+   "rows": 932
   },
   "NBIS": {
    "ok": true,
@@ -240,7 +240,7 @@
   "AAOI": {
    "ok": true,
    "expiries": 11,
-   "rows": 548
+   "rows": 554
   },
   "TWST": {
    "ok": true,
@@ -255,7 +255,7 @@
   "NKE": {
    "ok": true,
    "expiries": 10,
-   "rows": 427
+   "rows": 425
   }
  }
 }
