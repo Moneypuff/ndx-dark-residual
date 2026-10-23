@@ -1,6 +1,6 @@
 {
  "date": "2026-10-23",
- "captured_utc": "2026-10-23T16:53:44+00:00",
+ "captured_utc": "2026-10-23T17:54:23+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -10,17 +10,17 @@
   "QQQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 2460
+   "rows": 2473
   },
   "IWM": {
    "ok": true,
    "expiries": 12,
-   "rows": 1220
+   "rows": 1212
   },
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1576
+   "rows": 1580
   },
   "IGV": {
    "ok": true,
@@ -30,12 +30,12 @@
   "XBI": {
    "ok": true,
    "expiries": 9,
-   "rows": 808
+   "rows": 809
   },
   "KRE": {
    "ok": true,
    "expiries": 10,
-   "rows": 528
+   "rows": 529
   },
   "GDX": {
    "ok": true,
@@ -65,7 +65,7 @@
   "XLF": {
    "ok": true,
    "expiries": 9,
-   "rows": 473
+   "rows": 476
   },
   "XLV": {
    "ok": true,
@@ -75,7 +75,7 @@
   "XLY": {
    "ok": true,
    "expiries": 9,
-   "rows": 582
+   "rows": 583
   },
   "XLP": {
    "ok": true,
@@ -85,7 +85,7 @@
   "XLE": {
    "ok": true,
    "expiries": 9,
-   "rows": 649
+   "rows": 653
   },
   "XLI": {
    "ok": true,
@@ -95,7 +95,7 @@
   "XLB": {
    "ok": true,
    "expiries": 9,
-   "rows": 448
+   "rows": 449
   },
   "XLU": {
    "ok": true,
@@ -110,7 +110,7 @@
   "XLC": {
    "ok": true,
    "expiries": 9,
-   "rows": 389
+   "rows": 390
   },
   "KWEB": {
    "ok": true,
@@ -125,12 +125,12 @@
   "AAPL": {
    "ok": true,
    "expiries": 11,
-   "rows": 863
+   "rows": 868
   },
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1144
+   "rows": 1138
   },
   "GOOGL": {
    "ok": true,
@@ -150,7 +150,7 @@
   "MSFT": {
    "ok": true,
    "expiries": 11,
-   "rows": 1346
+   "rows": 1348
   },
   "META": {
    "ok": true,
@@ -205,17 +205,17 @@
   "USO": {
    "ok": true,
    "expiries": 13,
-   "rows": 1784
+   "rows": 1783
   },
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1650
+   "rows": 1657
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 956
+   "rows": 957
   },
   "IBIT": {
    "ok": true,
@@ -230,7 +230,7 @@
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 930
+   "rows": 932
   },
   "NBIS": {
    "ok": true,
@@ -255,7 +255,7 @@
   "NKE": {
    "ok": true,
    "expiries": 10,
-   "rows": 427
+   "rows": 425
   }
  }
 }
