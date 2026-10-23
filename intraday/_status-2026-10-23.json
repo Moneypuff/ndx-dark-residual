@@ -1,6 +1,6 @@
 {
  "date": "2026-10-23",
- "captured_utc": "2026-10-23T15:54:58+00:00",
+ "captured_utc": "2026-10-23T16:53:44+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -15,12 +15,12 @@
   "IWM": {
    "ok": true,
    "expiries": 12,
-   "rows": 1212
+   "rows": 1220
   },
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1579
+   "rows": 1576
   },
   "IGV": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 892
+   "rows": 882
   },
   "EEM": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 10,
-   "rows": 998
+   "rows": 992
   },
   "XLF": {
    "ok": true,
@@ -90,7 +90,7 @@
   "XLI": {
    "ok": true,
    "expiries": 9,
-   "rows": 810
+   "rows": 811
   },
   "XLB": {
    "ok": true,
@@ -115,7 +115,7 @@
   "KWEB": {
    "ok": true,
    "expiries": 10,
-   "rows": 390
+   "rows": 388
   },
   "FXI": {
    "ok": true,
@@ -130,7 +130,7 @@
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1136
+   "rows": 1144
   },
   "GOOGL": {
    "ok": true,
@@ -140,7 +140,7 @@
   "NVDA": {
    "ok": true,
    "expiries": 12,
-   "rows": 943
+   "rows": 924
   },
   "AMZN": {
    "ok": true,
@@ -160,12 +160,12 @@
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1210
+   "rows": 1206
   },
   "MU": {
    "ok": true,
    "expiries": 13,
-   "rows": 1897
+   "rows": 1899
   },
   "CRWV": {
    "ok": true,
@@ -200,7 +200,7 @@
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 903
+   "rows": 904
   },
   "USO": {
    "ok": true,
@@ -215,7 +215,7 @@
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 967
+   "rows": 956
   },
   "IBIT": {
    "ok": true,
@@ -230,7 +230,7 @@
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 932
+   "rows": 930
   },
   "NBIS": {
    "ok": true,
@@ -240,7 +240,7 @@
   "AAOI": {
    "ok": true,
    "expiries": 11,
-   "rows": 554
+   "rows": 544
   },
   "TWST": {
    "ok": true,
@@ -255,7 +255,7 @@
   "NKE": {
    "ok": true,
    "expiries": 10,
-   "rows": 425
+   "rows": 427
   }
  }
 }
