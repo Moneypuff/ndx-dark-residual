@@ -1,6 +1,6 @@
 {
  "date": "2026-10-26",
- "captured_utc": "2026-10-26T15:59:03+00:00",
+ "captured_utc": "2026-10-26T16:54:22+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -10,7 +10,7 @@
   "QQQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 2448
+   "rows": 2443
   },
   "IWM": {
    "ok": true,
@@ -45,7 +45,7 @@
   "EEM": {
    "ok": true,
    "expiries": 9,
-   "rows": 655
+   "rows": 654
   },
   "VTV": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 10,
-   "rows": 1030
+   "rows": 1032
   },
   "XLF": {
    "ok": true,
@@ -80,12 +80,12 @@
   "XLP": {
    "ok": true,
    "expiries": 9,
-   "rows": 563
+   "rows": 567
   },
   "XLE": {
    "ok": true,
    "expiries": 9,
-   "rows": 660
+   "rows": 661
   },
   "XLI": {
    "ok": true,
@@ -115,7 +115,7 @@
   "KWEB": {
    "ok": true,
    "expiries": 10,
-   "rows": 406
+   "rows": 403
   },
   "FXI": {
    "ok": true,
@@ -125,7 +125,7 @@
   "AAPL": {
    "ok": true,
    "expiries": 11,
-   "rows": 912
+   "rows": 909
   },
   "TSLA": {
    "ok": true,
@@ -135,7 +135,7 @@
   "GOOGL": {
    "ok": true,
    "expiries": 11,
-   "rows": 1156
+   "rows": 1157
   },
   "NVDA": {
    "ok": true,
@@ -155,7 +155,7 @@
   "META": {
    "ok": true,
    "expiries": 12,
-   "rows": 1599
+   "rows": 1604
   },
   "AMD": {
    "ok": true,
@@ -165,17 +165,17 @@
   "MU": {
    "ok": true,
    "expiries": 13,
-   "rows": 1933
+   "rows": 1949
   },
   "CRWV": {
    "ok": true,
    "expiries": 11,
-   "rows": 693
+   "rows": 702
   },
   "IONQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 485
+   "rows": 481
   },
   "OWL": {
    "ok": true,
@@ -200,7 +200,7 @@
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 933
+   "rows": 930
   },
   "USO": {
    "ok": true,
@@ -220,7 +220,7 @@
   "IBIT": {
    "ok": true,
    "expiries": 11,
-   "rows": 837
+   "rows": 841
   },
   "TLT": {
    "ok": true,
@@ -235,7 +235,7 @@
   "NBIS": {
    "ok": true,
    "expiries": 12,
-   "rows": 851
+   "rows": 845
   },
   "AAOI": {
    "ok": true,
