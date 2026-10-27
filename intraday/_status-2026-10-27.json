@@ -1,11 +1,11 @@
 {
  "date": "2026-10-27",
- "captured_utc": "2026-10-27T16:54:34+00:00",
+ "captured_utc": "2026-10-27T17:54:40+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
    "expiries": 11,
-   "rows": 2761
+   "rows": 2762
   },
   "QQQ": {
    "ok": true,
@@ -20,7 +20,7 @@
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1744
+   "rows": 1740
   },
   "IGV": {
    "ok": true,
@@ -30,7 +30,7 @@
   "XBI": {
    "ok": true,
    "expiries": 9,
-   "rows": 833
+   "rows": 834
   },
   "KRE": {
    "ok": true,
@@ -95,7 +95,7 @@
   "XLB": {
    "ok": true,
    "expiries": 9,
-   "rows": 450
+   "rows": 451
   },
   "XLU": {
    "ok": true,
@@ -105,7 +105,7 @@
   "XLRE": {
    "ok": true,
    "expiries": 5,
-   "rows": 120
+   "rows": 121
   },
   "XLC": {
    "ok": true,
@@ -135,7 +135,7 @@
   "GOOGL": {
    "ok": true,
    "expiries": 11,
-   "rows": 1147
+   "rows": 1150
   },
   "NVDA": {
    "ok": true,
@@ -150,12 +150,12 @@
   "MSFT": {
    "ok": true,
    "expiries": 11,
-   "rows": 1438
+   "rows": 1431
   },
   "META": {
    "ok": true,
    "expiries": 12,
-   "rows": 1598
+   "rows": 1589
   },
   "AMD": {
    "ok": true,
@@ -170,7 +170,7 @@
   "CRWV": {
    "ok": true,
    "expiries": 11,
-   "rows": 696
+   "rows": 700
   },
   "IONQ": {
    "ok": true,
@@ -195,7 +195,7 @@
   "SPCX": {
    "ok": true,
    "expiries": 12,
-   "rows": 855
+   "rows": 852
   },
   "DRAM": {
    "ok": true,
@@ -205,17 +205,17 @@
   "USO": {
    "ok": true,
    "expiries": 13,
-   "rows": 1907
+   "rows": 1902
   },
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1658
+   "rows": 1650
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 1000
+   "rows": 995
   },
   "IBIT": {
    "ok": true,
@@ -225,17 +225,17 @@
   "TLT": {
    "ok": true,
    "expiries": 13,
-   "rows": 1038
+   "rows": 1043
   },
   "EWY": {
    "ok": true,
    "expiries": 11,
-   "rows": 1041
+   "rows": 1040
   },
   "NBIS": {
    "ok": true,
    "expiries": 12,
-   "rows": 836
+   "rows": 840
   },
   "AAOI": {
    "ok": true,
@@ -245,7 +245,7 @@
   "TWST": {
    "ok": true,
    "expiries": 5,
-   "rows": 237
+   "rows": 239
   },
   "PURR": {
    "ok": true,
