@@ -1,16 +1,16 @@
 {
  "date": "2026-10-29",
- "captured_utc": "2026-10-29T18:53:55+00:00",
+ "captured_utc": "2026-10-29T19:54:29+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
    "expiries": 11,
-   "rows": 2932
+   "rows": 2937
   },
   "QQQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 2615
+   "rows": 2599
   },
   "IWM": {
    "ok": true,
@@ -20,7 +20,7 @@
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1696
+   "rows": 1697
   },
   "IGV": {
    "ok": true,
@@ -30,7 +30,7 @@
   "XBI": {
    "ok": true,
    "expiries": 9,
-   "rows": 837
+   "rows": 832
   },
   "KRE": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 913
+   "rows": 915
   },
   "EEM": {
    "ok": true,
@@ -80,7 +80,7 @@
   "XLP": {
    "ok": true,
    "expiries": 9,
-   "rows": 565
+   "rows": 569
   },
   "XLE": {
    "ok": true,
@@ -90,7 +90,7 @@
   "XLI": {
    "ok": true,
    "expiries": 9,
-   "rows": 837
+   "rows": 836
   },
   "XLB": {
    "ok": true,
@@ -150,22 +150,22 @@
   "MSFT": {
    "ok": true,
    "expiries": 11,
-   "rows": 1437
+   "rows": 1433
   },
   "META": {
    "ok": true,
    "expiries": 12,
-   "rows": 1563
+   "rows": 1567
   },
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1346
+   "rows": 1354
   },
   "MU": {
    "ok": true,
    "expiries": 13,
-   "rows": 2031
+   "rows": 2028
   },
   "CRWV": {
    "ok": true,
@@ -200,7 +200,7 @@
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 992
+   "rows": 999
   },
   "USO": {
    "ok": true,
@@ -210,17 +210,17 @@
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1727
+   "rows": 1737
   },
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 963
+   "rows": 973
   },
   "IBIT": {
    "ok": true,
    "expiries": 11,
-   "rows": 836
+   "rows": 833
   },
   "TLT": {
    "ok": true,
@@ -230,12 +230,12 @@
   "EWY": {
    "ok": true,
    "expiries": 11,
-   "rows": 1055
+   "rows": 1056
   },
   "NBIS": {
    "ok": true,
    "expiries": 12,
-   "rows": 839
+   "rows": 834
   },
   "AAOI": {
    "ok": true,
