@@ -1,11 +1,11 @@
 {
  "date": "2026-11-10",
- "captured_utc": "2026-11-10T17:54:22+00:00",
+ "captured_utc": "2026-11-10T18:53:54+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
    "expiries": 12,
-   "rows": 2986
+   "rows": 2976
   },
   "QQQ": {
    "ok": true,
@@ -20,17 +20,17 @@
   "SMH": {
    "ok": true,
    "expiries": 12,
-   "rows": 1736
+   "rows": 1743
   },
   "IGV": {
    "ok": true,
    "expiries": 11,
-   "rows": 874
+   "rows": 877
   },
   "XBI": {
    "ok": true,
    "expiries": 8,
-   "rows": 821
+   "rows": 822
   },
   "KRE": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 9,
-   "rows": 974
+   "rows": 982
   },
   "EEM": {
    "ok": true,
@@ -70,12 +70,12 @@
   "XLV": {
    "ok": true,
    "expiries": 8,
-   "rows": 690
+   "rows": 691
   },
   "XLY": {
    "ok": true,
    "expiries": 8,
-   "rows": 637
+   "rows": 634
   },
   "XLP": {
    "ok": true,
@@ -130,7 +130,7 @@
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1232
+   "rows": 1247
   },
   "GOOGL": {
    "ok": true,
@@ -150,22 +150,22 @@
   "MSFT": {
    "ok": true,
    "expiries": 11,
-   "rows": 1459
+   "rows": 1460
   },
   "META": {
    "ok": true,
    "expiries": 12,
-   "rows": 1607
+   "rows": 1610
   },
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1352
+   "rows": 1364
   },
   "MU": {
    "ok": true,
    "expiries": 13,
-   "rows": 1822
+   "rows": 1816
   },
   "CRWV": {
    "ok": true,
@@ -175,7 +175,7 @@
   "IONQ": {
    "ok": true,
    "expiries": 9,
-   "rows": 417
+   "rows": 419
   },
   "OWL": {
    "ok": true,
@@ -185,7 +185,7 @@
   "RKLB": {
    "ok": true,
    "expiries": 10,
-   "rows": 465
+   "rows": 467
   },
   "ONDS": {
    "ok": true,
@@ -205,7 +205,7 @@
   "USO": {
    "ok": true,
    "expiries": 13,
-   "rows": 1912
+   "rows": 1918
   },
   "GLD": {
    "ok": true,
@@ -230,7 +230,7 @@
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 929
+   "rows": 935
   },
   "NBIS": {
    "ok": true,
@@ -250,7 +250,7 @@
   "PURR": {
    "ok": true,
    "expiries": 8,
-   "rows": 270
+   "rows": 269
   },
   "NKE": {
    "ok": true,
