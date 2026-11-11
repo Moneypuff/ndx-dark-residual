@@ -1,6 +1,6 @@
 {
  "date": "2026-11-11",
- "captured_utc": "2026-11-11T17:59:15+00:00",
+ "captured_utc": "2026-11-11T19:01:49+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -20,7 +20,7 @@
   "SMH": {
    "ok": true,
    "expiries": 12,
-   "rows": 1812
+   "rows": 1807
   },
   "IGV": {
    "ok": true,
@@ -70,7 +70,7 @@
   "XLV": {
    "ok": true,
    "expiries": 8,
-   "rows": 692
+   "rows": 691
   },
   "XLY": {
    "ok": true,
@@ -130,7 +130,7 @@
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1283
+   "rows": 1275
   },
   "GOOGL": {
    "ok": true,
@@ -140,7 +140,7 @@
   "NVDA": {
    "ok": true,
    "expiries": 12,
-   "rows": 918
+   "rows": 920
   },
   "AMZN": {
    "ok": true,
@@ -155,27 +155,27 @@
   "META": {
    "ok": true,
    "expiries": 12,
-   "rows": 1612
+   "rows": 1610
   },
   "AMD": {
    "ok": true,
    "expiries": 11,
-   "rows": 1423
+   "rows": 1431
   },
   "MU": {
    "ok": true,
    "expiries": 13,
-   "rows": 1999
+   "rows": 2023
   },
   "CRWV": {
    "ok": true,
    "expiries": 10,
-   "rows": 588
+   "rows": 592
   },
   "IONQ": {
    "ok": true,
    "expiries": 9,
-   "rows": 416
+   "rows": 418
   },
   "OWL": {
    "ok": true,
@@ -195,17 +195,17 @@
   "SPCX": {
    "ok": true,
    "expiries": 12,
-   "rows": 851
+   "rows": 846
   },
   "DRAM": {
    "ok": true,
    "expiries": 12,
-   "rows": 959
+   "rows": 947
   },
   "USO": {
    "ok": true,
    "expiries": 13,
-   "rows": 1933
+   "rows": 1924
   },
   "GLD": {
    "ok": true,
@@ -215,7 +215,7 @@
   "SLV": {
    "ok": true,
    "expiries": 10,
-   "rows": 981
+   "rows": 978
   },
   "IBIT": {
    "ok": true,
@@ -225,22 +225,22 @@
   "TLT": {
    "ok": true,
    "expiries": 13,
-   "rows": 1040
+   "rows": 1041
   },
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 988
+   "rows": 990
   },
   "NBIS": {
    "ok": true,
    "expiries": 11,
-   "rows": 772
+   "rows": 774
   },
   "AAOI": {
    "ok": true,
    "expiries": 10,
-   "rows": 507
+   "rows": 505
   },
   "TWST": {
    "ok": true,
