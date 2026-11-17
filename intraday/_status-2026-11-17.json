@@ -1,6 +1,6 @@
 {
  "date": "2026-11-17",
- "captured_utc": "2026-11-17T18:59:03+00:00",
+ "captured_utc": "2026-11-17T19:53:31+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
@@ -20,7 +20,7 @@
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1550
+   "rows": 1547
   },
   "IGV": {
    "ok": true,
@@ -30,7 +30,7 @@
   "XBI": {
    "ok": true,
    "expiries": 8,
-   "rows": 816
+   "rows": 812
   },
   "KRE": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 8,
-   "rows": 852
+   "rows": 845
   },
   "EEM": {
    "ok": true,
@@ -70,7 +70,7 @@
   "XLV": {
    "ok": true,
    "expiries": 8,
-   "rows": 718
+   "rows": 719
   },
   "XLY": {
    "ok": true,
@@ -95,12 +95,12 @@
   "XLB": {
    "ok": true,
    "expiries": 8,
-   "rows": 439
+   "rows": 437
   },
   "XLU": {
    "ok": true,
    "expiries": 10,
-   "rows": 522
+   "rows": 520
   },
   "XLRE": {
    "ok": true,
@@ -135,12 +135,12 @@
   "GOOGL": {
    "ok": true,
    "expiries": 11,
-   "rows": 1037
+   "rows": 1046
   },
   "NVDA": {
    "ok": true,
    "expiries": 11,
-   "rows": 860
+   "rows": 874
   },
   "AMZN": {
    "ok": true,
@@ -155,7 +155,7 @@
   "META": {
    "ok": true,
    "expiries": 11,
-   "rows": 1402
+   "rows": 1398
   },
   "AMD": {
    "ok": true,
@@ -165,12 +165,12 @@
   "MU": {
    "ok": true,
    "expiries": 12,
-   "rows": 1598
+   "rows": 1576
   },
   "CRWV": {
    "ok": true,
    "expiries": 10,
-   "rows": 589
+   "rows": 585
   },
   "IONQ": {
    "ok": true,
@@ -200,22 +200,22 @@
   "DRAM": {
    "ok": true,
    "expiries": 11,
-   "rows": 789
+   "rows": 783
   },
   "USO": {
    "ok": true,
    "expiries": 12,
-   "rows": 1812
+   "rows": 1816
   },
   "GLD": {
    "ok": true,
    "expiries": 10,
-   "rows": 1686
+   "rows": 1682
   },
   "SLV": {
    "ok": true,
    "expiries": 9,
-   "rows": 848
+   "rows": 856
   },
   "IBIT": {
    "ok": true,
@@ -230,12 +230,12 @@
   "EWY": {
    "ok": true,
    "expiries": 10,
-   "rows": 899
+   "rows": 895
   },
   "NBIS": {
    "ok": true,
    "expiries": 11,
-   "rows": 700
+   "rows": 704
   },
   "AAOI": {
    "ok": true,
@@ -250,12 +250,12 @@
   "PURR": {
    "ok": true,
    "expiries": 8,
-   "rows": 270
+   "rows": 271
   },
   "NKE": {
    "ok": true,
    "expiries": 9,
-   "rows": 402
+   "rows": 403
   }
  }
 }
