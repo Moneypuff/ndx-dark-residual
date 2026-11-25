@@ -1,16 +1,16 @@
 {
  "date": "2026-11-25",
- "captured_utc": "2026-11-25T19:09:10+00:00",
+ "captured_utc": "2026-11-25T19:53:33+00:00",
  "symbols": {
   "SPY": {
    "ok": true,
    "expiries": 11,
-   "rows": 2938
+   "rows": 2934
   },
   "QQQ": {
    "ok": true,
    "expiries": 12,
-   "rows": 3045
+   "rows": 3037
   },
   "IWM": {
    "ok": true,
@@ -20,12 +20,12 @@
   "SMH": {
    "ok": true,
    "expiries": 11,
-   "rows": 1551
+   "rows": 1547
   },
   "IGV": {
    "ok": true,
    "expiries": 11,
-   "rows": 865
+   "rows": 861
   },
   "XBI": {
    "ok": true,
@@ -40,7 +40,7 @@
   "GDX": {
    "ok": true,
    "expiries": 8,
-   "rows": 825
+   "rows": 816
   },
   "EEM": {
    "ok": true,
@@ -60,7 +60,7 @@
   "XLK": {
    "ok": true,
    "expiries": 10,
-   "rows": 1116
+   "rows": 1108
   },
   "XLF": {
    "ok": true,
@@ -75,7 +75,7 @@
   "XLY": {
    "ok": true,
    "expiries": 8,
-   "rows": 633
+   "rows": 632
   },
   "XLP": {
    "ok": true,
@@ -90,7 +90,7 @@
   "XLI": {
    "ok": true,
    "expiries": 8,
-   "rows": 818
+   "rows": 817
   },
   "XLB": {
    "ok": true,
@@ -120,7 +120,7 @@
   "FXI": {
    "ok": true,
    "expiries": 13,
-   "rows": 485
+   "rows": 486
   },
   "AAPL": {
    "ok": true,
@@ -130,7 +130,7 @@
   "TSLA": {
    "ok": true,
    "expiries": 11,
-   "rows": 1255
+   "rows": 1259
   },
   "GOOGL": {
    "ok": true,
@@ -150,12 +150,12 @@
   "MSFT": {
    "ok": true,
    "expiries": 13,
-   "rows": 1490
+   "rows": 1482
   },
   "META": {
    "ok": true,
    "expiries": 11,
-   "rows": 1498
+   "rows": 1501
   },
   "AMD": {
    "ok": true,
@@ -170,12 +170,12 @@
   "CRWV": {
    "ok": true,
    "expiries": 11,
-   "rows": 668
+   "rows": 671
   },
   "IONQ": {
    "ok": true,
    "expiries": 10,
-   "rows": 434
+   "rows": 431
   },
   "OWL": {
    "ok": true,
@@ -185,12 +185,12 @@
   "RKLB": {
    "ok": true,
    "expiries": 11,
-   "rows": 573
+   "rows": 576
   },
   "ONDS": {
    "ok": true,
    "expiries": 10,
-   "rows": 333
+   "rows": 334
   },
   "SPCX": {
    "ok": true,
@@ -200,7 +200,7 @@
   "DRAM": {
    "ok": true,
    "expiries": 11,
-   "rows": 761
+   "rows": 760
   },
   "USO": {
    "ok": true,
@@ -230,7 +230,7 @@
   "EWY": {
    "ok": true,
    "expiries": 11,
-   "rows": 918
+   "rows": 911
   },
   "NBIS": {
    "ok": true,
@@ -245,7 +245,7 @@
   "TWST": {
    "ok": true,
    "expiries": 5,
-   "rows": 204
+   "rows": 203
   },
   "PURR": {
    "ok": true,
@@ -255,7 +255,7 @@
   "NKE": {
    "ok": true,
    "expiries": 10,
-   "rows": 459
+   "rows": 456
   }
  }
 }
